@@ -1,0 +1,106 @@
+let STATE = null;
+let selectedStrategy = 'avalanche';
+let currentLesson = null;
+let lastNudge = null;
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove('show'),2800)}
+async function api(path, opts={}){const r=await fetch(path,{headers:{...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(opts.headers||{})},...opts});let data={};try{data=await r.json()}catch{}if(!r.ok)throw new Error(data.detail||'Something went wrong');return data}
+function money(v){return new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(Number(v||0))}
+function show(view){['authView','setupView','onboardingView','dashboardView'].forEach(id=>$('#'+id).classList.toggle('hidden',id!==view));$('#pauseBtn').classList.toggle('hidden',view!=='dashboardView');$('#logoutBtn').classList.toggle('hidden',view==='authView')}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+
+function render(){
+  const s=STATE, debts=s.debts||[], debt=debts.find(d=>d.status==='active')||debts[0];
+  if(!s.profile||!s.profile.name){show('setupView');return}
+  show('dashboardView');
+  $('#greetName').textContent=s.profile.name;
+  $('#dailyDrip').textContent=money(s.daily_drip);
+  $('#streak').textContent=s.game.streak;
+  $('#points').textContent=s.game.points;
+  $('#level').textContent=s.game.level;
+  $('#freezes').textContent=s.game.freezes;
+  $('#stage').textContent=s.game.evolution_stage;
+  $('#evolution').textContent=s.game.evolution_stage;
+  $('#evolutionCopy').textContent=s.game.evolution_stage==='Transactor'?'Full-balance cycle with a funded shield.':s.game.evolution_stage==='Shielded'?'Your buffer reached the first shield.':'Carrying a balance. Building the buffer.';
+  $('#debtBalance').textContent=money(debt?.balance);
+  $('#debtInfo').textContent=debt?`${Number(debt.apr).toFixed(2)}% APR · ${money(debt.balance*debt.apr/100/365)} estimated interest/day`:'Add a Boss debt';
+  $('#stashBalance').textContent=money(s.stash.balance);
+  $('#shieldInfo').textContent=`Shield ${money(s.stash.shield_threshold)}`;
+  $('#planStrategy').textContent=s.plan?.strategy||'—';
+  $('#planMeta').textContent=s.plan?.projection?`${s.plan.projection.months} months modeled`:'Build your plan';
+  const health=debt?Math.max(0,Math.min(100,(debt.balance/(debt.balance+(s.daily_drip*30*12||1)))*100)):0;
+  $('#healthFill').style.width=health+'%';
+  $('#stashFill').style.width=Math.min(100,s.stash.balance/Math.max(1,s.stash.shield_threshold)*100)+'%';
+  $('#paypalBadge').textContent=s.paypal.status==='connected'?'PayPal connected':'PayPal off';
+  $('#modeChip').textContent=s.paypal.status==='connected'?'SANDBOX CONNECTED':'SANDBOX';
+  $('#stressChip').textContent=s.stress_mode?'SUPPORTIVE MODE':'STEADY';
+  $('#stressChip').setAttribute('aria-label',s.stress_mode?'Supportive mode is active due to recent stress signals.':'No stress signal is active.');
+  $('#pauseBtn').textContent=s.paused?'Resume drips':'Pause drips';
+  $('#approveDrip').disabled=s.paused||s.paypal.status!=='connected';
+  $('#approveDrip').textContent=s.profile.approval_mode==='standing_rule'?'Run today’s drip':s.profile.approval_mode==='weekly_cap'?'Approve within weekly cap':"Approve today's drip";
+  if(s.plan){const stash=s.daily_drip*s.plan.stash_pct/100;$('#stashShare').textContent=money(stash);$('#bossShare').textContent=money(s.daily_drip-stash);renderProjection(s.plan.projection);$('#attackOrder').textContent=`Attack order: ${(s.plan.attack_order||[]).join(' → ')}`;}else{$('#stashShare').textContent='—';$('#bossShare').textContent='—';}
+  $('#paypalDetails').innerHTML=`<strong>Status:</strong> ${escapeHtml(s.paypal.status)}<br><strong>Environment:</strong> PayPal Sandbox<br><strong>Country / currency:</strong> CA / CAD<br><strong>Scopes:</strong> ${(s.paypal.scopes||[]).join(', ')||'none'}<br><strong>Funding ref:</strong> ${escapeHtml(s.paypal.funding_ref||'none')}${s.paypal.settlement_error?`<br><strong>Settlement:</strong> ${escapeHtml(s.paypal.settlement_error)}`:''}`;
+  renderDefeat(); renderNotifications(); renderAudit(); renderChart(); renderShop(); renderSquad();
+  $('#llmBadge').textContent='LLM ready when configured';
+}
+
+function renderProjection(p){$('#projection').innerHTML=`<div><span class="mini-label">DEBT-FREE</span><strong>${p.months} mo</strong><span class="muted">modeled</span></div><div><span class="mini-label">INTEREST</span><strong>${money(p.interest_paid)}</strong><span class="muted">modeled</span></div><div><span class="mini-label">SAVED</span><strong>${money(p.interest_saved)}</strong><span class="muted">vs minimum-only</span></div>`}
+function renderDefeat(){const b=$('#defeatBanner');const p=STATE.pending_redirect;if(!p){b.classList.add('hidden');return}b.classList.remove('hidden');const others=(STATE.debts||[]).filter(d=>d.status==='active');b.innerHTML=`<strong>Boss defeated: ${escapeHtml(p.debt_name)}.</strong> The freed payment is ${money(p.freed_payment)}. Choose where it goes next. <div class="button-row" style="margin-top:10px"><button class="secondary" data-redirect="stash">Move to Stash</button>${others.map(d=>`<button class="secondary" data-redirect="${d.id}">Next: ${escapeHtml(d.name)}</button>`).join('')}</div>`;b.querySelectorAll('[data-redirect]').forEach(btn=>btn.onclick=async()=>{try{await api('/api/debt/redirect',{method:'POST',body:JSON.stringify({destination:btn.dataset.redirect==='stash'?'stash':Number(btn.dataset.redirect)})});await load();toast('Freed payment redirected.')}catch(e){toast(e.message)}})}
+async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a Boss to see a projection.</text>';return}const W=640,H=220,P=30,max=Math.max(...r.minimum_only,1);const pts=a=>a.map((v,i)=>`${P+(W-2*P)*i/(a.length-1||1)},${H-P-(H-2*P)*v/max}`).join(' ');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-P}"/><line class="chart-grid" x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}"/><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P}" y="15">Glim plan</text><text class="chart-label" x="${W-155}" y="15">Minimum-only</text>`}catch{}}
+async function renderAudit(){try{const rows=await api('/api/audit');$('#auditList').innerHTML=rows.length?rows.map(r=>`<div class="audit-row"><strong>${escapeHtml(r.agent)} · ${escapeHtml(r.input_ref)}</strong><span>${new Date(r.created_at).toLocaleString()} · ${escapeHtml(r.approval)}</span></div>`).join(''):'<div class="muted">No actions logged yet.</div>'}catch{}}
+
+async function renderNotifications(){try{const x=await api('/api/notifications');const n=x.settings||{};$('#notifStart').value=n.quiet_start||'22:00';$('#notifEnd').value=n.quiet_end||'08:00';$('#notifCap').value=n.daily_cap ?? 3;$('#notifChannel').value=n.channel||'in_app';$('#stressCopy').textContent=x.stress_mode?'Supportive mode is active.':'Steady mode.';$('#stressDetail').textContent=x.stress_mode?'Glim reduces pressure after missed or paused activity.':'No stress signal is active.';$('#inbox').innerHTML=x.items?.length?x.items.map(i=>`<div class="inbox-item"><strong>${escapeHtml(i.message)}</strong><span class="muted">${new Date(i.created_at).toLocaleString()} · ${escapeHtml(i.arm_key)}</span></div>`).join(''):'<div class="muted">Your check-in inbox is empty.</div>'}catch{}}
+async function renderShop(){try{const x=await api('/api/cosmetics');$('#shop').innerHTML=x.items.map(i=>`<div class="shop-item"><strong>${i.icon} ${escapeHtml(i.name)}</strong><p class="muted">${escapeHtml(i.description)}</p><span class="price">${i.owned?'Owned':i.cost+' points'}</span>${i.owned?'':` <button class="secondary" data-buy="${i.id}">Buy</button>`}</div>`).join('');$$('[data-buy]').forEach(b=>b.onclick=async()=>{try{await api(`/api/cosmetics/${b.dataset.buy}/buy`,{method:'POST'});await load();toast('Cosmetic unlocked.')}catch(e){toast(e.message)}})}catch{}}
+async function renderSquad(){try{const x=await api('/api/squads');const s=x.squad;if(!s){$('#squadInfo').innerHTML='<p class="muted">No squad yet. Create one or join with an invite code.</p>';$('#leaderboard').innerHTML='';$('#cheerFeed').innerHTML='';return}$('#squadInfo').innerHTML=`<div class="callout"><strong>${escapeHtml(s.name)}</strong><br>Invite code: <b>${escapeHtml(s.invite_code)}</b></div>`;$('#leaderboard').innerHTML=x.members.map((m,i)=>`<div class="leader-row"><strong>#${i+1} ${escapeHtml(m.display_name)}</strong><span>${m.streak}-day streak · ${Number(m.goal_pct).toFixed(0)}% goal · Level ${m.level} · <button class="secondary" data-cheer="${m.id}">Cheer</button></span></div>`).join('');$('#cheerFeed').innerHTML=x.cheers.length?x.cheers.map(c=>`<div class="muted">${escapeHtml(c.cheer)}</div>`).join(''):'';$$('[data-cheer]').forEach(b=>b.onclick=async()=>{const cheer='Nice streak!';try{await api('/api/squads/cheer',{method:'POST',body:JSON.stringify({member_id:Number(b.dataset.cheer),cheer})});toast('Cheer sent.')}catch(e){toast(e.message)}})}catch{}}
+
+async function load(){
+  try{
+    const me=await api('/api/auth/me');
+    if(!me.authenticated){STATE=null;show('authView');$('#logoutBtn').classList.add('hidden');return}
+    STATE=await api('/api/state');
+    if(!STATE.profile||!STATE.profile.name){show('setupView');return}
+    show('dashboardView');
+    if(!STATE.plan){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
+    await Promise.all([runScout(false), renderNotifications(), renderShop(), renderSquad()]);render();
+  }catch(e){show('authView');toast(e.message)}
+}
+
+async function seed(key){try{STATE=await api('/api/personas/'+key,{method:'POST'});show('onboardingView');$('#pPersona').value=key;$('#pName').value=STATE.profile.name;$('#pIncome').value=STATE.profile.monthly_income;$('#pRange').value=STATE.profile.income_range;$('#pPct').value=STATE.profile.savings_pct;$('#pctOut').value=STATE.profile.savings_pct+'%';$('#pFloor').value=STATE.profile.floor_balance;$('#pCap').value=STATE.profile.weekly_cap;$('#pApproval').value='each';toast(`${key==='riley'?'Riley':'Sam'} loaded.`)}catch(e){toast(e.message)}}
+async function runScout(showToast=true){const r=await api('/api/scout',{method:'POST'});$('#scoutResults').innerHTML=`<div class="finding"><div><strong>${escapeHtml(r.income_pattern)}</strong><span>Source: ${escapeHtml(r.source)}</span></div><b>${money(r.safe_to_move_daily)}/day safe</b></div>`+r.subscriptions.map(x=>`<div class="finding"><div><strong>${escapeHtml(x.merchant)}</strong><span>${escapeHtml(x.signal)}</span></div><b>${money(x.monthly)}/mo</b></div>`).join('');if(showToast)toast('Scout refreshed.')}
+async function buildPlan(){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})});render();toast('Plan recalculated.')}
+
+$('#authForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('/api/auth/request',{method:'POST',body:JSON.stringify({email:$('#authEmail').value.trim()})});$('#magicResult').classList.remove('hidden');$('#magicResult').innerHTML=`<strong>Magic link ready.</strong><br><a href="${r.demo_magic_link}">${escapeHtml(r.demo_magic_link)}</a><br><small>Expires in ${r.expires_in_minutes} minutes.</small>`}catch(e){toast(e.message)}});
+$('#pPct').addEventListener('input',e=>$('#pctOut').value=e.target.value+'%');
+$('#profileForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/profile',{method:'POST',body:JSON.stringify({name:$('#pName').value,persona:$('#pPersona').value,monthly_income:+$('#pIncome').value,income_range:$('#pRange').value,savings_pct:+$('#pPct').value,approval_mode:$('#pApproval').value,weekly_cap:+$('#pCap').value,floor_balance:+$('#pFloor').value,quiet_start:$('#pQuietStart').value,quiet_end:$('#pQuietEnd').value,notification_cap:+$('#notifCap').value||3,notification_channel:$('#pChannel').value})});await load();toast('Profile saved. Scout is ready.')}catch(e){toast(e.message)}});
+$('#debtForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:15})});$('#debtForm').reset();await load();toast('Boss added.')}catch(e){toast(e.message)}});
+$('#scanBtn').addEventListener('click',()=>runScout(true));
+$$('.strategy').forEach(b=>b.addEventListener('click',()=>{$$('.strategy').forEach(x=>x.classList.remove('active'));b.classList.add('active');selectedStrategy=b.dataset.strategy;buildPlan()}));
+$('#planBtn').addEventListener('click',buildPlan);
+$('#whatIfBtn').addEventListener('click',async()=>{try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Add a more specific what-if phrase.';return}$('#whatIfResult').textContent=`${r.parsed.label}. What-if payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} interest.`;$('#scenarioComparison').innerHTML=`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest</div>`}catch(e){$('#whatIfResult').textContent=e.message}});
+$('#approveDrip').addEventListener('click',async()=>{try{const r=await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast(`Approved ${money(r.amount)}. Streak ${r.streak}.`);await load()}catch(e){toast(e.message)}});
+$('#settleBtn').addEventListener('click',async()=>{try{const r=await api('/api/drip/settle',{method:'POST'});if(r.status==='approval_required'&&r.approval_url){$('#settleMsg').textContent='PayPal Sandbox approval is required for this settlement.';window.location.href=r.approval_url}else{$('#settleMsg').textContent=r.status==='nothing_to_settle'?'Nothing accrued to settle.':`Settlement ${r.status}: ${money(r.amount)}.`;await load()}}catch(e){$('#settleMsg').textContent=e.message}});
+$('#connectBtn').addEventListener('click',async()=>{try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url)window.location.href=r.approval_url}catch(e){toast(e.message)}});
+$('#disconnectBtn').addEventListener('click',async()=>{try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('PayPal Sandbox funding disconnected.')}catch(e){toast(e.message)}});
+$('#freezeBtn').addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Streak freeze used.')}catch(e){toast(e.message)}});
+$('#pauseBtn').addEventListener('click',async()=>{try{await api(STATE?.paused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(STATE.paused?'Drips paused.':'Drips resumed.')}catch(e){toast(e.message)}});
+$('#chatBtn').addEventListener('click',async()=>{const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user">${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>${escapeHtml(r.agent)}</strong><br>${escapeHtml(r.message)}</div>`);$('#llmBadge').textContent=r.mode==='Gemini'?'Gemini':'Deterministic fallback';$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast(e.message)}});
+$('#nudgeBtn').addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=lastNudge.message;$('#nudgeWhy').textContent=lastNudge.why||'Why will appear here.';await renderNotifications()}catch(e){toast(e.message)}});
+$$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
+$('#saveNotifBtn').addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value})});await load();toast('Notification settings saved.')}catch(e){toast(e.message)}});
+$('#createSquadBtn').addEventListener('click',async()=>{try{await api('/api/squads',{method:'POST',body:JSON.stringify({name:$('#squadName').value.trim()||'Glim Grove'})});await load();toast('Squad created.')}catch(e){toast(e.message)}});
+$('#joinSquadBtn').addEventListener('click',async()=>{try{await api('/api/squads/join',{method:'POST',body:JSON.stringify({invite_code:$('#inviteCode').value.trim()})});await load();toast('Joined squad.')}catch(e){toast(e.message)}});
+$('#loadLessonBtn').addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">${r.points} points</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Nice. +${x.points} points.</strong><p>Glim logged the applied challenge.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
+$('#exportBtn').addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
+$('#deleteBtn').addEventListener('click',async()=>{if(!confirm('Delete the Glim account and all prototype data?'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;show('authView');toast('Account deleted.')}catch(e){toast(e.message)}});
+$$('.tab').forEach(b=>b.addEventListener('click',()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.tab-panel').forEach(x=>x.classList.add('hidden'));b.classList.add('active');$('#tab-'+b.dataset.tab).classList.remove('hidden')}));
+$$('.persona-card').forEach(b=>b.addEventListener('click',()=>seed(b.dataset.persona)));
+$('#themeToggle').addEventListener('click',()=>document.body.classList.toggle('dark'));
+$('#fontDown').addEventListener('click',()=>{document.body.classList.remove('font-large');document.body.classList.add('font-small')});
+$('#fontUp').addEventListener('click',()=>{document.body.classList.remove('font-small');document.body.classList.add('font-large')});
+$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;show('authView');toast('Signed out.')}catch(e){toast(e.message)}});
+$('#pushEnableBtn').addEventListener('click',async()=>{try{if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error('Web push is not configured. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY on the server.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Web push enabled.')}catch(e){toast(e.message)}});
+function urlBase64ToUint8Array(base64){const pad='='.repeat((4-base64.length%4)%4);const raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
+
+load();

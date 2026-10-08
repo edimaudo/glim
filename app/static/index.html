@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#102a43"/>
+<title>Glim — from Revolver to Transactor</title>
+<link rel="manifest" href="/static/manifest.json"/>
+<link rel="stylesheet" href="/static/styles.css"/>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#" aria-label="Glim home"><span class="brand-mark">G</span><span>Glim</span></a>
+  <div class="top-actions">
+    <button class="icon-button" id="fontDown" aria-label="Decrease text size">A−</button>
+    <button class="icon-button" id="fontUp" aria-label="Increase text size">A+</button>
+    <button class="icon-button" id="themeToggle" aria-label="Toggle dark mode">◐</button>
+    <button class="text-button" id="pauseBtn">Pause drips</button>
+    <button class="text-button hidden" id="logoutBtn">Sign out</button>
+  </div>
+</header>
+
+<main class="shell">
+<section id="authView" class="view hidden">
+  <div class="auth-card card">
+    <div class="mascot large" aria-hidden="true">🐿️</div>
+    <h1>Glim turns debt payoff and saving into one daily game.</h1>
+    <p class="lede">Build a buffer, chip away at a Boss debt, and move from Revolver to Transactor. Your numbers are calculated by code; you approve every move.</p>
+    <form id="authForm" class="auth-form">
+      <label>Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required/></label>
+      <button class="primary" type="submit">Send me a magic link</button>
+    </form>
+    <div id="magicResult" class="callout hidden" aria-live="polite"></div>
+    <p class="demo-note">For this prototype, the magic link is shown on screen instead of sent by an external email provider.</p>
+  </div>
+</section>
+
+<section id="setupView" class="view hidden">
+  <div class="setup-card">
+    <div class="mascot large" aria-hidden="true">🐿️</div>
+    <h1>Meet Glim.</h1>
+    <p class="lede">One small daily move builds your buffer while chipping away at one Boss debt.</p>
+    <p class="demo-note">PayPal Sandbox uses real PayPal REST calls when credentials are configured. Seeded activity is available for demos. This is not financial advice.</p>
+    <div class="persona-grid">
+      <button class="persona-card" data-persona="riley"><strong>Revolving Riley</strong><span>Credit card balance, irregular savings, quick wins.</span></button>
+      <button class="persona-card" data-persona="sam"><strong>Fresh-start Sam</strong><span>Loan + first card, habit-building from scratch.</span></button>
+    </div>
+  </div>
+</section>
+
+<section id="onboardingView" class="view hidden">
+  <div class="page-head"><div><h1>Get your first plan ready</h1><p>Set the guardrails Glim will use. Agents propose, code calculates, you approve.</p></div></div>
+  <div class="onboard-grid">
+    <form id="profileForm" class="card form-card">
+      <label>Name<input id="pName" required/></label>
+      <label>Monthly income<input id="pIncome" type="number" min="1" required/></label>
+      <label>Income range<input id="pRange" required/></label>
+      <label>Savings goal <output id="pctOut">5%</output><input id="pPct" type="range" min="0" max="20" step="1" value="5"/></label>
+      <label>Approval mode<select id="pApproval"><option value="each">Approve each move</option><option value="weekly_cap">Approve within weekly cap</option><option value="standing_rule">Standing rule with cap</option></select></label>
+      <label>Weekly cap<input id="pCap" type="number" min="0" step="0.01" value="60"/></label>
+      <label>Safety floor<input id="pFloor" type="number" min="0" required/></label>
+      <label>Quiet hours<input id="pQuietStart" value="22:00" type="time"/> to <input id="pQuietEnd" value="08:00" type="time"/></label>
+      <label>External nudges<select id="pChannel"><option value="in_app">In-app only</option><option value="web_push">Web push</option></select></label>
+      <input type="hidden" id="pPersona" value="riley"/>
+      <button class="primary" type="submit">Save and run Scout</button>
+    </form>
+    <aside class="card preview-card"><div class="mascot">🐿️</div><h2>One economy</h2><p>Saving and debt use one drip, one streak, one level.</p><div class="callout"><strong>Agents propose.</strong><br/>Code calculates.<br/>You approve.</div></aside>
+  </div>
+</section>
+
+<section id="dashboardView" class="view hidden">
+  <div class="dashboard-head">
+    <div><p class="greeting">Good morning, <span id="greetName">Riley</span>.</p><h1>Keep the acorns moving.</h1><p class="lede" id="coachLine">Your daily habit is the product.</p></div>
+    <div class="head-status"><span class="status-chip" id="modeChip">SANDBOX</span><span class="status-chip" id="stressChip">STEADY</span></div>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Glim sections">
+    <button class="tab active" data-tab="overview" role="tab">Overview</button>
+    <button class="tab" data-tab="plan" role="tab">Plan</button>
+    <button class="tab" data-tab="coach" role="tab">Coach</button>
+    <button class="tab" data-tab="game" role="tab">Game</button>
+    <button class="tab" data-tab="squad" role="tab">Squad</button>
+    <button class="tab" data-tab="learn" role="tab">Learn</button>
+    <button class="tab" data-tab="trust" role="tab">Trust</button>
+  </nav>
+
+  <section id="tab-overview" class="tab-panel active">
+    <div class="hero-grid">
+      <article class="card mascot-card"><div class="mascot" aria-label="Glim mascot">🐿️</div><div><span class="mini-label">EVOLUTION</span><strong id="evolution">Revolver</strong><p id="evolutionCopy">Carrying a balance. Building the buffer.</p></div><div class="streak"><span>🔥</span><b id="streak">0</b><span>day streak</span></div></article>
+      <article class="card drip-card"><div class="card-top"><div><span class="mini-label">TODAY'S DRIP</span><div class="big-number" id="dailyDrip">$0.00</div></div><span class="badge" id="paypalBadge">PayPal off</span></div><div class="split-bars"><div><span>Stash</span><b id="stashShare">—</b></div><div><span>Boss</span><b id="bossShare">—</b></div></div><button class="primary" id="approveDrip">Approve today's drip</button><p class="muted" id="dripMsg">Connect PayPal Sandbox before approving a drip.</p></article>
+    </div>
+    <div id="defeatBanner" class="callout hidden"></div>
+    <div class="stats-grid">
+      <article class="card stat"><span class="mini-label">OGRE HEALTH</span><strong id="debtBalance">$0</strong><div class="healthbar"><span id="healthFill"></span></div><small id="debtInfo">—</small></article>
+      <article class="card stat"><span class="mini-label">STASH</span><strong id="stashBalance">$0</strong><div class="progressbar"><span id="stashFill"></span></div><small id="shieldInfo">Shield —</small></article>
+      <article class="card stat"><span class="mini-label">POINTS</span><strong id="points">0</strong><small>Behavior only</small></article>
+      <article class="card stat"><span class="mini-label">PLAN</span><strong id="planStrategy">—</strong><small id="planMeta">Build your plan</small></article>
+    </div>
+    <div class="two-col">
+      <section class="card section-card"><div class="section-head"><div><span class="mini-label">SCOUT</span><h2>What Glim found</h2></div><button class="secondary" id="scanBtn">Run Scout</button></div><div id="scoutResults" class="stack"></div><details class="add-boss"><summary>Add a Boss debt</summary><form id="debtForm" class="compact-form"><input id="dName" placeholder="Debt name" required/><select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select><input id="dBalance" type="number" min="1" step="0.01" placeholder="Balance" required/><input id="dApr" type="number" min="0" step="0.01" placeholder="APR %" required/><input id="dMin" type="number" min="1" step="0.01" placeholder="Minimum" required/><button class="secondary" type="submit">Add Boss</button></form></details></section>
+      <section class="card section-card"><div class="section-head"><div><span class="mini-label">PAYPAL</span><h2>Sandbox connection</h2></div><div class="button-row"><button class="secondary" id="connectBtn">Connect</button><button class="secondary" id="disconnectBtn">Disconnect</button></div></div><div id="paypalDetails" class="connection-details"></div><div class="settlement-row"><div><strong>Weekly settlement</strong><p>Daily drips accrue in the ledger; collection and disbursement use PayPal Sandbox.</p></div><button class="primary" id="settleBtn">Settle accrued drips</button></div><div id="settleMsg" class="muted"></div></section>
+    </div>
+  </section>
+
+  <section id="tab-plan" class="tab-panel hidden">
+    <section class="card section-card"><div class="section-head"><div><h2>Choose the attack</h2><p class="muted">The trade-off changes the order, not the math.</p></div><button class="secondary" id="planBtn">Rebuild</button></div><div class="strategy-row"><button data-strategy="avalanche" class="strategy active">Avalanche<span>Highest APR first</span></button><button data-strategy="snowball" class="strategy">Snowball<span>Smallest balance first</span></button><button data-strategy="hybrid" class="strategy">Hybrid<span>Interest + wins</span></button></div><div class="projection" id="projection"></div><p id="attackOrder" class="muted"></p><div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Projected debt balance over time"></svg></div><div class="scenario-grid"><div><h3>Try a what-if</h3><p class="muted">Use plain language. Glim turns it into calculator inputs.</p><div class="input-row"><input id="whatIfInput" placeholder="e.g. skip takeout twice a week"/><button class="secondary" id="whatIfBtn">Run</button></div><div id="whatIfResult" class="muted"></div></div><div class="comparison-card"><h3>Current vs what-if</h3><div id="scenarioComparison">No scenario yet.</div></div></div></section>
+  </section>
+
+  <section id="tab-coach" class="tab-panel hidden">
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Ask Glim</h2><p class="muted">Glim can delegate to Scout or Tactician. Calculators own every figure.</p></div><span class="badge" id="llmBadge">Deterministic fallback</span></div><div id="chatWindow" class="chat-window"><div class="bubble">Ask about your plan, subscriptions, streak, or a what-if.</div></div><div class="input-row"><input id="chatInput" placeholder="Ask Glim a question…"/><button class="primary" id="chatBtn">Ask</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Check-in</h2><p class="muted">Glim adapts tone and frequency to your responses.</p></div><button class="secondary" id="nudgeBtn">Get a check-in</button></div><div class="nudge-card"><strong id="nudgeText">No check-in selected.</strong><p id="nudgeWhy" class="muted">Why will appear here.</p><div class="button-row"><button class="secondary nudge-action" data-response="acted">I acted</button><button class="secondary nudge-action" data-response="opened">Opened</button><button class="secondary nudge-action" data-response="snoozed">Snooze</button><button class="secondary nudge-action" data-response="dismissed">Dismiss</button><button class="secondary nudge-action" data-response="muted">Mute</button></div></div><div class="notice"><strong id="stressCopy">Steady mode.</strong><span id="stressDetail">No stress signal is active.</span></div></section></div>
+    <section class="card section-card"><div class="section-head"><div><h2>Notification settings</h2><p class="muted">Quiet hours, daily cap, and external channel.</p></div><button class="secondary" id="saveNotifBtn">Save settings</button></div><div class="settings-grid"><label>Quiet start<input id="notifStart" type="time"/></label><label>Quiet end<input id="notifEnd" type="time"/></label><label>Daily cap<input id="notifCap" type="number" min="0" max="10"/></label><label>Channel<select id="notifChannel"><option value="in_app">In-app</option><option value="web_push">Web push</option></select></label></div><button class="secondary" id="pushEnableBtn">Enable web push</button><div id="inbox" class="inbox-list"></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Why cards and action log</h2><p class="muted">Every proposal records inputs, rules, approval, and result.</p></div><button class="secondary" id="auditBtn">Refresh</button></div><div id="auditList" class="audit-list"></div></section>
+  </section>
+
+  <section id="tab-game" class="tab-panel hidden">
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Consistency is the score</h2><p class="muted">Points come from habits, not wealth.</p></div></div><div class="game-grid"><div><span class="mini-label">FREEZE</span><strong id="freezes">1</strong><small>Forgiveness this month</small><button class="secondary" id="freezeBtn">Use freeze</button></div><div><span class="mini-label">LEVEL</span><strong id="level">1</strong><small>Real milestones</small></div><div><span class="mini-label">STAGE</span><strong id="stage">Revolver</strong><small>Evolution follows behavior</small></div></div></section><section class="card section-card"><div class="section-head"><div><h2>Cosmetic shop</h2><p class="muted">Points only. Never real money.</p></div></div><div id="shop" class="shop-grid"></div></section></div>
+  </section>
+
+  <section id="tab-squad" class="tab-panel hidden">
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Your squad</h2><p class="muted">Friends see streak, level, and goal percent only.</p></div></div><div id="squadInfo"></div><div class="form-inline"><input id="squadName" placeholder="Squad name"/><button class="primary" id="createSquadBtn">Create</button></div><div class="form-inline"><input id="inviteCode" placeholder="Invite code"/><button class="secondary" id="joinSquadBtn">Join</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Leaderboard</h2><p class="muted">Consistency and goal percentage only.</p></div></div><div id="leaderboard" class="leaderboard"></div><div id="cheerFeed" class="cheer-feed"></div></section></div>
+  </section>
+
+  <section id="tab-learn" class="tab-panel hidden">
+    <section class="card section-card"><div class="section-head"><div><h2>Sage</h2><p class="muted">Short lessons based on your actual situation. Your answer earns points when it matches the calculator.</p></div><button class="secondary" id="loadLessonBtn">Next lesson</button></div><div id="lessonCard" class="lesson-card"><p>No lesson loaded.</p></div></section>
+  </section>
+
+  <section id="tab-trust" class="tab-panel hidden">
+    <section class="card section-card"><div class="section-head"><div><h2>Trust & controls</h2><p class="muted">Glim is designed to be inspectable.</p></div></div><div class="trust-grid"><div><strong>Sandbox disclosure</strong><p>The lender and savings pot are separate PayPal Sandbox business accounts.</p></div><div><strong>No card numbers</strong><p>Glim stores PayPal-generated token references, not card numbers.</p></div><div><strong>Not financial advice</strong><p>Glim is a prototype game, not a regulated financial-advice service.</p></div><div><strong>Safety</strong><p>A safety floor, approval mode, daily cap, and pause-all control are enforced in code.</p></div></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Your data</h2><p class="muted">Export your current prototype data or delete the account.</p></div></div><div class="button-row"><button class="secondary" id="exportBtn">Export data</button><button class="secondary danger" id="deleteBtn">Delete account</button></div><div id="dataMsg" class="muted"></div></section>
+  </section>
+</section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
