@@ -76,6 +76,7 @@
 
   <nav class="tabs" role="tablist" aria-label="Glim sections">
     <button class="tab active" data-tab="overview" role="tab">Overview</button>
+    <button class="tab" data-tab="stash" role="tab">Stash goals</button>
     <button class="tab" data-tab="plan" role="tab">Plan</button>
     <button class="tab" data-tab="coach" role="tab">Coach</button>
     <button class="tab" data-tab="game" role="tab">Game</button>
@@ -102,6 +103,39 @@
     </div>
   </section>
 
+  <section id="tab-stash" class="tab-panel hidden">
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Your forest</h2><p class="muted">The forest grows with the total Stash balance. Goal progress earmarks part of that balance, so the same dollars are never counted twice.</p></div><span class="badge" id="forestLevel">Seedling</span></div>
+      <div id="forestScene" class="forest-scene" role="img" aria-label="A forest that grows with your Stash balance"></div>
+      <div class="forest-meta"><strong id="forestSummary">Your first acorn starts the forest.</strong><span id="forestProgress" class="muted"></span></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Named Stash goals</h2><p class="muted">Give future Stash contributions a purpose: a trip, laptop, or another goal.</p></div></div>
+      <form id="stashGoalForm" class="goal-form">
+        <label>Goal name<input id="stashGoalName" maxlength="60" placeholder="e.g. New laptop" required/></label>
+        <label>Target amount (CAD)<input id="stashGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label>
+        <label>Monthly target (CAD, optional)<input id="stashGoalMonthly" type="number" min="0" step="0.01" placeholder="100" value="0"/></label>
+        <button class="primary" type="submit">Add goal</button>
+      </form>
+      <div id="stashGoals" class="stash-goals"></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Monthly savings auto-deposit</h2><p class="muted">Optional Sandbox-only collection from your consented PayPal funding source, followed by a Payout to the configured Glim savings Sandbox account. It will not claim success if PayPal rejects or leaves the order incomplete.</p></div><span class="badge">CAD · Sandbox</span></div>
+      <form id="monthlyDepositForm" class="auto-deposit-form">
+        <label class="check-label"><input id="monthlyDepositEnabled" type="checkbox"/> Enable monthly auto-deposit</label>
+        <label>Amount (CAD)<input id="monthlyDepositAmount" type="number" min="0.01" step="0.01" value="25.00" required/></label>
+        <label>Run on day of month<input id="monthlyDepositDay" type="number" min="1" max="28" value="1" required/></label>
+        <label class="check-label consent-label"><input id="monthlyDepositConsent" type="checkbox"/> I authorize this monthly Sandbox charge and savings payout for the amount shown.</label>
+        <button class="primary" type="submit">Save auto-deposit</button>
+      </form>
+      <div class="auto-deposit-status"><div id="monthlyDepositStatus" class="muted" aria-live="polite">Auto-deposit is disabled.</div><button id="runDepositBtn" class="secondary" type="button">Run once now</button></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Monthly forest recap</h2><p class="muted">A summary of recorded activity, Stash progress, debt contributions, and consistency.</p></div><div class="recap-controls"><label for="recapMonth">Month</label><input id="recapMonth" type="month"/><button class="secondary" id="loadRecapBtn" type="button">Build recap</button></div></div>
+      <div id="monthlyRecap" class="monthly-recap"><p class="muted">Select a month to build your recap.</p></div>
+    </section>
+  </section>
+
   <section id="tab-plan" class="tab-panel hidden">
     <section class="card section-card"><div class="section-head"><div><h2>Choose the attack</h2><p class="muted">The trade-off changes the order, not the math.</p></div><button class="secondary" id="planBtn">Rebuild</button></div><div class="strategy-row"><button data-strategy="avalanche" class="strategy active">Avalanche<span>Highest APR first</span></button><button data-strategy="snowball" class="strategy">Snowball<span>Smallest balance first</span></button><button data-strategy="hybrid" class="strategy">Hybrid<span>Interest + wins</span></button></div><div class="projection" id="projection"></div><p id="attackOrder" class="muted"></p><div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Projected debt balance over time"></svg></div><div class="scenario-grid"><div><h3>Try a what-if</h3><p class="muted">Use plain language. Glim turns it into calculator inputs.</p><div class="input-row"><input id="whatIfInput" placeholder="e.g. skip takeout twice a week"/><button class="secondary" id="whatIfBtn">Run</button></div><div id="whatIfResult" class="muted"></div></div><div class="comparison-card"><h3>Current vs what-if</h3><div id="scenarioComparison">No scenario yet.</div></div></div></section>
   </section>
@@ -118,6 +152,7 @@
 
   <section id="tab-squad" class="tab-panel hidden">
     <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Your squad</h2><p class="muted">Friends see streak, level, and goal percent only.</p></div></div><div id="squadInfo"></div><div class="form-inline"><input id="squadName" placeholder="Squad name"/><button class="primary" id="createSquadBtn">Create</button></div><div class="form-inline"><input id="inviteCode" placeholder="Invite code"/><button class="secondary" id="joinSquadBtn">Join</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Leaderboard</h2><p class="muted">Consistency and goal percentage only.</p></div></div><div id="leaderboard" class="leaderboard"></div><div id="cheerFeed" class="cheer-feed"></div></section></div>
+    <section class="card section-card"><div class="section-head"><div><h2>Shared squad goals</h2><p class="muted">Each member can contribute one consistency day per calendar day. Goals reward behavior, never balances.</p></div></div><form id="squadGoalForm" class="goal-form squad-goal-form"><label>Team goal<input id="squadGoalTitle" maxlength="80" placeholder="12 team drip-days" required/></label><label>Target consistency days<input id="squadGoalTarget" type="number" min="1" max="1000" value="12" required/></label><label>Group cosmetic reward<select id="squadGoalReward"><option value="1">🍃 Leaf trail</option><option value="2">🌰 Acorn crown</option><option value="3">🌙 Moonlit grove</option></select></label><button class="primary" type="submit">Create shared goal</button></form><div id="squadGoals" class="squad-goals"></div><div id="squadRewards" class="squad-rewards"></div></section>
   </section>
 
   <section id="tab-learn" class="tab-panel hidden">

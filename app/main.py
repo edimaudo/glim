@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -12,14 +13,44 @@ from .models import (
     ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
     LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
     RedirectRequest, SquadCreateRequest, SquadJoinRequest, WhatIfRequest,
+    StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate,
 )
 from .services import *  # noqa: F401,F403
 
 BASE = Path(__file__).resolve().parent
 DB_PATH = os.getenv("DATABASE_PATH", str(BASE.parent / "glim.db"))
 db = DB(DB_PATH)
-app = FastAPI(title="Glim", version="0.2.0")
+app = FastAPI(title="Glim", version="0.3.0")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+_monthly_worker = None
+
+
+async def _monthly_deposit_worker():
+    while True:
+        try:
+            process_monthly_auto_deposit_if_due(db)
+        except Exception:
+            pass
+        await asyncio.sleep(3600)
+
+
+@app.on_event("startup")
+async def start_monthly_deposit_worker():
+    global _monthly_worker
+    if _monthly_worker is None or _monthly_worker.done():
+        _monthly_worker = asyncio.create_task(_monthly_deposit_worker())
+
+
+@app.on_event("shutdown")
+async def stop_monthly_deposit_worker():
+    global _monthly_worker
+    if _monthly_worker is not None:
+        _monthly_worker.cancel()
+        try:
+            await _monthly_worker
+        except asyncio.CancelledError:
+            pass
+        _monthly_worker = None
 
 
 def current_user(request: Request) -> dict:
@@ -214,7 +245,7 @@ def whatif(req: WhatIfRequest, user=Depends(current_user)):
 @app.post("/api/drip/approve")
 def drip(req: ApprovalRequest, user=Depends(current_user)):
     try:
-        return approve_drip(db, req.approve)
+        return approve_drip(db, req.approve, email=user["email"])
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -222,7 +253,7 @@ def drip(req: ApprovalRequest, user=Depends(current_user)):
 @app.post("/api/drip/tick")
 def drip_tick(user=Depends(current_user)):
     try:
-        return auto_drip_tick(db)
+        return auto_drip_tick(db, email=user["email"])
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -300,7 +331,7 @@ def notifications(user=Depends(current_user)):
 
 @app.get("/api/squads")
 def squads(user=Depends(current_user)):
-    return get_squad(db)
+    return get_squad(db, user["email"])
 
 
 @app.post("/api/squads")
@@ -318,7 +349,15 @@ def squad_join(req: SquadJoinRequest, user=Depends(current_user)):
 
 @app.post("/api/squads/cheer")
 def squad_cheer(req: CheerRequest, user=Depends(current_user)):
-    return send_cheer(db, req.member_id, req.cheer)
+    return send_cheer(db, req.member_id, req.cheer, user["email"])
+
+
+@app.post("/api/squads/goals")
+def squad_goal_create(req: SquadGoalCreate, user=Depends(current_user)):
+    try:
+        return create_squad_goal(db, req.title, req.target_count, req.reward_cosmetic_id, user["email"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/lessons/next")
@@ -343,6 +382,48 @@ def cosmetics(user=Depends(current_user)):
 def cosmetic_buy(cosmetic_id: int, user=Depends(current_user)):
     try:
         return buy_cosmetic(db, cosmetic_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/stash/goals")
+def stash_goals(user=Depends(current_user)):
+    return get_stash_goals(db)
+
+
+@app.post("/api/stash/goals")
+def stash_goal_create(req: StashGoalCreate, user=Depends(current_user)):
+    try:
+        return add_stash_goal(db, req.name, req.target_amount, req.monthly_target)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/stash/auto-deposit")
+def stash_auto_deposit_get(user=Depends(current_user)):
+    return monthly_auto_deposit_settings(db)
+
+
+@app.put("/api/stash/auto-deposit")
+def stash_auto_deposit_save(req: MonthlyDepositSettings, user=Depends(current_user)):
+    try:
+        return save_monthly_auto_deposit(db, req.enabled, req.amount, req.due_day, req.consent)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/stash/auto-deposit/run")
+def stash_auto_deposit_run(user=Depends(current_user)):
+    try:
+        return run_monthly_auto_deposit(db, force=True)
+    except (ValueError, PayPalAPIError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/monthly-recap")
+def recap(month: str | None = None, user=Depends(current_user)):
+    try:
+        return monthly_recap(db, month)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

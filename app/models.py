@@ -72,3 +72,22 @@ class CheerRequest(BaseModel):
 class LessonCompleteRequest(BaseModel):
     lesson_id: int
     answer: str = ""
+
+
+class StashGoalCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+    target_amount: float = Field(gt=0)
+    monthly_target: float = Field(default=0, ge=0)
+
+
+class MonthlyDepositSettings(BaseModel):
+    enabled: bool = False
+    amount: float = Field(default=0, ge=0)
+    due_day: int = Field(default=1, ge=1, le=28)
+    consent: bool = False
+
+
+class SquadGoalCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=80)
+    target_count: int = Field(gt=0, le=1000)
+    reward_cosmetic_id: int = Field(ge=1)

@@ -112,8 +112,40 @@ class DB:
                   id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint TEXT UNIQUE NOT NULL,
                   subscription_json TEXT NOT NULL, created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS stash_goals (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, target_amount REAL NOT NULL,
+                  saved_amount REAL NOT NULL DEFAULT 0, monthly_target REAL NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, completed_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS monthly_auto_deposit (
+                  id INTEGER PRIMARY KEY CHECK (id=1), enabled INTEGER NOT NULL DEFAULT 0,
+                  amount REAL NOT NULL DEFAULT 0, due_day INTEGER NOT NULL DEFAULT 1, consent_at TEXT,
+                  last_attempt_month TEXT, last_run_month TEXT, status TEXT NOT NULL DEFAULT 'disabled',
+                  last_error TEXT, last_run_at TEXT, order_id TEXT, payout_batch_id TEXT
+                );
+                CREATE TABLE IF NOT EXISTS squad_goals (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT, squad_id INTEGER NOT NULL, title TEXT NOT NULL,
+                  target_count INTEGER NOT NULL, progress_count INTEGER NOT NULL DEFAULT 0,
+                  reward_cosmetic_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+                  created_at TEXT NOT NULL, completed_at TEXT,
+                  FOREIGN KEY(squad_id) REFERENCES squads(id) ON DELETE CASCADE,
+                  FOREIGN KEY(reward_cosmetic_id) REFERENCES cosmetics(id)
+                );
+                CREATE TABLE IF NOT EXISTS squad_goal_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT, squad_goal_id INTEGER NOT NULL,
+                  email TEXT NOT NULL, event_date TEXT NOT NULL, created_at TEXT NOT NULL,
+                  UNIQUE(squad_goal_id,email,event_date),
+                  FOREIGN KEY(squad_goal_id) REFERENCES squad_goals(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS squad_cosmetics (
+                  squad_id INTEGER NOT NULL, cosmetic_id INTEGER NOT NULL, unlocked_at TEXT NOT NULL,
+                  PRIMARY KEY(squad_id,cosmetic_id),
+                  FOREIGN KEY(squad_id) REFERENCES squads(id) ON DELETE CASCADE,
+                  FOREIGN KEY(cosmetic_id) REFERENCES cosmetics(id)
+                );
                 """
             )
+            c.execute("INSERT OR IGNORE INTO monthly_auto_deposit(id,enabled,amount,due_day,status) VALUES(1,0,0,1,'disabled')")
             cur = c.execute("PRAGMA table_info(app_state)")
             cols = {row[1] for row in cur.fetchall()}
             if "notifications_json" not in cols:
@@ -147,8 +179,9 @@ class DB:
 
     def reset(self):
         with self.connect() as c:
-            for table in ["app_state", "debts", "ledger_entries", "agent_actions", "webhook_events", "nudges", "nudge_arm_stats", "points_events", "squads", "squad_members", "cheers", "lesson_progress", "user_cosmetics", "push_subscriptions"]:
+            for table in ["app_state", "debts", "ledger_entries", "agent_actions", "webhook_events", "nudges", "nudge_arm_stats", "points_events", "squads", "squad_members", "cheers", "lesson_progress", "user_cosmetics", "push_subscriptions", "stash_goals", "squad_goals", "squad_goal_events", "squad_cosmetics"]:
                 c.execute(f"DELETE FROM {table}")
+            c.execute("UPDATE monthly_auto_deposit SET enabled=0,amount=0,due_day=1,consent_at=NULL,last_attempt_month=NULL,last_run_month=NULL,status='disabled',last_error=NULL,last_run_at=NULL,order_id=NULL,payout_batch_id=NULL WHERE id=1")
 
 
 def now_iso() -> str:
@@ -250,11 +283,11 @@ class PayPalSandbox:
         r=self._request("GET","/v1/reporting/transactions",params={"start_date":start,"end_date":end,"fields":"all","page_size":100},headers={"PayPal-Enforce-ISO8601-Format":"true"})
         return r.json()
 
-    def create_order_from_vault(self, amount, reference):
+    def create_order_from_vault(self, amount, reference, request_id=None):
         s=get_state(self.db); vault=s.get("paypal",{}).get("vault_id")
         if not vault: raise PayPalAPIError("No PayPal vaulted payment token is connected.")
         body={"intent":"CAPTURE","purchase_units":[{"reference_id":reference,"amount":{"currency_code":"CAD","value":f"{amount:.2f}"}}],"payment_source":{"paypal":{"vault_id":vault,"stored_credential":{"payment_initiator":"MERCHANT","usage":"SUBSEQUENT","usage_pattern":self.recurring_usage}}}}
-        return self._request("POST","/v2/checkout/orders",json_body=body,headers={"PayPal-Request-Id":f"glim-order-{uuid.uuid4().hex}"}).json()
+        return self._request("POST","/v2/checkout/orders",json_body=body,headers={"PayPal-Request-Id":request_id or f"glim-order-{uuid.uuid4().hex}"}).json()
 
     def create_order_for_approval(self, amount, reference):
         callback=f"{self.app_url}/api/paypal/callback"; body={"intent":"CAPTURE","purchase_units":[{"reference_id":reference,"amount":{"currency_code":"CAD","value":f"{amount:.2f}"}}],"payment_source":{"paypal":{"experience_context":{"brand_name":PRODUCT,"locale":"en-CA","user_action":"PAY_NOW","return_url":callback,"cancel_url":f"{callback}?cancelled=1"}}}}
@@ -263,13 +296,15 @@ class PayPalSandbox:
     def capture_order(self, order_id):
         return self._request("POST",f"/v2/checkout/orders/{order_id}/capture",headers={"PayPal-Request-Id":f"glim-capture-{order_id}-{uuid.uuid4().hex}"}).json()
 
-    def create_payout(self, debt_amount, stash_amount, reference):
-        if not self.lender_email or not self.stash_email: raise PayPalAPIError("Set PAYPAL_LENDER_EMAIL and PAYPAL_STASH_EMAIL for the Sandbox Payouts step.")
+    def create_payout(self, debt_amount, stash_amount, reference, request_id=None):
+        if debt_amount>0 and not self.lender_email: raise PayPalAPIError("Set PAYPAL_LENDER_EMAIL for the Sandbox debt Payouts step.")
+        if stash_amount>0 and not self.stash_email: raise PayPalAPIError("Set PAYPAL_STASH_EMAIL for the Sandbox savings Payouts step.")
         items=[]
         if debt_amount>0: items.append({"recipient_type":"EMAIL","amount":{"value":f"{debt_amount:.2f}","currency":"CAD"},"receiver":self.lender_email,"note":"Glim debt settlement (sandbox)"})
         if stash_amount>0: items.append({"recipient_type":"EMAIL","amount":{"value":f"{stash_amount:.2f}","currency":"CAD"},"receiver":self.stash_email,"note":"Glim savings stash settlement (sandbox)"})
-        body={"sender_batch_header":{"sender_batch_id":f"glim-{reference}-{uuid.uuid4().hex[:10]}","email_subject":"Glim sandbox settlement","email_message":"Sandbox payout generated by Glim."},"items":items}
-        return self._request("POST","/v1/payments/payouts",json_body=body).json()
+        batch_id = re.sub(r"[^A-Za-z0-9_-]", "-", f"glim-{reference}")[:60]
+        body={"sender_batch_header":{"sender_batch_id":batch_id,"email_subject":"Glim sandbox settlement","email_message":"Sandbox payout generated by Glim."},"items":items}
+        return self._request("POST","/v1/payments/payouts",json_body=body,headers={"PayPal-Request-Id":request_id or f"glim-payout-{uuid.uuid4().hex}"}).json()
 
     def verify_webhook(self, headers, raw_body):
         if not self.webhook_id: raise PayPalAPIError("PAYPAL_WEBHOOK_ID is required for webhook signature verification.")
@@ -440,7 +475,7 @@ def selected_debt(db,strategy):
     return (ordered_debts(active,strategy)[0] if active else None)
 
 
-def approve_drip(db,approved):
+def approve_drip(db,approved,email=None):
     state=get_state(db)
     if not approved: return {"status":"skipped","amount":0}
     if state["paused"]: raise ValueError("Drips are paused.")
@@ -452,6 +487,8 @@ def approve_drip(db,approved):
     if debt_share and not debt: stash_share=amount; debt_share=0
     with db.connect() as c:c.execute("INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,debt_id,status,settlement_id) VALUES(?,?,?,?,?,?,?,?)",(now_iso(),"drip",amount,stash_share,debt_share,debt["id"] if debt else None,"accrued",None))
     state["stash"]["balance"]=round(state["stash"]["balance"]+stash_share,2)
+    if stash_share > 0:
+        allocate_stash_to_goals(db, stash_share)
     defeat=None
     if debt:
         new_balance=max(0,round(debt["balance"]-debt_share,2)); status="defeated" if new_balance<=0.01 else "active"
@@ -462,15 +499,17 @@ def approve_drip(db,approved):
     state["game"]["streak"]+=1; state["game"]["points"]+=20
     with db.connect() as c: c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",("daily drip",20,now_iso()))
     update_evolution(state, db); write_state(db,state)
+    if email:
+        record_squad_goal_event(db, email)
     result={"status":"approved","amount":amount,"stash_share":stash_share,"debt_share":debt_share,"streak":state["game"]["streak"],"points":state["game"]["points"],"debt_defeated":defeat}
     log_action(db,"Banker","drip_approval",result,"Record approved drip in the daily ledger; settlement occurs through PayPal at weekly/threshold cadence","User approved" if mode=="each" else f"{mode} within cap ${cap:.2f}",result); return result
 
 
-def auto_drip_tick(db):
+def auto_drip_tick(db,email=None):
     state=get_state(db); amount=compute_daily_drip(state.get("profile",{}))
     if state.get("profile",{}).get("approval_mode")!="standing_rule": return {"status":"manual_required"}
     if not can_auto_approve(db,amount): return {"status":"cap_reached"}
-    return approve_drip(db,True)
+    return approve_drip(db,True,email=email)
 
 
 def settle_week(db):
@@ -513,18 +552,110 @@ def complete_pending_settlement(db,order_id):
     result={"status":"confirmed","amount":pending["amount"],"order_id":order_id,"payout_batch_id":(payout.get("batch_header") or {}).get("payout_batch_id"),"debt_share":pending["debt"],"stash_share":pending["stash"]}; log_action(db,"Banker","approved_settlement_capture",result,"Capture the payer-approved PayPal Sandbox order, then disburse via Payouts","Payer approved PayPal-hosted order",result); return result
 
 
-def process_paypal_event(db,payload):
-    et=payload.get("event_type",""); resource=payload.get("resource") or {}; s=get_state(db); changed=False
-    oid=(resource.get("id") or resource.get("supplementary_data",{}).get("related_ids",{}).get("order_id"))
+def process_paypal_event(db, payload):
+    """Apply verified PayPal events; monthly deposits settle only on final payout success."""
+    et = str(payload.get("event_type", ""))
+    resource = payload.get("resource") or {}
+    state = get_state(db)
+    changed = False
+    order_id = (
+        resource.get("id")
+        or (resource.get("supplementary_data") or {}).get("related_ids", {}).get("order_id")
+    )
+
     if "CHECKOUT.ORDER.COMPLETED" in et or "PAYMENT.CAPTURE.COMPLETED" in et:
-        pending=s.get("paypal",{}).get("pending_order_id")
-        if pending and oid and pending==oid:
-            changed=True
+        pending = state.get("paypal", {}).get("pending_order_id")
+        if pending and order_id and pending == order_id:
+            changed = True
+
     if "PAYMENT.CAPTURE.DENIED" in et or "PAYMENT.CAPTURE.DECLINED" in et:
-        s["paused"]=True; s["paypal"]["settlement_error"]="PayPal declined the settlement; drips paused kindly."; write_state(db,s); changed=True
-    if "PAYOUT.ITEM.FAILED" in et or "PAYOUT.DENIED" in et:
-        s["paused"]=True; s["paypal"]["settlement_error"]="PayPal payout failed; drips paused for review."; write_state(db,s); changed=True
-    if changed: log_action(db,"Banker","paypal_webhook",{"event_type":et,"resource_id":oid},"Apply verified PayPal webhook state to the settlement ledger","Signature verified",payload)
+        state["paused"] = True
+        state["paypal"]["settlement_error"] = "PayPal declined the settlement; drips paused kindly."
+        write_state(db, state)
+        changed = True
+
+    is_payout_success = "PAYOUT" in et and ("SUCCESS" in et or "SUCCEEDED" in et)
+    is_payout_failure = "PAYOUT" in et and ("FAILED" in et or "DENIED" in et)
+    if is_payout_success or is_payout_failure:
+        batch_header = resource.get("batch_header") or {}
+        payout_item = resource.get("payout_item") or {}
+        batch_id = (
+            resource.get("payout_batch_id")
+            or batch_header.get("payout_batch_id")
+            or payout_item.get("payout_batch_id")
+            or resource.get("batch_id")
+        )
+        if batch_id:
+            with db.connect() as c:
+                monthly = c.execute(
+                    "SELECT * FROM monthly_auto_deposit WHERE id=1 AND payout_batch_id=?",
+                    (batch_id,),
+                ).fetchone()
+            if monthly and monthly["status"] != "completed":
+                if is_payout_success:
+                    amount = round(float(monthly["amount"] or 0), 2)
+                    current = get_state(db)
+                    current_stash = dict(current.get("stash", {}))
+                    new_balance = round(float(current_stash.get("balance", 0)) + amount, 2)
+                    with db.connect() as c:
+                        applied = c.execute(
+                            "UPDATE monthly_auto_deposit SET status='completed',last_error=NULL,last_run_at=? WHERE id=1 AND status!='completed' AND payout_batch_id=?",
+                            (now_iso(), batch_id),
+                        ).rowcount > 0
+                        if applied:
+                            current_stash["balance"] = new_balance
+                            c.execute("UPDATE app_state SET stash_json=? WHERE id=1", (json.dumps(current_stash),))
+                            c.execute(
+                                "INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,status,settlement_id) VALUES(?,?,?,?,?,?,?)",
+                                (now_iso(), "monthly_deposit", amount, amount, 0, "settled", batch_id),
+                            )
+                            # Earmark the newly confirmed amount in the same transaction as the ledger update.
+                            left = amount
+                            goals = c.execute("SELECT * FROM stash_goals WHERE status='active' ORDER BY id").fetchall()
+                            for goal in goals:
+                                if left <= 0:
+                                    break
+                                need = max(0, round(float(goal["target_amount"]) - float(goal["saved_amount"]), 2))
+                                take = round(min(left, need), 2)
+                                if take <= 0:
+                                    continue
+                                saved = round(float(goal["saved_amount"]) + take, 2)
+                                goal_status = "completed" if saved + 0.001 >= float(goal["target_amount"]) else "active"
+                                c.execute(
+                                    "UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?",
+                                    (saved, goal_status, now_iso() if goal_status == "completed" else None, goal["id"]),
+                                )
+                                left = round(left - take, 2)
+                    if applied:
+                        state["stash"] = current_stash
+                        changed = True
+                else:
+                    with db.connect() as c:
+                        applied = c.execute(
+                            "UPDATE monthly_auto_deposit SET status='payout_failed',last_error=? WHERE id=1 AND status!='completed' AND payout_batch_id=?",
+                            (f"PayPal reported payout failure ({et}).", batch_id),
+                        ).rowcount > 0
+                    if applied:
+                        state = get_state(db)
+                        state["paused"] = True
+                        state["paypal"]["settlement_error"] = "PayPal payout failed; drips paused for review."
+                        write_state(db, state)
+                        changed = True
+
+
+    if is_payout_failure and not changed:
+        state["paused"] = True
+        state["paypal"]["settlement_error"] = "PayPal payout failed; drips paused for review."
+        write_state(db, state)
+        changed = True
+
+    if changed:
+        log_action(
+            db, "Banker", "paypal_webhook",
+            {"event_type": et, "resource_id": order_id, "payout_batch_id": locals().get("batch_id")},
+            "Apply verified PayPal webhook state to settlement or monthly-deposit ledger",
+            "Signature verified", payload,
+        )
     return changed
 
 
@@ -726,9 +857,9 @@ def get_notification_center(db):
     with db.connect() as c: rows=c.execute("SELECT * FROM nudges ORDER BY id DESC LIMIT 12").fetchall()
     return {"settings":state["notifications"],"stress_mode":detect_stress(state),"items":[dict(r) for r in rows]}
 
-# ---------- Squads / P1 ----------
+# ---------- Squads / P1-P2 ----------
 def create_squad(db,name,email):
-    existing=get_squad(db)
+    existing=get_squad(db,email)
     if existing.get("squad"):
         return existing
     invite=secrets.token_hex(3).upper()
@@ -737,7 +868,7 @@ def create_squad(db,name,email):
         cur=c.execute("INSERT INTO squads(name,invite_code,created_at) VALUES(?,?,?)",(name,invite,now_iso())); sid=cur.lastrowid
         c.execute("INSERT INTO squad_members(squad_id,email,display_name,is_demo,streak,goal_pct,level) VALUES(?,?,?,?,?,?,?)",(sid,email,display,0,state["game"]["streak"],state["profile"].get("savings_pct",0),state["game"]["level"]))
         for alias,streak,goal,level in [("Avery",9,88,4),("Jordan",6,72,3)]: c.execute("INSERT INTO squad_members(squad_id,email,display_name,is_demo,streak,goal_pct,level) VALUES(?,?,?,?,?,?,?)",(sid,f"{alias.lower()}@demo.glim",alias,1,streak,goal,level))
-    return get_squad(db)
+    return get_squad(db,email)
 
 
 def join_squad(db,code,email):
@@ -748,26 +879,73 @@ def join_squad(db,code,email):
     if count>=6: raise ValueError("A squad can have at most 6 members.")
     state=get_state(db); display=state["profile"].get("name") or email.split("@")[0].title()
     with db.connect() as c:c.execute("INSERT OR IGNORE INTO squad_members(squad_id,email,display_name,is_demo,streak,goal_pct,level) VALUES(?,?,?,?,?,?,?)",(sq["id"],email,display,0,state["game"]["streak"],state["profile"].get("savings_pct",0),state["game"]["level"]))
-    return get_squad(db)
+    return get_squad(db,email)
 
 
-def get_squad(db):
+def get_squad(db,email=None):
     with db.connect() as c:
-        sq=c.execute("SELECT s.* FROM squads s JOIN squad_members m ON m.squad_id=s.id WHERE m.is_demo=0 ORDER BY s.id DESC LIMIT 1").fetchone()
-        if not sq:return {"squad":None,"members":[]}
+        if email:
+            sq=c.execute("SELECT s.* FROM squads s JOIN squad_members m ON m.squad_id=s.id WHERE m.email=? ORDER BY s.id DESC LIMIT 1",(email,)).fetchone()
+        else:
+            sq=c.execute("SELECT s.* FROM squads s JOIN squad_members m ON m.squad_id=s.id WHERE m.is_demo=0 ORDER BY s.id DESC LIMIT 1").fetchone()
+        if not sq:return {"squad":None,"members":[],"cheers":[],"goals":[],"unlocked_cosmetics":[]}
         members=c.execute("SELECT * FROM squad_members WHERE squad_id=? ORDER BY streak DESC, goal_pct DESC",(sq["id"],)).fetchall()
         cheers=c.execute("SELECT * FROM cheers WHERE squad_id=? ORDER BY id DESC LIMIT 10",(sq["id"],)).fetchall()
-    return {"squad":dict(sq),"members":[dict(m) for m in members],"cheers":[dict(c) for c in cheers]}
+        goals=c.execute("SELECT g.*,c.name AS reward_name,c.icon AS reward_icon FROM squad_goals g JOIN cosmetics c ON c.id=g.reward_cosmetic_id WHERE g.squad_id=? ORDER BY g.id DESC",(sq["id"],)).fetchall()
+        rewards=c.execute("SELECT sc.*,c.name,c.icon FROM squad_cosmetics sc JOIN cosmetics c ON c.id=sc.cosmetic_id WHERE sc.squad_id=? ORDER BY sc.unlocked_at DESC",(sq["id"],)).fetchall()
+    return {"squad":dict(sq),"members":[dict(m) for m in members],"cheers":[dict(c) for c in cheers],"goals":[dict(g) for g in goals],"unlocked_cosmetics":[dict(r) for r in rewards]}
 
 
-def send_cheer(db,member_id,cheer):
-    sq=get_squad(db)["squad"];
+def send_cheer(db,member_id,cheer,email=None):
+    sq=get_squad(db,email)["squad"]
     if not sq:raise ValueError("Create or join a squad first.")
     with db.connect() as c:
         member=c.execute("SELECT id FROM squad_members WHERE id=? AND squad_id=?",(member_id,sq["id"])).fetchone()
-        if not member: raise ValueError("That member is not in your squad.")
+        if not member:raise ValueError("That member is not in your squad.")
         c.execute("INSERT INTO cheers(squad_id,to_member_id,cheer,created_at) VALUES(?,?,?,?)",(sq["id"],member_id,cheer,now_iso()))
-    return get_squad(db)
+    return get_squad(db,email)
+
+
+def create_squad_goal(db, title, target_count, reward_cosmetic_id, email):
+    squad=get_squad(db,email)["squad"]
+    if not squad: raise ValueError("Create or join a squad first.")
+    with db.connect() as c:
+        cosmetic=c.execute("SELECT id FROM cosmetics WHERE id=?",(reward_cosmetic_id,)).fetchone()
+        if not cosmetic: raise ValueError("Choose a valid group cosmetic reward.")
+        active=c.execute("SELECT COUNT(*) FROM squad_goals WHERE squad_id=? AND status='active'",(squad["id"],)).fetchone()[0]
+        if active>=3: raise ValueError("A squad can have up to three active shared goals.")
+        cur=c.execute("INSERT INTO squad_goals(squad_id,title,target_count,reward_cosmetic_id,status,created_at) VALUES(?,?,?,?,?,?)",(squad["id"],title,target_count,reward_cosmetic_id,"active",now_iso()))
+        goal_id=cur.lastrowid
+    log_action(db,"Glim","squad_goal_created",{"goal_id":goal_id,"target_member_days":target_count},"Create a consistency-based shared goal; progress is earned from drip-days, not dollar balances","Squad member action",{"reward_cosmetic_id":reward_cosmetic_id})
+    return get_squad(db,email)
+
+
+def record_squad_goal_event(db,email):
+    """Count at most one behavior event per member per day toward squad goals."""
+    squad=get_squad(db,email).get("squad")
+    if not squad: return
+    today=datetime.now(timezone.utc).date().isoformat()
+    state = get_state(db)
+    completed=[]
+    with db.connect() as c:
+        c.execute(
+            "UPDATE squad_members SET streak=?,goal_pct=?,level=? WHERE squad_id=? AND email=?",
+            (int(state.get("game", {}).get("streak", 0)), float(state.get("profile", {}).get("savings_pct", 0)), int(state.get("game", {}).get("level", 1)), squad["id"], email),
+        )
+        goals=c.execute("SELECT * FROM squad_goals WHERE squad_id=? AND status='active'",(squad["id"],)).fetchall()
+        for goal in goals:
+            cur=c.execute("INSERT OR IGNORE INTO squad_goal_events(squad_goal_id,email,event_date,created_at) VALUES(?,?,?,?)",(goal["id"],email,today,now_iso()))
+            if cur.rowcount == 0: continue
+            c.execute("UPDATE squad_goals SET progress_count=progress_count+1 WHERE id=?",(goal["id"],))
+            fresh=c.execute("SELECT * FROM squad_goals WHERE id=?",(goal["id"],)).fetchone()
+            if fresh["progress_count"] >= fresh["target_count"]:
+                c.execute("UPDATE squad_goals SET status='completed',completed_at=? WHERE id=?",(now_iso(),goal["id"]))
+                c.execute("INSERT OR IGNORE INTO squad_cosmetics(squad_id,cosmetic_id,unlocked_at) VALUES(?,?,?)",(squad["id"],goal["reward_cosmetic_id"],now_iso()))
+                completed.append(dict(fresh))
+    if completed:
+        for goal in completed:
+            log_action(db,"Glim","squad_cosmetic_unlocked",{"goal_id":goal["id"],"title":goal["title"]},"Unlock a group cosmetic after a shared consistency target is met","Shared goal completed",{"cosmetic_id":goal["reward_cosmetic_id"]})
+
 
 # ---------- Sage / P1 ----------
 def next_lesson(db):
@@ -818,8 +996,23 @@ def buy_cosmetic(db,cosmetic_id):
 
 
 def export_user_data(db):
+    state = get_state(db)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
     with db.connect() as c:
-        data={"profile":get_state(db)["profile"],"state":get_state(db),"debts":[dict(r) for r in c.execute("SELECT * FROM debts").fetchall()],"ledger":[dict(r) for r in c.execute("SELECT * FROM ledger_entries").fetchall()],"nudges":[dict(r) for r in c.execute("SELECT * FROM nudges").fetchall()],"agent_actions":[dict(r) for r in c.execute("SELECT * FROM agent_actions").fetchall()]}
+        data={
+            "product": PRODUCT,
+            "profile": state["profile"],
+            "state": state,
+            "debts": [dict(r) for r in c.execute("SELECT * FROM debts").fetchall()],
+            "ledger": [dict(r) for r in c.execute("SELECT * FROM ledger_entries").fetchall()],
+            "nudges": [dict(r) for r in c.execute("SELECT * FROM nudges").fetchall()],
+            "agent_actions": [dict(r) for r in c.execute("SELECT * FROM agent_actions").fetchall()],
+            "points_events": [dict(r) for r in c.execute("SELECT * FROM points_events ORDER BY created_at").fetchall()],
+            "stash_goals": [dict(r) for r in c.execute("SELECT * FROM stash_goals ORDER BY id").fetchall()],
+            "monthly_auto_deposit": monthly_auto_deposit_settings(db),
+            "monthly_recap": monthly_recap(db, month),
+            "cosmetics": get_cosmetics(db),
+        }
     return data
 
 
@@ -852,3 +1045,113 @@ def delete_user_data(db):
     db.reset()
     with db.connect() as c:
         c.execute("DELETE FROM sessions"); c.execute("DELETE FROM magic_links"); c.execute("DELETE FROM users")
+
+
+# ---------- P2: named Stash goals, monthly auto-deposit, monthly recap ----------
+def get_stash_goals(db):
+    with db.connect() as c:
+        rows=c.execute("SELECT * FROM stash_goals ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,id").fetchall()
+    state=get_state(db)
+    return {"stash_balance":state.get("stash",{}).get("balance",0),"goals":[dict(r) for r in rows]}
+
+
+def add_stash_goal(db,name,target_amount,monthly_target=0):
+    with db.connect() as c:
+        active=c.execute("SELECT COUNT(*) FROM stash_goals WHERE status='active'").fetchone()[0]
+        if active>=6: raise ValueError("You can keep up to six active Stash goals.")
+        cur=c.execute("INSERT INTO stash_goals(name,target_amount,saved_amount,monthly_target,status,created_at) VALUES(?,?,0,?,'active',?)",(name.strip(),round(float(target_amount),2),round(float(monthly_target),2),now_iso()))
+        goal_id=cur.lastrowid
+    log_action(db,"Glim","stash_goal_created",{"goal_id":goal_id,"target":round(float(target_amount),2)},"Create a named savings goal; future Stash portions are earmarked without double-counting the Stash total","User created goal",{"monthly_target":round(float(monthly_target),2)})
+    return get_stash_goals(db)
+
+
+def allocate_stash_to_goals(db,amount):
+    left=round(float(amount),2)
+    if left<=0:return
+    with db.connect() as c:
+        rows=c.execute("SELECT * FROM stash_goals WHERE status='active' ORDER BY id").fetchall()
+        for row in rows:
+            if left<=0:break
+            need=max(0,round(float(row["target_amount"])-float(row["saved_amount"]),2))
+            take=round(min(left,need),2)
+            if take<=0:continue
+            saved=round(float(row["saved_amount"])+take,2); status="completed" if saved+0.001>=float(row["target_amount"]) else "active"
+            c.execute("UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?",(saved,status,now_iso() if status=="completed" else None,row["id"]))
+            left=round(left-take,2)
+
+
+def monthly_auto_deposit_settings(db):
+    with db.connect() as c:
+        row=c.execute("SELECT * FROM monthly_auto_deposit WHERE id=1").fetchone()
+    if not row:return {"enabled":False,"amount":0,"due_day":1,"status":"disabled"}
+    out=dict(row);out["enabled"]=bool(out["enabled"]);out.pop("id",None)
+    return out
+
+
+def save_monthly_auto_deposit(db,enabled,amount,due_day,consent):
+    amount=round(float(amount),2)
+    if enabled and amount<=0:raise ValueError("Set a monthly deposit amount greater than $0.00 CAD.")
+    if enabled and not consent:raise ValueError("Confirm the monthly Sandbox transfer authorization before enabling auto-deposit.")
+    state=get_state(db)
+    if enabled and state.get("paypal",{}).get("status")!="connected":raise ValueError("Connect and authorize a PayPal Sandbox funding source before enabling auto-deposit.")
+    if enabled and not PayPalSandbox(db).stash_email:raise ValueError("Set PAYPAL_STASH_EMAIL to the Glim savings Sandbox account before enabling auto-deposit.")
+    consent_at=now_iso() if enabled and consent else None
+    status="scheduled" if enabled else "disabled"
+    with db.connect() as c:
+        c.execute("UPDATE monthly_auto_deposit SET enabled=?,amount=?,due_day=?,consent_at=COALESCE(?,consent_at),status=?,last_error=NULL WHERE id=1",(int(enabled),amount,int(due_day),consent_at,status))
+    log_action(db,"Banker","monthly_auto_deposit_setting",{"enabled":enabled,"amount":amount,"due_day":due_day},"Persist explicit opt-in for a monthly CAD Sandbox collection and savings payout","User consented" if enabled else "User disabled",{"status":status})
+    return monthly_auto_deposit_settings(db)
+
+
+def run_monthly_auto_deposit(db,force=False):
+    settings=monthly_auto_deposit_settings(db)
+    if not settings.get("enabled"):return {"status":"disabled","message":"Monthly auto-deposit is disabled."}
+    now=datetime.now(timezone.utc); month=now.strftime("%Y-%m")
+    if not force and now.day < int(settings["due_day"]):return {"status":"not_due","due_day":settings["due_day"],"month":month}
+    if settings.get("last_run_month")==month:return {"status":"already_run","month":month,"last_status":settings.get("status"),"order_id":settings.get("order_id"),"payout_batch_id":settings.get("payout_batch_id")}
+    if settings.get("last_attempt_month")==month and not force:return {"status":"attempted_this_month","month":month,"last_error":settings.get("last_error")}
+    state=get_state(db)
+    if state.get("paused"):raise ValueError("Glim is paused. Resume before the monthly deposit can run.")
+    if state.get("paypal",{}).get("status")!="connected":raise ValueError("Connect PayPal Sandbox before the monthly deposit runs.")
+    with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET last_attempt_month=?,status='processing',last_error=NULL,last_run_at=? WHERE id=1",(month,now_iso()))
+    reference=f"monthly-deposit-{month}"
+    try:
+        paypal=PayPalSandbox(db)
+        order=paypal.create_order_from_vault(float(settings["amount"]),reference,request_id=f"glim-monthly-{month}")
+        order_status=order.get("status")
+        order_id=order.get("id")
+        if order_status == "APPROVED" and order_id:
+            order=paypal.capture_order(order_id); order_status=order.get("status")
+        if order_status != "COMPLETED":
+            raise PayPalAPIError(f"PayPal returned order status {order_status or 'unknown'}; no savings payout was sent.")
+        payout=paypal.create_payout(0,float(settings["amount"]),reference,request_id=f"glim-monthly-payout-{month}")
+        header=payout.get("batch_header") or {}; batch=header.get("payout_batch_id")
+        with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET last_run_month=?,status='payout_submitted',last_error=NULL,order_id=?,payout_batch_id=? WHERE id=1",(month,order_id,batch))
+        result={"status":"payout_submitted","month":month,"amount":float(settings["amount"]),"order_id":order_id,"payout_batch_id":batch,"message":"PayPal accepted the collection and the savings payout was submitted; final payout status comes from PayPal."}
+        log_action(db,"Banker","monthly_auto_deposit",result,"Collect the user-approved monthly amount through the vaulted PayPal Sandbox source, then submit a Payout to the savings Sandbox account","Explicit monthly opt-in; API collection completed",result)
+        return result
+    except Exception as exc:
+        with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET status='error',last_error=? WHERE id=1",(str(exc)[:700],))
+        log_action(db,"Banker","monthly_auto_deposit_failed",{"month":month,"amount":settings["amount"]},"Stop without claiming success if PayPal collection or payout submission fails","PayPal/API error",{"error":str(exc)[:700]})
+        raise
+
+
+def process_monthly_auto_deposit_if_due(db):
+    try:return run_monthly_auto_deposit(db,force=False)
+    except Exception as exc:return {"status":"error","message":str(exc)}
+
+
+def monthly_recap(db,month=None):
+    if month is None: month=datetime.now(timezone.utc).strftime("%Y-%m")
+    if not re.fullmatch(r"\d{4}-\d{2}",month):raise ValueError("Month must use YYYY-MM format.")
+    year,mon=map(int,month.split("-"))
+    if mon<1 or mon>12:raise ValueError("Month must use YYYY-MM format.")
+    with db.connect() as c:
+        rows=c.execute("SELECT created_at,amount,stash_share,debt_share,status FROM ledger_entries WHERE kind='drip' AND substr(created_at,1,7)=? ORDER BY created_at",(month,)).fetchall()
+        points=c.execute("SELECT COALESCE(SUM(points),0) FROM points_events WHERE substr(created_at,1,7)=?",(month,)).fetchone()[0]
+        finished=c.execute("SELECT COUNT(*) FROM stash_goals WHERE status='completed' AND substr(COALESCE(completed_at,''),1,7)=?",(month,)).fetchone()[0]
+    active_days=len({str(r["created_at"])[:10] for r in rows})
+    amount=sum(float(r["amount"] or 0) for r in rows); stash=sum(float(r["stash_share"] or 0) for r in rows); debt=sum(float(r["debt_share"] or 0) for r in rows)
+    state=get_state(db); debts=get_debts(db)
+    current_debt=sum(float(d["balance"]) for d in debts if d["status"]=="active")
+    return {"month":month,"currency":"CAD","drip_count":len(rows),"active_days":active_days,"total_moved":round(amount,2),"stash_contribution":round(stash,2),"debt_contribution":round(debt,2),"points_earned":int(points),"goals_completed":int(finished),"current_stash_balance":round(float(state.get("stash",{}).get("balance",0)),2),"current_active_debt":round(current_debt,2),"streak":int(state.get("game",{}).get("streak",0)),"bars":{"stash_pct":round(stash/amount*100,1) if amount else 0,"debt_pct":round(debt/amount*100,1) if amount else 0},"note":"Flow totals count recorded drips in the selected month. Current balances and streak are as of now, not month-end snapshots."}
