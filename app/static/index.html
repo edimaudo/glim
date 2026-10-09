@@ -12,6 +12,7 @@
 <header class="topbar">
   <a class="brand" href="#" aria-label="Glim home"><span class="brand-mark">G</span><span>Glim</span></a>
   <div class="top-actions">
+    <span id="storageModeChip" class="status-chip">LOCAL STORAGE</span>
     <button class="icon-button" id="fontDown" aria-label="Decrease text size">A−</button>
     <button class="icon-button" id="fontUp" aria-label="Increase text size">A+</button>
     <button class="icon-button" id="themeToggle" aria-label="Toggle dark mode">◐</button>
@@ -28,10 +29,10 @@
     <p class="lede">Build a buffer, chip away at a Boss debt, and move from Revolver to Transactor. Your numbers are calculated by code; you approve every move.</p>
     <form id="authForm" class="auth-form">
       <label>Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required/></label>
-      <button class="primary" type="submit">Send me a magic link</button>
+      <button class="primary" type="submit">Continue with email</button>
     </form>
     <div id="magicResult" class="callout hidden" aria-live="polite"></div>
-    <p class="demo-note">For this prototype, the magic link is shown on screen instead of sent by an external email provider.</p>
+    <p class="demo-note">Prototype sign-in is local to this browser. No email is sent, and this is not secure account authentication. Your data remains in this browser until you clear it or delete it in Glim.</p>
   </div>
 </section>
 
@@ -40,7 +41,7 @@
     <div class="mascot large" aria-hidden="true">🐿️</div>
     <h1>Meet Glim.</h1>
     <p class="lede">One small daily move builds your buffer while chipping away at one Boss debt.</p>
-    <p class="demo-note">PayPal Sandbox uses real PayPal REST calls when credentials are configured. Seeded activity is available for demos. This is not financial advice.</p>
+    <p class="demo-note">Seeded activity is available for demos. This local-storage mode makes no PayPal API calls and moves no money. This is not financial advice.</p>
     <div class="persona-grid">
       <button class="persona-card" data-persona="riley"><strong>Revolving Riley</strong><span>Credit card balance, irregular savings, quick wins.</span></button>
       <button class="persona-card" data-persona="sam"><strong>Fresh-start Sam</strong><span>Loan + first card, habit-building from scratch.</span></button>
@@ -60,7 +61,7 @@
       <label>Weekly cap<input id="pCap" type="number" min="0" step="0.01" value="60"/></label>
       <label>Safety floor<input id="pFloor" type="number" min="0" required/></label>
       <label>Quiet hours<input id="pQuietStart" value="22:00" type="time"/> to <input id="pQuietEnd" value="08:00" type="time"/></label>
-      <label>External nudges<select id="pChannel"><option value="in_app">In-app only</option><option value="web_push">Web push</option></select></label>
+      <label>External nudges<select id="pChannel"><option value="in_app">In-app only</option><option value="web_push">Web push (server mode)</option></select></label>
       <input type="hidden" id="pPersona" value="riley"/>
       <button class="primary" type="submit">Save and run Scout</button>
     </form>
@@ -73,6 +74,8 @@
     <div><p class="greeting">Good morning, <span id="greetName">Riley</span>.</p><h1>Keep the acorns moving.</h1><p class="lede" id="coachLine">Your daily habit is the product.</p></div>
     <div class="head-status"><span class="status-chip" id="modeChip">SANDBOX</span><span class="status-chip" id="stressChip">STEADY</span></div>
   </div>
+
+  <div id="storageDisclosure" class="notice storage-disclosure"><strong>Local prototype mode</strong><span>App data is saved in this browser only. Drips update the demo ledger; no PayPal requests or real/sandbox transfers occur. Other browsers and devices do not share this data.</span></div>
 
   <nav class="tabs" role="tablist" aria-label="Glim sections">
     <button class="tab active" data-tab="overview" role="tab">Overview</button>
@@ -99,7 +102,7 @@
     </div>
     <div class="two-col">
       <section class="card section-card"><div class="section-head"><div><span class="mini-label">SCOUT</span><h2>What Glim found</h2></div><button class="secondary" id="scanBtn">Run Scout</button></div><div id="scoutResults" class="stack"></div><details class="add-boss"><summary>Add a Boss debt</summary><form id="debtForm" class="compact-form"><input id="dName" placeholder="Debt name" required/><select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select><input id="dBalance" type="number" min="1" step="0.01" placeholder="Balance" required/><input id="dApr" type="number" min="0" step="0.01" placeholder="APR %" required/><input id="dMin" type="number" min="1" step="0.01" placeholder="Minimum" required/><button class="secondary" type="submit">Add Boss</button></form></details></section>
-      <section class="card section-card"><div class="section-head"><div><span class="mini-label">PAYPAL</span><h2>Sandbox connection</h2></div><div class="button-row"><button class="secondary" id="connectBtn">Connect</button><button class="secondary" id="disconnectBtn">Disconnect</button></div></div><div id="paypalDetails" class="connection-details"></div><div class="settlement-row"><div><strong>Weekly settlement</strong><p>Daily drips accrue in the ledger; collection and disbursement use PayPal Sandbox.</p></div><button class="primary" id="settleBtn">Settle accrued drips</button></div><div id="settleMsg" class="muted"></div></section>
+      <section class="card section-card"><div class="section-head"><div><span class="mini-label">PAYPAL</span><h2>Payment integration</h2></div><div class="button-row"><button class="secondary" id="connectBtn">Connect</button><button class="secondary" id="disconnectBtn">Disconnect</button></div></div><div id="paypalDetails" class="connection-details"></div><div class="settlement-row"><div><strong>Weekly settlement</strong><p>Database/API mode can collect and disburse through PayPal Sandbox. In local prototype mode, accrued drips are demo records only.</p></div><button class="primary" id="settleBtn">Settle accrued drips</button></div><div id="settleMsg" class="muted"></div></section>
     </div>
   </section>
 
@@ -120,15 +123,15 @@
       <div id="stashGoals" class="stash-goals"></div>
     </section>
     <section class="card section-card">
-      <div class="section-head"><div><h2>Monthly savings auto-deposit</h2><p class="muted">Optional Sandbox-only collection from your consented PayPal funding source, followed by a Payout to the configured Glim savings Sandbox account. It will not claim success if PayPal rejects or leaves the order incomplete.</p></div><span class="badge">CAD · Sandbox</span></div>
+      <div class="section-head"><div><h2>Monthly savings auto-deposit</h2><p class="muted">Configure an amount and day. In localStorage mode this saves preferences only; a real Sandbox collection and payout require secure server-side processing.</p></div><span class="badge">CAD · mode dependent</span></div>
       <form id="monthlyDepositForm" class="auto-deposit-form">
         <label class="check-label"><input id="monthlyDepositEnabled" type="checkbox"/> Enable monthly auto-deposit</label>
         <label>Amount (CAD)<input id="monthlyDepositAmount" type="number" min="0.01" step="0.01" value="25.00" required/></label>
         <label>Run on day of month<input id="monthlyDepositDay" type="number" min="1" max="28" value="1" required/></label>
-        <label class="check-label consent-label"><input id="monthlyDepositConsent" type="checkbox"/> I authorize this monthly Sandbox charge and savings payout for the amount shown.</label>
+        <label class="check-label consent-label"><input id="monthlyDepositConsent" type="checkbox"/> I confirm this local prototype preference (this does not authorize or trigger a payment).</label>
         <button class="primary" type="submit">Save auto-deposit</button>
       </form>
-      <div class="auto-deposit-status"><div id="monthlyDepositStatus" class="muted" aria-live="polite">Auto-deposit is disabled.</div><button id="runDepositBtn" class="secondary" type="button">Run once now</button></div>
+      <div class="auto-deposit-status"><div id="monthlyDepositStatus" class="muted" aria-live="polite">Auto-deposit is disabled.</div><button id="runDepositBtn" class="secondary" type="button">Test transfer (server mode)</button></div>
     </section>
     <section class="card section-card">
       <div class="section-head"><div><h2>Monthly forest recap</h2><p class="muted">A summary of recorded activity, Stash progress, debt contributions, and consistency.</p></div><div class="recap-controls"><label for="recapMonth">Month</label><input id="recapMonth" type="month"/><button class="secondary" id="loadRecapBtn" type="button">Build recap</button></div></div>
@@ -141,8 +144,8 @@
   </section>
 
   <section id="tab-coach" class="tab-panel hidden">
-    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Ask Glim</h2><p class="muted">Glim can delegate to Scout or Tactician. Calculators own every figure.</p></div><span class="badge" id="llmBadge">Deterministic fallback</span></div><div id="chatWindow" class="chat-window"><div class="bubble">Ask about your plan, subscriptions, streak, or a what-if.</div></div><div class="input-row"><input id="chatInput" placeholder="Ask Glim a question…"/><button class="primary" id="chatBtn">Ask</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Check-in</h2><p class="muted">Glim adapts tone and frequency to your responses.</p></div><button class="secondary" id="nudgeBtn">Get a check-in</button></div><div class="nudge-card"><strong id="nudgeText">No check-in selected.</strong><p id="nudgeWhy" class="muted">Why will appear here.</p><div class="button-row"><button class="secondary nudge-action" data-response="acted">I acted</button><button class="secondary nudge-action" data-response="opened">Opened</button><button class="secondary nudge-action" data-response="snoozed">Snooze</button><button class="secondary nudge-action" data-response="dismissed">Dismiss</button><button class="secondary nudge-action" data-response="muted">Mute</button></div></div><div class="notice"><strong id="stressCopy">Steady mode.</strong><span id="stressDetail">No stress signal is active.</span></div></section></div>
-    <section class="card section-card"><div class="section-head"><div><h2>Notification settings</h2><p class="muted">Quiet hours, daily cap, and external channel.</p></div><button class="secondary" id="saveNotifBtn">Save settings</button></div><div class="settings-grid"><label>Quiet start<input id="notifStart" type="time"/></label><label>Quiet end<input id="notifEnd" type="time"/></label><label>Daily cap<input id="notifCap" type="number" min="0" max="10"/></label><label>Channel<select id="notifChannel"><option value="in_app">In-app</option><option value="web_push">Web push</option></select></label></div><button class="secondary" id="pushEnableBtn">Enable web push</button><div id="inbox" class="inbox-list"></div></section>
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Ask Glim</h2><p class="muted">In local prototype mode, Glim routes questions to deterministic Scout/Tactician rules; no external LLM call is made.</p></div><span class="badge" id="llmBadge">Deterministic fallback</span></div><div id="chatWindow" class="chat-window"><div class="bubble">Ask about your plan, subscriptions, streak, or a what-if.</div></div><div class="input-row"><input id="chatInput" placeholder="Ask Glim a question…"/><button class="primary" id="chatBtn">Ask</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Check-in</h2><p class="muted">Glim adapts tone and frequency to your responses.</p></div><button class="secondary" id="nudgeBtn">Get a check-in</button></div><div class="nudge-card"><strong id="nudgeText">No check-in selected.</strong><p id="nudgeWhy" class="muted">Why will appear here.</p><div class="button-row"><button class="secondary nudge-action" data-response="acted">I acted</button><button class="secondary nudge-action" data-response="opened">Opened</button><button class="secondary nudge-action" data-response="snoozed">Snooze</button><button class="secondary nudge-action" data-response="dismissed">Dismiss</button><button class="secondary nudge-action" data-response="muted">Mute</button></div></div><div class="notice"><strong id="stressCopy">Steady mode.</strong><span id="stressDetail">No stress signal is active.</span></div></section></div>
+    <section class="card section-card"><div class="section-head"><div><h2>Notification settings</h2><p class="muted">Quiet hours, daily cap, and external channel.</p></div><button class="secondary" id="saveNotifBtn">Save settings</button></div><div class="settings-grid"><label>Quiet start<input id="notifStart" type="time"/></label><label>Quiet end<input id="notifEnd" type="time"/></label><label>Daily cap<input id="notifCap" type="number" min="0" max="10"/></label><label>Channel<select id="notifChannel"><option value="in_app">In-app</option><option value="web_push">Web push (server mode)</option></select></label></div><button class="secondary" id="pushEnableBtn">Enable web push</button><div id="inbox" class="inbox-list"></div></section>
     <section class="card section-card"><div class="section-head"><div><h2>Why cards and action log</h2><p class="muted">Every proposal records inputs, rules, approval, and result.</p></div><button class="secondary" id="auditBtn">Refresh</button></div><div id="auditList" class="audit-list"></div></section>
   </section>
 
@@ -151,7 +154,7 @@
   </section>
 
   <section id="tab-squad" class="tab-panel hidden">
-    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Your squad</h2><p class="muted">Friends see streak, level, and goal percent only.</p></div></div><div id="squadInfo"></div><div class="form-inline"><input id="squadName" placeholder="Squad name"/><button class="primary" id="createSquadBtn">Create</button></div><div class="form-inline"><input id="inviteCode" placeholder="Invite code"/><button class="secondary" id="joinSquadBtn">Join</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Leaderboard</h2><p class="muted">Consistency and goal percentage only.</p></div></div><div id="leaderboard" class="leaderboard"></div><div id="cheerFeed" class="cheer-feed"></div></section></div>
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Your squad</h2><p class="muted">Local prototype squads are stored in this browser. Cross-device invites and shared leaderboards require a shared database.</p></div></div><div id="squadInfo"></div><div class="form-inline"><input id="squadName" placeholder="Squad name"/><button class="primary" id="createSquadBtn">Create</button></div><div class="form-inline"><input id="inviteCode" placeholder="Invite code"/><button class="secondary" id="joinSquadBtn">Join</button></div></section><section class="card section-card"><div class="section-head"><div><h2>Leaderboard</h2><p class="muted">Consistency and goal percentage only.</p></div></div><div id="leaderboard" class="leaderboard"></div><div id="cheerFeed" class="cheer-feed"></div></section></div>
     <section class="card section-card"><div class="section-head"><div><h2>Shared squad goals</h2><p class="muted">Each member can contribute one consistency day per calendar day. Goals reward behavior, never balances.</p></div></div><form id="squadGoalForm" class="goal-form squad-goal-form"><label>Team goal<input id="squadGoalTitle" maxlength="80" placeholder="12 team drip-days" required/></label><label>Target consistency days<input id="squadGoalTarget" type="number" min="1" max="1000" value="12" required/></label><label>Group cosmetic reward<select id="squadGoalReward"><option value="1">🍃 Leaf trail</option><option value="2">🌰 Acorn crown</option><option value="3">🌙 Moonlit grove</option></select></label><button class="primary" type="submit">Create shared goal</button></form><div id="squadGoals" class="squad-goals"></div><div id="squadRewards" class="squad-rewards"></div></section>
   </section>
 
@@ -160,12 +163,14 @@
   </section>
 
   <section id="tab-trust" class="tab-panel hidden">
-    <section class="card section-card"><div class="section-head"><div><h2>Trust & controls</h2><p class="muted">Glim is designed to be inspectable.</p></div></div><div class="trust-grid"><div><strong>Sandbox disclosure</strong><p>The lender and savings pot are separate PayPal Sandbox business accounts.</p></div><div><strong>No card numbers</strong><p>Glim stores PayPal-generated token references, not card numbers.</p></div><div><strong>Not financial advice</strong><p>Glim is a prototype game, not a regulated financial-advice service.</p></div><div><strong>Safety</strong><p>A safety floor, approval mode, daily cap, and pause-all control are enforced in code.</p></div></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Trust & controls</h2><p class="muted">Glim is designed to be inspectable.</p></div></div><div class="trust-grid"><div><strong>Prototype disclosure</strong><p>In localStorage mode the lender and savings movements are ledger simulations only. No PayPal call is made.</p></div><div><strong>Prototype data</strong><p>Local mode stores demo profile and ledger data in this browser. Do not enter real financial details or secrets.</p></div><div><strong>Not financial advice</strong><p>Glim is a prototype game, not a regulated financial-advice service.</p></div><div><strong>Safety</strong><p>A safety floor, approval mode, daily cap, and pause-all control are enforced in code.</p></div></div></section>
     <section class="card section-card"><div class="section-head"><div><h2>Your data</h2><p class="muted">Export your current prototype data or delete the account.</p></div></div><div class="button-row"><button class="secondary" id="exportBtn">Export data</button><button class="secondary danger" id="deleteBtn">Delete account</button></div><div id="dataMsg" class="muted"></div></section>
   </section>
 </section>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/storage-config.js"></script>
+<script src="/static/storage.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

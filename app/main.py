@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
@@ -18,10 +19,12 @@ from .models import (
 from .services import *  # noqa: F401,F403
 
 BASE = Path(__file__).resolve().parent
+# Default: the frontend's versioned browser localStorage adapter owns prototype state.
+# Do not instantiate SQLite in this mode; this is important for Vercel's read-only runtime.
+STORAGE_MODE = os.getenv("GLIM_STORAGE_MODE", "localStorage").strip().lower()
+DATABASE_ENABLED = STORAGE_MODE in {"database", "sqlite"}
 DB_PATH = os.getenv("DATABASE_PATH", str(BASE.parent / "glim.db"))
-db = DB(DB_PATH)
-app = FastAPI(title="Glim", version="0.3.0")
-app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+db = DB(DB_PATH) if DATABASE_ENABLED else None
 _monthly_worker = None
 
 
@@ -34,23 +37,48 @@ async def _monthly_deposit_worker():
         await asyncio.sleep(3600)
 
 
-@app.on_event("startup")
-async def start_monthly_deposit_worker():
+@asynccontextmanager
+async def lifespan(application):
     global _monthly_worker
-    if _monthly_worker is None or _monthly_worker.done():
+    if DATABASE_ENABLED and (_monthly_worker is None or _monthly_worker.done()):
         _monthly_worker = asyncio.create_task(_monthly_deposit_worker())
+    try:
+        yield
+    finally:
+        if _monthly_worker is not None:
+            _monthly_worker.cancel()
+            try:
+                await _monthly_worker
+            except asyncio.CancelledError:
+                pass
+            _monthly_worker = None
 
 
-@app.on_event("shutdown")
-async def stop_monthly_deposit_worker():
-    global _monthly_worker
-    if _monthly_worker is not None:
-        _monthly_worker.cancel()
-        try:
-            await _monthly_worker
-        except asyncio.CancelledError:
-            pass
-        _monthly_worker = None
+app = FastAPI(title="Glim", version="0.4.0", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+
+
+@app.middleware("http")
+async def block_state_api_in_local_storage_mode(request: Request, call_next):
+    # All prototype application state is handled in the browser. Block accidental API writes
+    # so localStorage mode cannot silently fall back to server-side SQLite or ephemeral memory.
+    if not DATABASE_ENABLED and (request.url.path.startswith("/api/") or request.url.path == "/webhooks/paypal"):
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Glim is running in browser localStorage mode. This route requires the database API adapter."},
+        )
+    return await call_next(request)
+
+
+@app.get("/storage-config.js", include_in_schema=False)
+def storage_config():
+    mode = "database" if DATABASE_ENABLED else "localStorage"
+    # Tiny runtime config keeps the frontend adapter in sync with the server setting.
+    return Response(
+        content=f"window.GLIM_CONFIG = Object.freeze({{ storageMode: '{mode}' }});",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def current_user(request: Request) -> dict:
@@ -470,4 +498,10 @@ def delete_account(request: Request, response: Response, user=Depends(current_us
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": "Glim"}
+    return {
+        "status": "ok",
+        "product": "Glim",
+        "storage_mode": "database" if DATABASE_ENABLED else "localStorage",
+        "database_initialized": bool(DATABASE_ENABLED),
+        "persistent_data_location": "server database adapter" if DATABASE_ENABLED else "browser localStorage",
+    }
