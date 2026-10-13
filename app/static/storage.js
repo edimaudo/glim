@@ -47,7 +47,7 @@
         const value = JSON.parse(raw);
         if (value.schemaVersion !== 1) return { ...newState(), ...value, schemaVersion: 1 };
         // Clear legacy sample identities that were automatically restored by earlier prototype builds.
-        if (['Riley', 'Sam'].includes(String(value.profile?.name || '')) && (value.profile?.sample_selected === true || ['riley', 'sam'].includes(String(value.profile?.persona || '')))) {
+        if (['Riley', 'Sam', 'Credit-card payoff example', 'Loan and savings example'].includes(String(value.profile?.name || '')) && (value.profile?.sample_selected === true || ['riley', 'sam'].includes(String(value.profile?.persona || '')))) {
           value.profile.name = '';
           if (value.user) value.user.display_name = '';
         }
@@ -144,10 +144,10 @@
     }
     seedPersona(s, key) {
       const personas = {
-        riley: { key: 'riley', name: 'Riley', income: 5200, range: '$4,500–$6,000', expenses: 3900, pct: 5, floor: 1000, balance: 4200, apr: 19.99, min: 110, debt: 'Everyday Card', streak: 6, points: 180, level: 3, stash: 260, tx: [
+        riley: { key: 'riley', name: 'Credit-card payoff example', income: 5200, range: '$4,500–$6,000', expenses: 3900, pct: 5, floor: 1000, balance: 4200, apr: 19.99, min: 110, debt: 'Everyday Card', streak: 6, points: 180, level: 3, stash: 260, tx: [
           { date: '2026-04-02', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-03', merchant: 'Rent Co.', amount: -1650, category: 'housing' }, { date: '2026-04-05', merchant: 'Streamly', amount: -18.99, category: 'subscription' }, { date: '2026-04-06', merchant: 'Metro Market', amount: -96.2, category: 'groceries' }, { date: '2026-04-08', merchant: 'Foodly', amount: -28.4, category: 'dining' }, { date: '2026-04-15', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-18', merchant: 'Gym Club', amount: -54.99, category: 'subscription' }, { date: '2026-04-21', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-24', merchant: 'Metro Market', amount: -112.8, category: 'groceries' }
         ], subs: [{ merchant: 'Streamly', monthly: 18.99, signal: 'Seeded recurring charge' }, { merchant: 'Gym Club', monthly: 54.99, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
-        sam: { key: 'sam', name: 'Sam', income: 3800, range: '$3,000–$4,500', expenses: 2800, pct: 6, floor: 600, balance: 6800, apr: 7.2, min: 160, debt: 'Starter Loan', streak: 3, points: 90, level: 2, stash: 145, tx: [
+        sam: { key: 'sam', name: 'Loan and savings example', income: 3800, range: '$3,000–$4,500', expenses: 2800, pct: 6, floor: 600, balance: 6800, apr: 7.2, min: 160, debt: 'Starter Loan', streak: 3, points: 90, level: 2, stash: 145, tx: [
           { date: '2026-04-01', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-03', merchant: 'Home Share', amount: -900, category: 'housing' }, { date: '2026-04-06', merchant: 'LearnHub', amount: -29, category: 'subscription' }, { date: '2026-04-08', merchant: 'Metro Market', amount: -74.1, category: 'groceries' }, { date: '2026-04-15', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-16', merchant: 'RideNow', amount: -39.2, category: 'transport' }, { date: '2026-04-19', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-25', merchant: 'Metro Market', amount: -82.6, category: 'groceries' }
         ], subs: [{ merchant: 'LearnHub', monthly: 29, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
       };
@@ -162,7 +162,7 @@
       s.game = { streak: p.streak, freezes: 1, points: p.points, level: p.level, evolution_stage: 'Sprout' };
       s.debts = [{ id: 1, name: p.debt, type: key === 'sam' ? 'loan' : 'credit_card', balance: p.balance, apr: p.apr, minimum: p.min, due_day: key === 'sam' ? 12 : 18, status: 'active' }];
       s.seeded_transactions = p.tx; s.seeded_subscriptions = p.subs;
-      this.addAudit(s, 'Scout', 'persona_seed', 'Load example figures and activity that can be reviewed and edited before saving.', 'Local demo data; no PayPal transaction search occurred', { persona: key === 'riley' ? 'Carrying a balance example' : 'Fresh start example', transaction_count: p.tx.length });
+      this.addAudit(s, 'Scout', 'persona_seed', 'Load example figures and activity that can be reviewed and edited before saving.', 'Illustrative local data; no bank connection was used', { persona: key === 'riley' ? 'Carrying a balance example' : 'Fresh start example', transaction_count: p.tx.length });
       return this.state(s);
     }
     allocateGoals(s, amount) {
@@ -274,10 +274,10 @@
         let defeated = null;
         if (debt && debtShare > 0) { debt.balance = Math.max(0, round2(debt.balance - debtShare)); if (debt.balance <= .01) { debt.balance = 0; debt.status = 'defeated'; defeated = { debt_id: debt.id, debt_name: debt.name, freed_payment: debt.minimum }; s.pending_redirect = defeated; } }
         s.game.streak += 1; s.game.points += 20; s.points_events.push({ created_at: now(), points: 20, reason: 'daily drip' }); s.last_drip_date = new Date().toISOString().slice(0,10); this.updateEvolution(s); this.recordSquadDrip(s);
-        this.addAudit(s, 'Banker', 'local_drip_recorded', 'Update the demo ledger and deterministic game values only. No PayPal request was made and no funds moved.', 'User approved local prototype action', entry);
+        this.addAudit(s, 'Banker', 'local_drip_recorded', 'Record a practice step in the local plan only. No payment was made and no funds moved.', 'User approved local prototype action', entry);
         this.save(s); result = { status: 'approved', amount, stash_share: stashShare, debt_share: debtShare, streak: s.game.streak, points: s.game.points, debt_defeated: defeated, storage_mode: 'localStorage', money_moved: false };
       }
-      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('PayPal settlement is disabled in localStorage prototype mode. No payment was sent. Enable the server payment adapter only when a secure persistent backend is configured.');
+      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Real payments are disabled in browser-only mode. No payment was sent. A secure server payment integration is required.');
       else if (route === '/api/debt/redirect' && method === 'POST') {
         mustBeSignedIn(); if (!s.pending_redirect) throw new Error('No paid-off debt is awaiting a payment redirect decision.');
         s.pending_redirect.destination = body.destination; s.pending_redirect = null; this.addAudit(s, 'Tactician', 'freed_payment_redirect', 'Save the user-selected destination for the freed payment.', 'User choice', { destination: body.destination }); this.save(s); result = { status: 'redirected' };
@@ -366,7 +366,7 @@
         s.monthly_deposit = { enabled: Boolean(body.enabled), amount: round2(body.amount || 0), due_day: Math.max(1, Math.min(28, Number(body.due_day || 1))), consent: Boolean(body.consent), status: body.enabled ? 'local_settings_only' : 'disabled', note: 'Saved locally only. No schedule, collection, or payout runs in localStorage mode.' };
         this.addAudit(s, 'Banker', 'monthly_deposit_preference', 'Save this monthly target as a reminder only; no transfer is scheduled.', 'User confirmed local preference', { ...s.monthly_deposit }); this.save(s); result = s.monthly_deposit;
       }
-      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Monthly auto-deposit cannot initiate PayPal in localStorage mode. No money moved. This control requires a secure server payment adapter and persistent webhook processing.');
+      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('A monthly target cannot initiate a real transfer in browser-only mode. No money moved. A secure server payment integration is required.');
       else if (route === '/api/monthly-recap' && method === 'GET') {
         mustBeSignedIn(); const month = url.searchParams.get('month') || new Date().toISOString().slice(0,7); if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Month must use YYYY-MM format.');
         const rows = s.ledger.filter(x => x.kind === 'drip' && x.created_at.slice(0,7) === month); const amount = rows.reduce((a,x)=>a+Number(x.amount||0),0); const stash = rows.reduce((a,x)=>a+Number(x.stash_share||0),0); const debt = rows.reduce((a,x)=>a+Number(x.debt_share||0),0);
@@ -385,8 +385,8 @@
         }
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
-      else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'PayPal server calls are disabled in browser-local storage mode.' };
-      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('PayPal API calls are intentionally disabled in localStorage-only mode. No token was created. Switch to the server API adapter after configuring secure credentials and persistent webhook state.');
+      else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'External payment calls are disabled in browser-only mode.' };
+      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('External payment connections are disabled in browser-only mode. No token was created. Configure a secure server integration before enabling payments.');
       else if (route === '/api/paypal/disconnect' && method === 'POST') { s.paypal = { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] }; this.save(s); result = s.paypal; }
       else throw new Error(`This action is not available in the localStorage adapter: ${method} ${route}`);
 

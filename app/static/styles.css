@@ -330,3 +330,77 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .dark .font-choice.active{color:#071c29}
 @media(max-width:850px){.tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.compact-form{grid-template-columns:repeat(2,minmax(0,1fr))}.push-control{align-items:flex-start}}
 @media(max-width:600px){.topbar{height:auto;min-height:68px;gap:8px;padding:10px 12px;align-items:flex-start}.top-actions{flex-wrap:wrap;justify-content:flex-end;min-width:0}.font-size-group{max-width:100%}.font-size-label{display:none}.font-choice{min-width:48px;padding:6px}.tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.tab{min-height:70px;padding:10px}.tab small{font-size:12px}.compact-form,.goal-form,.squad-goal-form,.auto-deposit-form{grid-template-columns:1fr}.compact-form button{grid-column:auto}.push-control{flex-direction:column;align-items:stretch}.push-control button{width:100%}.forest-scene{gap:8px;padding:16px 8px}.forest-tree{width:34px;height:72px}.forest-meta{flex-direction:column}.section-head{align-items:flex-start}.section-head>button{flex:0 0 auto}}
+
+/* Final UX correction pass — consistent sizing, plain labels, no decorative emoji illustration. */
+.data-label{font-size:14px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--muted)}
+.tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;overflow:visible}
+.tab{min-width:0;min-height:78px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;padding:12px 14px;border-right:1px solid var(--line)}
+.tab strong{font-size:15px;line-height:1.3}
+.tab small{font-size:13px;line-height:1.4;white-space:normal;color:var(--muted)}
+.tab.active small{color:var(--ink)}
+.compact-form{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.compact-form input,.compact-form select,.goal-form input,.goal-form select,.auto-deposit-form input:not([type=checkbox]),.settings-grid input,.settings-grid select{min-height:48px;height:48px;font-size:16px}
+.compact-form button{min-height:48px;align-self:end}
+.settings-grid{align-items:start;gap:16px}
+.settings-grid label{gap:8px}
+.settings-grid input[type=time]{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.push-control{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:18px;padding:16px;border:1px solid var(--line);background:var(--surface)}
+.push-control button{min-height:48px;min-width:160px;flex-shrink:0}
+.goal-form select,.auto-deposit-form select,.squad-goal-form select{height:48px;min-height:48px}
+.buffer-progress{padding:10px 0 2px}
+.buffer-progress .progressbar{height:12px;margin:14px 0}
+.buffer-progress-meta{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.buffer-progress-meta strong{font-size:16px}
+.buffer-progress-meta span{font-size:14px}
+.font-size-group{min-height:42px}
+.font-choice{min-width:64px;min-height:38px;font-size:14px}
+.section-card{margin-bottom:18px}
+@media(max-width:800px){.tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.tab{min-height:72px}.compact-form{grid-template-columns:1fr}.push-control{align-items:stretch}.push-control button{width:100%}}
+@media(max-width:480px){.tabs{grid-template-columns:1fr 1fr}.tab{padding:10px;min-height:74px}.tab strong{font-size:14px}.tab small{font-size:12px}.font-choice{min-width:48px}.buffer-progress-meta{flex-direction:column;gap:5px}}
+
+
+/* Glim UX correction layer — 2026-10-13 */
+:root { --control-height: 46px; }
+.data-label,.metric-label,.font-size-label,.section-kicker,.eyebrow { text-transform:none!important; letter-spacing:normal!important; }
+.compact-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:end; }
+.compact-form label { min-width:0; display:grid; gap:7px; }
+.compact-form input,.compact-form select,.goal-form input,.goal-form select,.squad-goal-form input,.squad-goal-form select,.settings-grid input,.settings-grid select,.auto-deposit-form input:not([type=checkbox]),.auto-deposit-form select,.form-inline input,.form-inline select { width:100%; min-width:0; min-height:var(--control-height); height:var(--control-height); box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:4px; background:var(--surface); color:var(--ink); font:inherit; }
+.compact-form button { min-height:var(--control-height); }
+.settings-grid { align-items:end; }
+.settings-grid label { min-width:0; display:grid; gap:7px; }
+.settings-grid input[type=time] { font-variant-numeric:tabular-nums; }
+.push-control { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+.push-control>div { flex:1 1 auto; min-width:0; }
+.push-control button { flex:0 0 auto; min-height:var(--control-height); }
+.goal-form,.squad-goal-form { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(0,1fr) auto; }
+.goal-form label,.squad-goal-form label { min-width:0; }
+.form-inline { display:flex; align-items:end; gap:12px; }
+.form-inline .fill-label { flex:1 1 auto; min-width:0; }
+.form-inline button { min-height:var(--control-height); white-space:nowrap; }
+.font-size-group { min-height:42px; }
+.font-choice { min-width:58px; min-height:34px; }
+.tabs { align-items:stretch; }
+.tab { min-height:76px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:5px; text-align:left; }
+.tab small { display:block; line-height:1.35; white-space:normal; }
+.panel-intro { max-width:900px; margin-bottom:22px; }
+.panel-intro p { max-width:78ch; line-height:1.55; }
+.persona-card { text-align:left; }
+.stash-goal,.shop-item,.game-grid>div { border-radius:4px; }
+.shop-icon { display:flex; align-items:center; justify-content:flex-start; }
+.line-icon { width:24px; height:24px; display:block; }
+.buffer-progress { display:grid; gap:12px; }
+.buffer-progress-meta { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.buffer-progress-meta strong { font-weight:650; }
+@media(max-width:850px) {
+ .compact-form,.goal-form,.squad-goal-form,.auto-deposit-form { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .goal-form button,.squad-goal-form button { min-height:var(--control-height); }
+}
+@media(max-width:600px) {
+ .compact-form,.goal-form,.squad-goal-form,.auto-deposit-form { grid-template-columns:minmax(0,1fr); }
+ .compact-form button,.goal-form button,.squad-goal-form button { width:100%; }
+ .push-control { align-items:stretch; flex-direction:column; }
+ .push-control button { width:100%; }
+ .form-inline { align-items:stretch; flex-direction:column; }
+ .form-inline button { width:100%; }
+ .buffer-progress-meta { flex-direction:column; }
+}
