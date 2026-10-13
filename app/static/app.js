@@ -21,6 +21,22 @@ function money(v){return new Intl.NumberFormat('en-CA',{style:'currency',currenc
 function show(view){['authView','setupView','onboardingView','dashboardView'].forEach(id=>$('#'+id).classList.toggle('hidden',id!==view));$('#logoutBtn').classList.toggle('hidden',view==='authView')}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 
+const APP_SECTIONS = ['overview','savings','plan','coach','game','squad','learn','settings'];
+const SECTION_TITLES = {overview:'Overview',savings:'Savings',plan:'Debt plan',coach:'Coach',game:'Habits & rewards',squad:'Challenges',learn:'Learn',settings:'Settings'};
+function tabFromPath(){const match=location.pathname.match(/^\/app\/([^/]+)\/?$/);return match&&APP_SECTIONS.includes(match[1])?match[1]:'overview'}
+function setWorkspacePath(path, replace=false){if(location.pathname===path)return;const method=replace?'replaceState':'pushState';history[method]({glimPath:true},'',path)}
+function activateTab(name, options={}){
+  if(!APP_SECTIONS.includes(name))name='overview';
+  $$('.tab').forEach(link=>{const selected=link.dataset.tab===name;link.classList.toggle('active',selected);link.setAttribute('aria-selected',String(selected));});
+  $$('.tab-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!=='tab-'+name));
+  const index=APP_SECTIONS.indexOf(name), position=$('#sectionPosition');
+  if(position)position.textContent=`${SECTION_TITLES[name]} · ${index+1} of ${APP_SECTIONS.length}`;
+  const back=$('#sectionBack'),next=$('#sectionNext');if(back)back.disabled=index===0;if(next)next.disabled=index===APP_SECTIONS.length-1;
+  if(options.pushHistory)setWorkspacePath('/app/'+name,false);
+  else if(options.replaceHistory)setWorkspacePath('/app/'+name,true);
+  if(options.scroll!==false){const heading=$('.dashboard-head');if(heading)heading.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
+}
+
 function render(){
   const s=STATE, debts=s.debts||[], activeDebts=debts.filter(d=>d.status==='active'), debt=activeDebts[0]||debts[0];
   if(!s.profile||!(Number(s.profile.monthly_income)>0)){show('setupView');return}
@@ -137,27 +153,43 @@ async function renderMonthlyRecap(){
 async function load(){
   try{
     const me=await api('/api/auth/me');
-    if(!me.authenticated){STATE=null;show('authView');$('#logoutBtn').classList.add('hidden');return}
+    if(!me.authenticated){STATE=null;show('authView');$('#logoutBtn').classList.add('hidden');if(location.pathname!=='/start')setWorkspacePath('/start',true);return}
     STATE=await api('/api/state');
-    if(!STATE.profile||!(Number(STATE.profile.monthly_income)>0)){show('setupView');return}
+    if(location.pathname==='/setup/guardrails'){
+      show('onboardingView');
+      const profile=STATE.profile||{};
+      $('#pPersona').value=profile.persona||'custom';
+      $('#pName').value=profile.name&&!['Riley','Sam'].includes(profile.name)?profile.name:'My plan';
+      $('#pIncome').value=Number(profile.monthly_income)>0?profile.monthly_income:'';
+      $('#pRange').value=profile.income_range||'';
+      $('#pPct').value=profile.savings_pct??5;$('#pctOut').value=`${profile.savings_pct??5}%`;
+      $('#pCap').value=profile.weekly_cap??60;$('#pFloor').value=profile.floor_balance??0;
+      $('#pApproval').value=profile.approval_mode||'each';$('#pQuietStart').value=profile.quiet_start||'22:00';$('#pQuietEnd').value=profile.quiet_end||'08:00';$('#pChannel').value='in_app';
+      return;
+    }
+    if(!STATE.profile||!(Number(STATE.profile.monthly_income)>0)){
+      show('setupView');
+      if(location.pathname.startsWith('/app/'))setWorkspacePath('/start/setup',true);
+      return;
+    }
     show('dashboardView');
+    if(!location.pathname.startsWith('/app/'))setWorkspacePath('/app/overview',true);
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
-    await Promise.all([runScout(false), renderNotifications(), renderSquad(), renderStash()]);render();
+    await Promise.all([runScout(false), renderNotifications(), renderSquad(), renderStash()]);
+    render();
+    activateTab(tabFromPath(),{replaceHistory:true,scroll:false});
     try { if (!localStorage.getItem(WALKTHROUGH_SEEN_KEY)) openWalkthrough(); } catch {}
   }catch(e){show('authView');toast(e.message)}
 }
 
-async function seed(key){try{STATE=await api('/api/personas/'+key,{method:'POST'});show('onboardingView');$('#pPersona').value=key;$('#pName').value='My plan';$('#pIncome').value=STATE.profile.monthly_income;$('#pRange').value=STATE.profile.income_range;$('#pPct').value=STATE.profile.savings_pct;$('#pctOut').value=STATE.profile.savings_pct+'%';$('#pFloor').value=STATE.profile.floor_balance;$('#pCap').value=STATE.profile.weekly_cap;$('#pApproval').value='each';$('#pQuietStart').value=STATE.profile.quiet_start||'22:00';$('#pQuietEnd').value=STATE.profile.quiet_end||'08:00';toast('Example numbers loaded. Review and edit them before saving your plan.')}catch(e){toast(e.message)}}
-async function startCustomPlan(){try{STATE=await api('/api/state');show('onboardingView');$('#profileForm').reset();$('#pPersona').value='custom';$('#pName').value=STATE.profile?.name&&!['Riley','Sam'].includes(STATE.profile.name)?STATE.profile.name:'My plan';$('#pIncome').value='';$('#pRange').value='';$('#pPct').value='5';$('#pctOut').value='5%';$('#pCap').value='60';$('#pFloor').value='0';$('#pApproval').value='each';$('#pQuietStart').value='22:00';$('#pQuietEnd').value='08:00';$('#pChannel').value='in_app'}catch(e){toast(e.message)}}
+async function seed(key){try{STATE=await api('/api/personas/'+key,{method:'POST'});setWorkspacePath('/setup/guardrails');show('onboardingView');$('#pPersona').value=key;$('#pName').value='My plan';$('#pIncome').value=STATE.profile.monthly_income;$('#pRange').value=STATE.profile.income_range;$('#pPct').value=STATE.profile.savings_pct;$('#pctOut').value=STATE.profile.savings_pct+'%';$('#pFloor').value=STATE.profile.floor_balance;$('#pCap').value=STATE.profile.weekly_cap;$('#pApproval').value='each';$('#pQuietStart').value=STATE.profile.quiet_start||'22:00';$('#pQuietEnd').value=STATE.profile.quiet_end||'08:00';toast('Example numbers loaded. Review and edit them before saving your plan.')}catch(e){toast(e.message)}}
+async function startCustomPlan(){try{STATE=await api('/api/state');setWorkspacePath('/setup/guardrails');show('onboardingView');$('#profileForm').reset();$('#pPersona').value='custom';$('#pName').value=STATE.profile?.name&&!['Riley','Sam'].includes(STATE.profile.name)?STATE.profile.name:'My plan';$('#pIncome').value='';$('#pRange').value='';$('#pPct').value='5';$('#pctOut').value='5%';$('#pCap').value='60';$('#pFloor').value='0';$('#pApproval').value='each';$('#pQuietStart').value='22:00';$('#pQuietEnd').value='08:00';$('#pChannel').value='in_app'}catch(e){toast(e.message)}}
 async function runScout(showToast=true){const r=await api('/api/scout',{method:'POST'});const rows=[];if(r.subscriptions?.length){rows.push(...r.subscriptions.map(x=>{const rawSignal=String(x.signal||'');const signal=/seeded|paypal|sandbox/i.test(rawSignal)?'Illustrative recurring expense':rawSignal;return `<div class="finding"><div><strong>${escapeHtml(x.merchant)}</strong><span>${escapeHtml(signal||'Illustrative recurring expense')}</span></div><b>${money(x.monthly)}/month</b></div>`}))}else{rows.push('<p class="muted">No recurring costs are available to review yet. You can still add your debts below and build a payoff estimate.</p>')}if(r.safe_to_move_daily>0)rows.unshift(`<div class="finding"><div><strong>Estimated available amount</strong><span>Calculated from your income, expense estimate and chosen safety floor.</span></div><b>${money(r.safe_to_move_daily)}/day</b></div>`);$('#scoutResults').innerHTML=rows.join('');if(showToast)toast('Spending patterns refreshed.')}
 async function buildPlan(){if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt from Overview before building a payoff plan.');return}try{STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})});render();toast('Plan recalculated.')}catch(e){toast(e.message)}}
 
-function focusSignIn(){const email=$('#authEmail');email.focus({preventScroll:true});email.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
-$('#landingStartBtn')?.addEventListener('click',focusSignIn);
-$('#landingBottomStartBtn')?.addEventListener('click',focusSignIn);
 $('#customPlanBtn')?.addEventListener('click',()=>startCustomPlan());
 
-$('#authForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/auth/request',{method:'POST',body:JSON.stringify({email:$('#authEmail').value.trim()})});$('#magicResult').classList.add('hidden');show('setupView')}catch(e){toast(e.message)}});
+$('#authForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/auth/request',{method:'POST',body:JSON.stringify({email:$('#authEmail').value.trim()})});setWorkspacePath('/start/setup');show('setupView')}catch(e){toast(e.message)}});
 $('#pPct').addEventListener('input',e=>$('#pctOut').value=e.target.value+'%');
 $('#profileForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/profile',{method:'POST',body:JSON.stringify({name:$('#pName').value,persona:$('#pPersona').value,monthly_income:+$('#pIncome').value,income_range:$('#pRange').value,savings_pct:+$('#pPct').value,approval_mode:$('#pApproval').value,weekly_cap:+$('#pCap').value,floor_balance:+$('#pFloor').value,quiet_start:$('#pQuietStart').value,quiet_end:$('#pQuietEnd').value,notification_cap:+$('#notifCap').value||3,notification_channel:$('#pChannel').value})});await load();toast(STATE?.debts?.some(d=>d.status==='active')?'Your plan is saved. Review the activity insights.':'Your guardrails are saved. Add a debt from Overview to see a payoff plan.')}catch(e){toast(e.message)}});
 $('#debtForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:15})});$('#debtForm').reset();await load();toast('Debt added.')}catch(e){toast(e.message)}});
@@ -182,8 +214,22 @@ $('#squadGoalForm').addEventListener('submit',async e=>{e.preventDefault();try{a
 $('#createSquadForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads',{method:'POST',body:JSON.stringify({name:$('#squadName').value.trim()})});await load();toast('Squad created.')}catch(e){toast(e.message)}});
 $('#loadLessonBtn').addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">${r.points} points</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Nice. +${x.points} points.</strong><p>Glim logged the applied challenge.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn').addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
-$('#deleteBtn').addEventListener('click',async()=>{if(!confirm('Delete the Glim account and all prototype data?'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;show('authView');toast('Account deleted.')}catch(e){toast(e.message)}});
-$$('.tab').forEach(b=>b.addEventListener('click',()=>{$$('.tab').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false')});$$('.tab-panel').forEach(x=>x.classList.add('hidden'));b.classList.add('active');b.setAttribute('aria-selected','true');$('#tab-'+b.dataset.tab).classList.remove('hidden')}));
+$('#deleteBtn').addEventListener('click',async()=>{if(!confirm('Delete the Glim account and all prototype data?'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;setWorkspacePath('/start',true);show('authView');toast('Account deleted.')}catch(e){toast(e.message)}});
+$$('.tab').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();activateTab(link.dataset.tab,{pushHistory:true});}));
+$('#sectionBack')?.addEventListener('click',()=>{const index=APP_SECTIONS.indexOf(tabFromPath());if(index>0)activateTab(APP_SECTIONS[index-1],{pushHistory:true});});
+$('#sectionNext')?.addEventListener('click',()=>{const index=APP_SECTIONS.indexOf(tabFromPath());if(index<APP_SECTIONS.length-1)activateTab(APP_SECTIONS[index+1],{pushHistory:true});});
+window.addEventListener('popstate',async()=>{
+  if(/^\/app\/(overview|savings|plan|coach|game|squad|learn|settings)\/?$/.test(location.pathname)){
+    try{const me=await api('/api/auth/me');if(!me.authenticated){setWorkspacePath('/start',true);show('authView');return;}STATE=await api('/api/state');if(STATE?.profile?.monthly_income){show('dashboardView');activateTab(tabFromPath(),{scroll:false});}else{setWorkspacePath('/start/setup',true);show('setupView');}}catch(e){show('authView');}return;
+  }
+  if(location.pathname==='/start/setup'){show('setupView');return;}
+  if(location.pathname==='/setup/guardrails'){
+    try{const me=await api('/api/auth/me');if(!me.authenticated){setWorkspacePath('/start',true);show('authView');return;}STATE=await api('/api/state');show('onboardingView');const p=STATE.profile||{};$('#pPersona').value=p.persona||'custom';$('#pName').value=p.name&&!['Riley','Sam'].includes(p.name)?p.name:'My plan';$('#pIncome').value=Number(p.monthly_income)>0?p.monthly_income:'';$('#pRange').value=p.income_range||'';$('#pPct').value=p.savings_pct??5;$('#pctOut').value=`${p.savings_pct??5}%`;$('#pCap').value=p.weekly_cap??60;$('#pFloor').value=p.floor_balance??0;$('#pApproval').value=p.approval_mode||'each';$('#pQuietStart').value=p.quiet_start||'22:00';$('#pQuietEnd').value=p.quiet_end||'08:00';$('#pChannel').value='in_app';}catch(e){show('authView');}return;
+  }
+  if(location.pathname==='/start'){
+    try{const me=await api('/api/auth/me');if(!me.authenticated){show('authView');return;}STATE=await api('/api/state');if(STATE?.profile?.monthly_income){setWorkspacePath('/app/overview',true);show('dashboardView');activateTab('overview',{scroll:false});}else show('setupView');}catch(e){show('authView');}
+  }
+});
 $$('.persona-card').forEach(b=>b.addEventListener('click',()=>seed(b.dataset.persona)));
 ['#themeToggle','#themeToggleSetting'].forEach(sel=>$(sel)?.addEventListener('click',toggleTheme));
 $('#fontSmallBtn')?.addEventListener('click',()=>setTextSize('small'));$('#fontMediumBtn')?.addEventListener('click',()=>setTextSize('medium'));$('#fontLargeBtn')?.addEventListener('click',()=>setTextSize('large'));
@@ -196,13 +242,13 @@ const WALKTHROUGH_STEPS = [
   {tab:'plan',title:'Debt plan: compare payoff methods',copy:'Compare Avalanche (highest interest first), Snowball (smallest balance first) and Hybrid. Estimates depend on the balances, rates and payments you entered.'},
   {tab:'coach',title:'Coach: get an explanation',copy:'Choose a suggested question or type your own. The current version uses built-in guidance based on the plan; it is not a live AI chat. Check-ins let you set the tone and frequency of reminders.'},
   {tab:'game',title:'Habits and milestones: track consistency',copy:'A practice step is an in-app check-in, not a transfer. Streaks and points measure use of the plan and never represent cash, credit score or payment status.'},
-  {tab:'squad',title:'Squad: a personal challenge',copy:'Create a named consistency challenge and set a target number of practice days. In this browser-only version it is not a live group: other people cannot join or sync.'},
+  {tab:'squad',title:'Challenges: practice goals',copy:'Create a personal consistency challenge and choose a target number of practice days. This prototype does not support live groups or cross-device sharing.'},
   {tab:'learn',title:'Learn: short applied lessons',copy:'Open a lesson to review a money concept and answer a question. The content is educational and does not replace professional financial advice.'},
   {tab:'settings',title:'Settings: preferences and privacy',copy:'Adjust text size, appearance, practice tracking and notifications. Export your browser data or delete the local profile here. Browser push is not configured; in-app reminders are the available option.'}
 ];
 let walkthroughIndex=0;
 function openWalkthrough(){walkthroughIndex=0;showWalkthroughStep();const d=$('#walkthroughDialog');if(d&&!d.open)d.showModal();}
-function showWalkthroughStep(){const s=WALKTHROUGH_STEPS[walkthroughIndex];$$('.tab').forEach(x=>{const selected=x.dataset.tab===s.tab;x.classList.toggle('active',selected);x.setAttribute('aria-selected',String(selected));});$$('.tab-panel').forEach(x=>x.classList.toggle('hidden',x.id!=='tab-'+s.tab));$('#walkthroughStep').textContent=`Step ${walkthroughIndex+1} of ${WALKTHROUGH_STEPS.length}`;$('#walkthroughTitle').textContent=s.title;$('#walkthroughCopy').textContent=s.copy;$('#walkthroughProgressFill').style.width=`${(walkthroughIndex+1)/WALKTHROUGH_STEPS.length*100}%`;$('#walkthroughBack').disabled=walkthroughIndex===0;$('#walkthroughNext').textContent=walkthroughIndex===WALKTHROUGH_STEPS.length-1?'Finish':'Next';}
+function showWalkthroughStep(){const s=WALKTHROUGH_STEPS[walkthroughIndex];activateTab(s.tab,{replaceHistory:true,scroll:false});$('#walkthroughStep').textContent=`Step ${walkthroughIndex+1} of ${WALKTHROUGH_STEPS.length}`;$('#walkthroughTitle').textContent=s.title;$('#walkthroughCopy').textContent=s.copy;$('#walkthroughProgressFill').style.width=`${(walkthroughIndex+1)/WALKTHROUGH_STEPS.length*100}%`;$('#walkthroughBack').disabled=walkthroughIndex===0;$('#walkthroughNext').textContent=walkthroughIndex===WALKTHROUGH_STEPS.length-1?'Finish':'Next';}
 function finishWalkthrough(){const d=$('#walkthroughDialog');if(d?.open)d.close();try{localStorage.setItem(WALKTHROUGH_SEEN_KEY,'true')}catch{}}
 $('#walkthroughBtn')?.addEventListener('click',openWalkthrough);
 $('#walkthroughSettingsBtn')?.addEventListener('click',openWalkthrough);
@@ -211,7 +257,7 @@ $('#walkthroughBack')?.addEventListener('click',()=>{if(walkthroughIndex>0){walk
 $('#walkthroughNext')?.addEventListener('click',()=>{if(walkthroughIndex<WALKTHROUGH_STEPS.length-1){walkthroughIndex++;showWalkthroughStep();}else finishWalkthrough();});
 $('#walkthroughDialog')?.addEventListener('close',()=>{try{localStorage.setItem(WALKTHROUGH_SEEN_KEY,'true')}catch{}});
 
-$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;show('authView');toast('Signed out.')}catch(e){toast(e.message)}});
+$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;setWorkspacePath('/start',true);show('authView');toast('Signed out.')}catch(e){toast(e.message)}});
 // Browser push is intentionally not exposed until a server-side delivery service exists.
 
 $('#recapMonth').value=new Date().toISOString().slice(0,7);

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#4c60eb" />
+  <title>{% block title %}Glim — financial planning{% endblock %}</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261013templates1" />
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Glim home"><span class="brand-mark">G</span><span>Glim</span></a>
+    {% block header_actions %}{% endblock %}
+  </header>
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+  {% block overlays %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -26,7 +26,17 @@ def test_localstorage_mode_does_not_initialize_sqlite_or_accept_api_writes(monke
 
         landing = client.get("/")
         assert landing.status_code == 200
-        assert "/static/storage.js" in landing.text
+        assert "Plan your savings and debt payoff in one place" in landing.text
+        assert "authForm" not in landing.text
+
+        workspace = client.get("/start")
+        assert workspace.status_code == 200
+        assert "/static/storage.js" in workspace.text
+
+        for section in ("overview", "savings", "plan", "coach", "game", "squad", "learn", "settings"):
+            page = client.get(f"/app/{section}")
+            assert page.status_code == 200
+            assert f'href="/app/{section}"' in page.text
 
         rejected = client.post("/api/profile", json={"name": "Prototype", "monthly_income": 1000, "income_range": "test"})
         assert rejected.status_code == 409

@@ -1,0 +1,29 @@
+<section id="dashboardView" class="view hidden">
+  <div class="dashboard-head">
+    <div><h1>Build your buffer. Reduce your debt.</h1><p class="lede" id="coachLine">A clear view of your savings buffer, debt and next step.</p></div><button type="button" class="secondary walkthrough-launch" id="walkthroughBtn">Walk me through Glim</button>
+  </div>
+
+    <nav class="tabs" role="tablist" aria-label="Glim sections">
+    <a class="tab active" href="/app/overview" data-tab="overview" role="tab" aria-selected="true"><strong>Overview</strong><small>Balances and next steps</small></a>
+    <a class="tab" href="/app/savings" data-tab="savings" role="tab" aria-selected="false"><strong>Savings</strong><small>Buffer, goals and targets</small></a>
+    <a class="tab" href="/app/plan" data-tab="plan" role="tab" aria-selected="false"><strong>Debt plan</strong><small>Strategies and estimates</small></a>
+    <a class="tab" href="/app/coach" data-tab="coach" role="tab" aria-selected="false"><strong>Coach</strong><small>Ask questions and get plan guidance</small></a>
+    <a class="tab" href="/app/game" data-tab="game" role="tab" aria-selected="false"><strong>Habits & rewards</strong><small>Track routines and earn in-app rewards</small></a>
+    <a class="tab" href="/app/squad" data-tab="squad" role="tab" aria-selected="false"><strong>Challenges</strong><small>Personal consistency goals</small></a>
+    <a class="tab" href="/app/learn" data-tab="learn" role="tab" aria-selected="false"><strong>Learn</strong><small>Understand debt, interest and savings</small></a>
+    <a class="tab" href="/app/settings" data-tab="settings" role="tab" aria-selected="false"><strong>Settings</strong><small>Preferences and data</small></a>
+  </nav>
+    <div class="section-navigation" aria-label="Section navigation">
+      <button type="button" class="secondary" id="sectionBack">Previous section</button>
+      <span id="sectionPosition" aria-live="polite">Overview · 1 of 8</span>
+      <button type="button" class="secondary" id="sectionNext">Next section</button>
+    </div>
+{% include "partials/tab_overview.html" %}
+{% include "partials/tab_savings.html" %}
+{% include "partials/tab_plan.html" %}
+{% include "partials/tab_coach.html" %}
+{% include "partials/tab_game.html" %}
+{% include "partials/tab_squad.html" %}
+{% include "partials/tab_learn.html" %}
+{% include "partials/tab_settings.html" %}
+</section>

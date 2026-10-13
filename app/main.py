@@ -6,8 +6,9 @@ from contextlib import asynccontextmanager
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
-from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from .data import PERSONAS
 from .models import (
@@ -19,6 +20,7 @@ from .models import (
 from .services import *  # noqa: F401,F403
 
 BASE = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE / "templates"))
 # Default: the frontend's versioned browser localStorage adapter owns prototype state.
 # Do not instantiate SQLite in this mode; this is important for Vercel's read-only runtime.
 STORAGE_MODE = os.getenv("GLIM_STORAGE_MODE", "localStorage").strip().lower()
@@ -90,8 +92,38 @@ def current_user(request: Request) -> dict:
 
 
 @app.get("/", include_in_schema=False)
-def index():
-    return FileResponse(BASE / "static" / "index.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"})
+def landing(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="landing.html",
+        context={},
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+def render_workspace(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="workspace.html",
+        context={},
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/start", include_in_schema=False)
+@app.get("/start/setup", include_in_schema=False)
+@app.get("/setup/guardrails", include_in_schema=False)
+@app.get("/app", include_in_schema=False)
+def workspace(request: Request):
+    return render_workspace(request)
+
+
+@app.get("/app/{section}", include_in_schema=False)
+def workspace_section(section: str, request: Request):
+    allowed_sections = {"overview", "savings", "plan", "coach", "game", "squad", "learn", "settings"}
+    if section not in allowed_sections:
+        raise HTTPException(status_code=404, detail="Workspace section not found.")
+    return render_workspace(request)
 
 
 @app.get("/sw.js", include_in_schema=False)

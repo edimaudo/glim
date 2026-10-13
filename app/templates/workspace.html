@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Glim — your planning workspace{% endblock %}
+{% block header_actions %}
+<div class="top-actions">
+  <a class="text-link workspace-home-link" href="/">Back to Glim home</a>
+  <div class="font-size-group" role="group" aria-label="Text size">
+    <span class="font-size-label">Text size</span>
+    <button type="button" class="font-choice" id="fontSmallBtn" aria-pressed="false">Small</button>
+    <button type="button" class="font-choice active" id="fontMediumBtn" aria-pressed="true">Medium</button>
+    <button type="button" class="font-choice" id="fontLargeBtn" aria-pressed="false">Large</button>
+  </div>
+  <button type="button" class="icon-button theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">Dark mode</button>
+  <button type="button" class="text-button hidden" id="logoutBtn">Sign out</button>
+</div>
+{% endblock %}
+{% block content %}
+<section id="authView" class="view hidden">
+  <div class="auth-card workspace-start-card">
+    <h1>Open your Glim workspace</h1>
+    <p class="lede">Enter an email to label this browser-local plan. No email is sent and no password is required in this prototype.</p>
+    <form id="authForm" class="auth-form">
+      <label for="authEmail">Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+      <button class="primary" type="submit">Continue</button>
+    </form>
+    <p class="signin-note">Your planning data stays in this browser and does not sync to other devices.</p>
+    <a class="text-link" href="/">Return to Glim home</a>
+  </div>
+</section>
+{% include "partials/setup.html" %}
+{% include "partials/guardrails.html" %}
+{% include "partials/dashboard.html" %}
+{% endblock %}
+{% block overlays %}
+<dialog id="walkthroughDialog" class="walkthrough-dialog" aria-labelledby="walkthroughTitle">
+  <div class="walkthrough-dialog-head"><span id="walkthroughStep">Step 1 of 8</span><button class="icon-button" id="walkthroughClose" type="button" aria-label="Close walkthrough">Close</button></div>
+  <h2 id="walkthroughTitle">Start with Overview</h2><p id="walkthroughCopy">Review your financial planning figures and next action.</p>
+  <div class="walkthrough-progress" aria-hidden="true"><span id="walkthroughProgressFill" style="width:12.5%"></span></div>
+  <div class="walkthrough-actions"><button class="secondary" id="walkthroughBack" type="button" disabled>Back</button><button class="primary" id="walkthroughNext" type="button">Next</button></div>
+</dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+{% endblock %}
+{% block scripts %}
+<script src="/storage-config.js"></script>
+<script src="/static/storage.js?v=20261013templates1"></script>
+<script src="/static/app.js?v=20261013templates1"></script>
+{% endblock %}

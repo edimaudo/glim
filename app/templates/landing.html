@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Glim — plan savings and debt payoff{% endblock %}
+{% block header_actions %}<div class="top-actions"><a class="primary landing-start" href="/start">Open Glim</a></div>{% endblock %}
+{% block content %}
+<section class="landing-view" aria-labelledby="landingTitle">
+  <section class="landing-lead">
+    <div class="landing-copy">
+      <h1 id="landingTitle">Plan your savings and debt payoff in one place.</h1>
+      <p class="lede">Enter your income, savings target and debt details. Glim compares payoff approaches and estimates how your plan could progress.</p>
+      <div class="landing-actions"><a class="primary landing-start" href="/start">Start a plan</a><a class="text-link" href="#howGlimWorks">How Glim works</a></div>
+    </div>
+    <div class="landing-summary" aria-label="What Glim helps you do">
+      <div><strong>Savings buffer</strong><p>Set a reserve target and track the balance you enter.</p></div>
+      <div><strong>Debt payoff estimates</strong><p>Compare Avalanche, Snowball and Hybrid using your debt balances, rates and minimum payments.</p></div>
+      <div><strong>Adjustable assumptions</strong><p>Change your numbers and review how the estimates respond.</p></div>
+    </div>
+  </section>
+  <section id="howGlimWorks" class="landing-how" aria-labelledby="howHeading">
+    <h2 id="howHeading">How Glim works</h2>
+    <div class="process-grid">
+      <article class="process-step"><h3>Add your numbers</h3><p>Enter income, debt balances, interest rates and a savings target.</p></article>
+      <article class="process-step"><h3>Compare the options</h3><p>Review estimated payoff time and interest under different repayment strategies.</p></article>
+      <article class="process-step"><h3>Refine your plan</h3><p>Adjust your assumptions and track changes to your goals over time.</p></article>
+    </div>
+    <p class="landing-disclaimer">Glim is a planning prototype. Information is saved in this browser; it does not connect to bank accounts, make payments or transfer money.</p>
+    <a class="primary" href="/start">Start a plan</a>
+  </section>
+</section>
+{% endblock %}

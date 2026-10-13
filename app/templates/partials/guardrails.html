@@ -1,0 +1,20 @@
+<section id="onboardingView" class="view hidden">
+  <div class="page-head"><div><h1>Set your plan guardrails</h1><p>Choose how much to set aside, what must stay available, and how each move should be approved.</p></div></div>
+  <div class="onboard-grid">
+    <form id="profileForm" class="card form-card">
+      <label>What should Glim call you? (optional)<input id="pName" autocomplete="given-name" placeholder="Your name"/></label>
+      <label>Monthly income<input id="pIncome" type="number" min="1" required/></label>
+      <label>Income range<input id="pRange" placeholder="e.g. $3,000–$4,500 per month" required/></label>
+      <label>Savings goal <output id="pctOut">5%</output><input id="pPct" type="range" min="0" max="20" step="1" value="5"/></label>
+      <label>Approval mode<select id="pApproval"><option value="each">Approve each move</option><option value="weekly_cap">Approve within weekly cap</option><option value="standing_rule">Standing rule with cap</option></select></label>
+      <label>Weekly approval limit (CAD)<input id="pCap" type="number" min="0" step="0.01" value="60"/></label>
+      <label>Minimum balance to keep (CAD)<input id="pFloor" type="number" min="0" step="0.01" placeholder="500" required/></label>
+      <label>Quiet hours start<input id="pQuietStart" value="22:00" type="time"/></label>
+      <label>Quiet hours end<input id="pQuietEnd" value="08:00" type="time"/></label>
+      <label>Notification channel<select id="pChannel"><option value="in_app">In-app only</option></select></label>
+      <input type="hidden" id="pPersona" value="custom"/>
+      <button class="primary" type="submit">Save my plan</button>
+    </form>
+    <aside class="card plan-explainer-card"><h2>Two priorities, one plan</h2><p>Glim helps you plan savings and debt together, while keeping a minimum amount available for everyday needs.</p><ul class="plain-list"><li>Every suggested move has a reason.</li><li>Calculations are handled by deterministic code.</li><li>You stay in control of approvals.</li></ul></aside>
+  </div>
+</section>
