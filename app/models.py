@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class Profile(BaseModel):
-    name: str = "Riley"
+    name: str = ""
     persona: Literal["riley", "sam"] = "riley"
     monthly_income: float = Field(gt=0)
     income_range: str

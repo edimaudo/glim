@@ -20,10 +20,10 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   await adapter.request('/api/auth/request', { method: 'POST', body: JSON.stringify({ email: 'riley@example.test' }) });
   assert.equal((await adapter.request('/api/auth/me')).authenticated, true);
   assert.equal((await adapter.request('/api/state')).user.display_name, '', "email local-part should not be treated as the user name");
-  const legacy = JSON.parse(values.get('glim.prototype.v1'));
+  const legacy = JSON.parse(values.get('glim.prototype.v3'));
   legacy.profile = { name: 'Riley', persona: 'riley', sample_selected: true };
   legacy.user.display_name = 'Riley';
-  values.set('glim.prototype.v1', JSON.stringify(legacy));
+  values.set('glim.prototype.v3', JSON.stringify(legacy));
   const migrated = await adapter.request('/api/state');
   assert.equal(migrated.profile.name, '', 'legacy sample names should not be displayed as the user name');
   assert.equal(migrated.user.display_name, '', 'legacy sample names should be cleared from account display identity');
@@ -67,7 +67,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   await adapter.request('/api/stash/auto-deposit', { method: 'PUT', body: JSON.stringify({ enabled: true, amount: 25, due_day: 1, consent: true }) });
   assert.equal((await adapter.request('/api/stash/auto-deposit')).status, 'local_settings_only');
   await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /No money moved/);
-  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /No token was created/);
+  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /not available in the localStorage adapter/);
   const beforeCappedAttempt = (await adapter.request('/api/ledger')).length;
   const state = await adapter.request('/api/state');
   await adapter.request('/api/profile', { method: 'POST', body: JSON.stringify({ ...state.profile, approval_mode: 'weekly_cap', weekly_cap: 1 }) });
@@ -77,5 +77,31 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.equal(exported.product, 'Glim');
   const sameBrowserAdapter = new (window.GlimStorage.adapter.constructor)();
   assert.equal((await sameBrowserAdapter.request('/api/state')).game.streak, (await adapter.request('/api/state')).game.streak);
+  // A v2 sample profile with demo debts should be reset when moving to v3.
+  const legacyV2 = JSON.parse(values.get('glim.prototype.v3'));
+  legacyV2.schemaVersion = 2;
+  legacyV2.profile = { name: 'Riley', persona: 'riley', sample_selected: true };
+  legacyV2.user = { email: 'returning@example.test', display_name: 'Riley' };
+  legacyV2.debts = [{ id: 1, name: 'Sample card', balance: 4200, status: 'active' }];
+  values.set('glim.prototype.v2', JSON.stringify(legacyV2));
+  values.delete('glim.prototype.v3');
+  const upgradedV2Adapter = new (window.GlimStorage.adapter.constructor)();
+  const upgradedV2 = await upgradedV2Adapter.request('/api/state');
+  assert.equal(upgradedV2.profile.name || '', '');
+  assert.equal(upgradedV2.debts.length, 0, 'v2 demo debt must not be restored as personal debt');
+  assert.equal(upgradedV2.user.display_name, '');
+  assert.equal(values.has('glim.prototype.v2'), false, 'legacy key should be removed after migration');
+
+  // A legacy saved sample profile must not reappear as the signed-in user's identity.
+  const legacyCopy = JSON.parse(values.get('glim.prototype.v3'));
+  legacyCopy.profile = { name: 'Riley', persona: 'riley', sample_selected: true };
+  legacyCopy.user = { email: 'prototype-check@example.test', display_name: 'Riley' };
+  values.set('glim.prototype.v1', JSON.stringify(legacyCopy));
+  values.delete('glim.prototype.v3');
+  const migratedAdapter = new (window.GlimStorage.adapter.constructor)();
+  const migratedState = await migratedAdapter.request('/api/state');
+  assert.equal(migratedState.profile.name || '', '', 'legacy demo identity must be removed during v1 migration');
+  assert.equal(migratedState.debts.length, 0, 'legacy demo debts should not be mistaken for the user’s own debts');
+  assert.equal(migratedState.user.display_name, '', 'legacy demo display name must be removed');
   console.log('localStorage adapter tests passed');
 })().catch(err => { console.error(err); process.exitCode = 1; });

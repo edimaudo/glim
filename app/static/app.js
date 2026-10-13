@@ -4,7 +4,8 @@ let currentLesson = null;
 let lastNudge = null;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const UI_PREFS_KEY = 'glim.uiPreferences.v1';
+const UI_PREFS_KEY = 'glim.uiPreferences.v3';
+const WALKTHROUGH_SEEN_KEY = 'glim.walkthrough.seen.v1';
 function readUiPrefs(){try{return JSON.parse(localStorage.getItem(UI_PREFS_KEY)||'{}')}catch{return {}}}
 function saveUiPrefs(){try{localStorage.setItem(UI_PREFS_KEY,JSON.stringify({dark:document.body.classList.contains('dark'),font:document.body.classList.contains('font-small')?'small':document.body.classList.contains('font-large')?'large':'medium'}))}catch{} syncDisplayControls()}
 function setTextSize(size){document.body.classList.toggle('font-small',size==='small');document.body.classList.toggle('font-large',size==='large');saveUiPrefs()}
@@ -22,44 +23,63 @@ function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
 
 function render(){
   const s=STATE, debts=s.debts||[], activeDebts=debts.filter(d=>d.status==='active'), debt=activeDebts[0]||debts[0];
-  if(!s.profile||!s.profile.name){show('setupView');return}
+  if(!s.profile||!(Number(s.profile.monthly_income)>0)){show('setupView');return}
   if(s.profile.sample_selected && ['Riley','Sam'].includes(String(s.profile.name))) s.profile.name='My plan';
   show('dashboardView');
   $('#coachLine').textContent='Review your savings buffer, debt payoff estimate and next manageable step.';
   $('#dailyDrip').textContent=money(s.daily_drip);
   $('#streak').textContent=s.game.streak;
   $('#points').textContent=s.game.points;
-  $('#level').textContent=s.game.level;
   $('#freezes').textContent=s.game.freezes;
-  const stageLabel=({'Revolver':'Building momentum','Boss Slayer':'Debt paid off','debt Slayer':'Debt paid off','Shielded':'Savings buffer reached','Transactor':'Paying in full'}[s.game.evolution_stage]||s.game.evolution_stage);
+  const stageLabel=({'Revolver':'Building momentum','Steady':'Building momentum','Sprout':'First steps','Boss Slayer':'Debt payoff milestone','debt Slayer':'Debt payoff milestone','Shielded':'Savings buffer reached','Transactor':'Debt and buffer targets reached'}[s.game.evolution_stage]||'Building momentum');
   $('#stage').textContent=stageLabel;
   $('#evolution').textContent=stageLabel;
-  $('#evolutionCopy').textContent=s.game.evolution_stage==='Transactor'?'Your buffer is funded and active debts are paid.':s.game.evolution_stage==='Shielded'?'Your savings buffer reached its first target.':s.game.evolution_stage==='Boss Slayer'?'You paid off a debt. Choose where the freed payment goes next.':'Build a savings buffer while steadily reducing debt.';
+  $('#evolutionCopy').textContent=stageLabel==='Debt and buffer targets reached'?'Your savings target is met and no active debt remains.':stageLabel==='Savings buffer reached'?'Your savings buffer reached its first target.':stageLabel==='Debt payoff milestone'?'You paid off a debt. Review the next step in your plan.':'Build a savings buffer while steadily reducing debt.';
   $('#debtBalance').textContent=money(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0));
   $('#debtInfo').textContent=activeDebts.length?`${activeDebts.length} active ${activeDebts.length===1?'debt':'debts'} · Highest rate ${Math.max(...activeDebts.map(d=>Number(d.apr||0))).toFixed(2)}% APR`:'No active debt yet. Add a debt below to start a payoff plan.';
   $('#stashBalance').textContent=money(s.stash.balance);
   $('#shieldInfo').textContent=`First buffer target: ${money(s.stash.shield_threshold)}`;
   $('#planStrategy').textContent=s.plan?.strategy?({avalanche:'Highest rate first',snowball:'Smallest balance first',hybrid:'Balanced approach'}[s.plan.strategy]||s.plan.strategy):'Not set';
   $('#planMeta').textContent=s.plan?.projection?`${s.plan.projection.months} months estimated`:'Add a debt to see a projection.';
-  const health=debt?Math.max(0,Math.min(100,(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)/(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)+(s.daily_drip*30*12||1)))*100)):0;
+  const totalDebt=activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0); const health=debt?Math.max(0,Math.min(100,(totalDebt/(totalDebt+(s.daily_drip*30*12||1)))*100)):0;
   $('#healthFill').style.width=health+'%';
   $('#stashFill').style.width=Math.min(100,s.stash.balance/Math.max(1,s.stash.shield_threshold)*100)+'%';
   $('#dripMsg').textContent=s.paused?'Practice steps are paused. Resume them in Settings to record a new step.':'This records practice progress only. It does not transfer money.';
   $('#approveDrip').disabled=s.paused||!activeDebts.length||!s.plan?.projection||Number(s.daily_drip)<=0;
   $('#planBtn').disabled=!activeDebts.length;$('#whatIfBtn').disabled=!s.plan?.projection;$$('.strategy').forEach(button=>button.disabled=!activeDebts.length);
   $('#approveDrip').textContent=s.paused?'Practice steps paused':!activeDebts.length?'Add a debt to begin':"Record today's step";
-  if(s.plan?.projection){const stash=s.daily_drip*s.plan.stash_pct/100;$('#stashShare').textContent=money(stash);$('#bossShare').textContent=money(s.daily_drip-stash);renderProjection(s.plan.projection);$('#attackOrder').textContent=`Repayment order: ${(s.plan.attack_order||[]).join(' → ')}`;}
+  if(s.plan?.projection){const stash=s.daily_drip*s.plan.stash_pct/100;$('#stashShare').textContent=money(stash);$('#bossShare').textContent=money(s.daily_drip-stash);renderProjection(s.plan.projection);$('#attackOrder').textContent=`Repayment order: ${(s.plan.attack_order||[]).join(', ')}`;}
   else{$('#stashShare').textContent='—';$('#bossShare').textContent='—';$('#projection').innerHTML='<p class="muted">Add a debt from Overview to see a payoff estimate.</p>';$('#attackOrder').textContent='Your strategy will appear after you add a debt.';}
-  renderDefeat(); renderNotifications(); renderAudit(); renderChart(); renderShop(); renderSquad(); renderStash();
+  renderDefeat(); renderAudit(); renderChart();
+  const gameStreak=$('#gameStreak'); if(gameStreak) gameStreak.textContent=`${Number(s.game.streak||0)} ${Number(s.game.streak||0)===1?'day':'days'}`;
+  const pointsGame=$('#pointsGame'); if(pointsGame) pointsGame.textContent=Number(s.game.points||0);
   $('#pauseTitle').textContent=s.paused?'Practice steps are paused':'Practice steps are active';
   $('#pauseHelp').textContent=s.paused?'Resume when you are ready to record new steps again.':'Pause stops new practice-step records and streak progress. It does not change a payment or move money.';
   $('#pauseBtn').textContent=s.paused?'Resume progress tracking':'Pause progress tracking';
 }
-function visualIcon(key){const paths={leaf:'<path d="M19 3C10 3 5 7 5 13c0 4 3 6 6 6 6 0 8-7 8-16Z"/><path d="M3 21 14 10"/>',acorn:'<path d="M8 8c-2 1-3 4-3 7 0 4 3 6 7 6s7-2 7-6c0-3-1-6-3-7"/><path d="M7 8h10l-1-3H8Z"/><path d="M12 5V2"/>',moon:'<path d="M19 15A8 8 0 0 1 9 5 8 8 0 1 0 19 15Z"/>',tree:'<path d="M12 2 5 11h4l-5 6h6v5h4v-5h6l-5-6h4Z"/>',spark:'<path d="m12 2 2.1 6.2L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-1.8Z"/>'};return `<svg class="line-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[key]||paths.spark}</svg>`}
-
 function renderProjection(p){$('#projection').innerHTML=`<div><span class="data-label">Debt-free</span><strong>${p.months} mo</strong><span class="muted">modeled</span></div><div><span class="data-label">Interest</span><strong>${money(p.interest_paid)}</strong><span class="muted">modeled</span></div><div><span class="data-label">Interest saved</span><strong>${money(p.interest_saved)}</strong><span class="muted">vs minimum-only</span></div>`}
 function renderDefeat(){const b=$('#defeatBanner');const p=STATE.pending_redirect;if(!p){b.classList.add('hidden');return}b.classList.remove('hidden');const others=(STATE.debts||[]).filter(d=>d.status==='active');b.innerHTML=`<strong>Debt paid off: ${escapeHtml(p.debt_name)}.</strong> The freed payment is ${money(p.freed_payment)}. Choose where it goes next. <div class="button-row" style="margin-top:10px"><button class="secondary" data-redirect="stash">Move to savings</button>${others.map(d=>`<button class="secondary" data-redirect="${d.id}">Next: ${escapeHtml(d.name)}</button>`).join('')}</div>`;b.querySelectorAll('[data-redirect]').forEach(btn=>btn.onclick=async()=>{try{await api('/api/debt/redirect',{method:'POST',body:JSON.stringify({destination:btn.dataset.redirect==='stash'?'stash':Number(btn.dataset.redirect)})});await load();toast('Freed payment redirected.')}catch(e){toast(e.message)}})}
 async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a debt from Overview to see an estimated payoff path.</text>';return}const W=640,H=220,P=30,max=Math.max(...r.minimum_only,1);const pts=a=>a.map((v,i)=>`${P+(W-2*P)*i/(a.length-1||1)},${H-P-(H-2*P)*v/max}`).join(' ');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-P}"/><line class="chart-grid" x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}"/><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P}" y="15">Chosen strategy</text><text class="chart-label" x="${W-155}" y="15">Minimum payment</text>`}catch{}}
+async function renderNotifications(){
+  try{
+    const result=await api('/api/notifications');
+    const settings=result.settings||{};
+    const start=$('#notifStart'), end=$('#notifEnd'), cap=$('#notifCap'), channel=$('#notifChannel');
+    if(start) start.value=settings.quiet_start||STATE?.profile?.quiet_start||'22:00';
+    if(end) end.value=settings.quiet_end||STATE?.profile?.quiet_end||'08:00';
+    if(cap) cap.value=String(settings.daily_cap??STATE?.profile?.notification_cap??3);
+    if(channel) channel.value=settings.channel||STATE?.profile?.notification_channel||'in_app';
+    const copy=$('#stressCopy'), detail=$('#stressDetail');
+    if(copy) copy.textContent=result.stress_mode?'Gentler check-ins are active':'Standard check-ins are active';
+    if(detail) detail.textContent=result.stress_mode?'Glim has reduced the pressure of prompts based on your recent responses. You can continue at your own pace.':'Glim will use your selected quiet hours and reminder limit for in-app check-ins.';
+    const items=Array.isArray(result.items)?result.items:[];
+    $('#inbox').innerHTML=items.length?items.map(item=>`<article class="inbox-item"><div class="notification-item-head"><strong>${escapeHtml(item.message||'Glim reminder')}</strong><time datetime="${escapeHtml(item.created_at||'')}">${item.created_at?new Date(item.created_at).toLocaleString():''}</time></div>${item.response?`<p class="muted">Your response: ${escapeHtml(({acted:'I took a step',opened:'I read this',snoozed:'Remind me later',dismissed:'Dismissed',muted:'Fewer check-ins'}[item.response]||item.response))}</p>`:''}</article>`).join(''):'<div class="notification-empty"><strong>No reminders yet</strong><p class="muted">Choose “Get a check-in” in Coach to create a reminder. Your recent reminders and responses will appear here.</p></div>';
+  }catch(error){
+    const inbox=$('#inbox');
+    if(inbox) inbox.innerHTML=`<p class="muted">Notifications could not be loaded: ${escapeHtml(error.message||'Please try again.')}</p>`;
+  }
+}
+
 async function renderAudit(){
   try{
     const rows=await api('/api/audit');
@@ -79,24 +99,23 @@ async function renderAudit(){
     $('#auditList').innerHTML=rows.length?rows.map(r=>{
       const key=String(r.input_ref||'').replaceAll('_',' ');
       const title=names[r.input_ref]||key.replace(/^./,c=>c.toUpperCase())||'Plan update';
-      const rationaleByAction={build_plan:'Recalculated the estimate from your balances, interest rates and selected strategy.',persona_seed:'Loaded example figures that you can review and edit before saving.',seeded_activity_review:'Reviewed the illustrative activity supplied with your example starting point.',debt_created:'Added the debt details you entered to your plan.',what_if:'Compared a possible change against the current payoff estimate.',local_drip_recorded:'Recorded this practice step in your browser. It did not move money.',pause:'Paused new practice steps and streak tracking.',resume:'Allowed practice steps to be recorded again.',coach_chat:'Answered using your plan and built-in guidance.',nudge_response:'Saved your response so future check-ins can be adjusted.',stash_goal_created:'Created a savings goal.',monthly_deposit_preference:'Saved the monthly target as a reminder only; no transfer is scheduled.',lesson_complete:'Recorded the lesson completion and its points.',streak_freeze:'Used a monthly streak allowance without resetting your progress.'};
+      const rationaleByAction={build_plan:'Recalculated the estimate from your balances, interest rates and selected strategy.',persona_seed:'Loaded sample numbers for review; edit them before saving your plan.',seeded_activity_review:'Reviewed the illustrative activity supplied with your example starting point.',debt_created:'Added the debt details you entered to your plan.',what_if:'Compared a possible change against the current payoff estimate.',local_drip_recorded:'Recorded this practice step in your browser. It did not move money.',pause:'Paused new practice steps and streak tracking.',resume:'Allowed practice steps to be recorded again.',coach_chat:'Answered using your plan and built-in guidance.',nudge_response:'Saved your response so future check-ins can be adjusted.',stash_goal_created:'Created a savings goal.',monthly_deposit_preference:'Saved the monthly target as a reminder only; no transfer is scheduled.',lesson_complete:'Recorded the lesson completion and its points.',streak_freeze:'Used a monthly streak allowance without resetting your progress.'};
       const rationale=rationaleByAction[r.input_ref]||r.rationale||'This action was recorded from your choice in Glim.';
       const outcome=describeResult(r.result);
       return `<article class="audit-entry"><div class="audit-entry-head"><strong>${escapeHtml(title)}</strong><span>${new Date(r.created_at).toLocaleString()}</span></div><p>${escapeHtml(rationale)}</p>${outcome?`<p class="audit-outcome">${escapeHtml(outcome)}</p>`:''}</article>`;
     }).join(''):'<p class="muted">No activity recorded yet. Changes to your plan and practice progress will appear here with an explanation.</p>';
   }catch{}
 }
-async function renderShop(){try{const x=await api('/api/cosmetics');$('#shop').innerHTML=x.items.map(i=>`<article class="shop-item"><div class="shop-icon">${visualIcon(i.id===1?'leaf':i.id===2?'acorn':'moon')}</div><strong>${escapeHtml(i.name)}</strong><p class="muted">${escapeHtml(i.description)}</p><span class="price">${i.owned?'Unlocked':i.cost+' points'}</span>${i.owned?'<span class="owned-label">In your collection</span>':` <button class="secondary" data-buy="${i.id}" type="button">Unlock</button>`}</article>`).join('');$$('[data-buy]').forEach(b=>b.onclick=async()=>{try{await api(`/api/cosmetics/${b.dataset.buy}/buy`,{method:'POST'});await load();toast('Reward unlocked.')}catch(e){toast(e.message)}})}catch{}}
-async function renderSquad(){try{const x=await api('/api/squads');const s=x.squad;if(!s){$('#squadInfo').innerHTML='<p class="muted">No squad yet. Create a group name to start a consistency challenge.</p>';$('#leaderboard').innerHTML='<p class="muted">Your progress board will appear after you create a squad.</p>';$('#cheerFeed').innerHTML='';$('#squadGoals').innerHTML='<p class="muted">Create a squad to set a goal.</p>';$('#squadRewards').innerHTML='';return}$('#squadInfo').innerHTML=`<div class="callout"><strong>${escapeHtml(s.name)}</strong><p class="muted">Saved in this browser. Other people cannot join across devices in this version.</p></div>`;$('#leaderboard').innerHTML=`<div class="leader-row"><strong>Your progress</strong><span>${Number(STATE?.game?.streak||0)}-day streak · ${Number(STATE?.game?.level||1)} level</span></div>`;$('#cheerFeed').innerHTML='<p class="muted">Group sharing is not enabled in this version, so this challenge is for your own tracking.</p>'; $('#squadGoals').innerHTML=x.goals?.length?x.goals.map(g=>{const pct=Math.min(100,Number(g.progress_count)/Math.max(1,Number(g.target_count))*100);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.title)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${g.progress_count} / ${g.target_count}</strong><span class="muted">practice days</span></div><div class="progressbar"><span style="width:${pct}%"></span></div><div class="goal-foot"><span>Reward: ${escapeHtml(g.reward_name)}</span><span>${pct.toFixed(0)}% complete</span></div></article>`}).join(''):'<p class="muted">No goal created yet.</p>';$('#squadRewards').innerHTML=x.unlocked_cosmetics?.length?`<h3>Unlocked group rewards</h3><div class="reward-list">${x.unlocked_cosmetics.map(r=>`<span class="reward-chip">${visualIcon(r.cosmetic_id===1?'leaf':r.cosmetic_id===2?'acorn':'moon')} ${escapeHtml(r.name)}</span>`).join('')}</div>`:''}catch(e){console.error(e)}}
+async function renderSquad(){try{const x=await api('/api/squads');const s=x.squad;if(!s){$('#squadInfo').innerHTML='<p class="muted">No squad yet. Create a group name to start a consistency challenge.</p>';$('#leaderboard').innerHTML='<p class="muted">Your progress board will appear after you create a squad.</p>';$('#cheerFeed').innerHTML='';$('#squadGoals').innerHTML='<p class="muted">Create a squad to set a goal.</p>';$('#squadRewards').innerHTML='';return}$('#squadInfo').innerHTML=`<div class="callout"><strong>${escapeHtml(s.name)}</strong><p class="muted">Saved in this browser. Other people cannot join across devices in this version.</p></div>`;$('#leaderboard').innerHTML=`<div class="leader-row"><strong>Your progress</strong><span>${Number(STATE?.game?.streak||0)}-day streak · ${Number(STATE?.game?.level||1)} level</span></div>`;$('#cheerFeed').innerHTML='<p class="muted">Group sharing is not enabled in this version, so this challenge is for your own tracking.</p>'; $('#squadGoals').innerHTML=x.goals?.length?x.goals.map(g=>{const pct=Math.min(100,Number(g.progress_count)/Math.max(1,Number(g.target_count))*100);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.title)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${g.progress_count} / ${g.target_count}</strong><span class="muted">practice days</span></div><div class="progressbar"><span style="width:${pct}%"></span></div><div class="goal-foot"><span>Reward: ${escapeHtml(g.reward_name)}</span><span>${pct.toFixed(0)}% complete</span></div></article>`}).join(''):'<p class="muted">No goal created yet.</p>';$('#squadRewards').innerHTML=x.unlocked_cosmetics?.length?`<h3>Milestones reached</h3><div class="reward-list">${x.unlocked_cosmetics.map(r=>`<span class="reward-chip">${escapeHtml(r.name)}</span>`).join('')}</div>`:''}catch(e){console.error(e)}}
 async function renderStash(){
   try{
     const [x,deposit]=await Promise.all([api('/api/stash/goals'),api('/api/stash/auto-deposit')]);
     const balance=Number(x.stash_balance||0);const level=balance<100?'Getting started':balance<350?'Early growth':balance<800?'Growing':'Established';
     const target=Math.max(1,Number(STATE?.stash?.shield_threshold||500));
     const pct=Math.max(0,Math.min(100,balance/target*100));
-    $('#forestLevel').textContent=pct>=100?'Target reached':pct>=50?'Halfway there':balance>0?'Getting started':'Not started';
-    $('#forestSummary').textContent=`${money(balance)} recorded toward your savings buffer`;
-    $('#forestProgress').textContent=`${pct.toFixed(0)}% of ${money(target)} target`;
+    $('#bufferStatus').textContent=pct>=100?'Target reached':pct>=50?'More than halfway':balance>0?'In progress':'Not started';
+    $('#bufferSummary').textContent=`${money(balance)} recorded toward your savings buffer`;
+    $('#bufferProgressText').textContent=`${pct.toFixed(0)}% of ${money(target)} target`;
     const fill=$('#bufferFill'); if(fill) fill.style.width=pct+'%';
     $('#stashGoals').innerHTML=x.goals.length?x.goals.map(g=>{const pct=Math.min(100,Number(g.saved_amount)/Math.max(1,Number(g.target_amount))*100);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.name)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(g.saved_amount)}</strong><span class="muted">of ${money(g.target_amount)}</span></div><div class="progressbar"><span style="width:${pct}%"></span></div><div class="goal-foot"><span>${pct.toFixed(0)}% funded</span><span>${Number(g.monthly_target)>0?money(g.monthly_target)+'/mo target':'No monthly target'}</span></div></article>`}).join(''):'<p class="muted">No named goals yet. Add one and future Stash contributions will be earmarked in the order shown here.</p>';
     $('#monthlyDepositEnabled').checked=!!deposit.enabled;$('#monthlyDepositAmount').value=Number(deposit.amount||0).toFixed(2);$('#monthlyDepositDay').value=deposit.due_day||1;
@@ -120,16 +139,17 @@ async function load(){
     const me=await api('/api/auth/me');
     if(!me.authenticated){STATE=null;show('authView');$('#logoutBtn').classList.add('hidden');return}
     STATE=await api('/api/state');
-    if(!STATE.profile||!STATE.profile.name){show('setupView');return}
+    if(!STATE.profile||!(Number(STATE.profile.monthly_income)>0)){show('setupView');return}
     show('dashboardView');
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
-    await Promise.all([runScout(false), renderNotifications(), renderShop(), renderSquad(), renderStash()]);render();
+    await Promise.all([runScout(false), renderNotifications(), renderSquad(), renderStash()]);render();
+    try { if (!localStorage.getItem(WALKTHROUGH_SEEN_KEY)) openWalkthrough(); } catch {}
   }catch(e){show('authView');toast(e.message)}
 }
 
-async function seed(key){try{STATE=await api('/api/personas/'+key,{method:'POST'});show('onboardingView');$('#pPersona').value=key;$('#pName').value='My plan';$('#pIncome').value=STATE.profile.monthly_income;$('#pRange').value=STATE.profile.income_range;$('#pPct').value=STATE.profile.savings_pct;$('#pctOut').value=STATE.profile.savings_pct+'%';$('#pFloor').value=STATE.profile.floor_balance;$('#pCap').value=STATE.profile.weekly_cap;$('#pApproval').value='each';$('#pQuietStart').value=STATE.profile.quiet_start||'22:00';$('#pQuietEnd').value=STATE.profile.quiet_end||'08:00';toast('Starting figures loaded. Review or change them before saving.')}catch(e){toast(e.message)}}
+async function seed(key){try{STATE=await api('/api/personas/'+key,{method:'POST'});show('onboardingView');$('#pPersona').value=key;$('#pName').value='My plan';$('#pIncome').value=STATE.profile.monthly_income;$('#pRange').value=STATE.profile.income_range;$('#pPct').value=STATE.profile.savings_pct;$('#pctOut').value=STATE.profile.savings_pct+'%';$('#pFloor').value=STATE.profile.floor_balance;$('#pCap').value=STATE.profile.weekly_cap;$('#pApproval').value='each';$('#pQuietStart').value=STATE.profile.quiet_start||'22:00';$('#pQuietEnd').value=STATE.profile.quiet_end||'08:00';toast('Example numbers loaded. Review and edit them before saving your plan.')}catch(e){toast(e.message)}}
 async function startCustomPlan(){try{STATE=await api('/api/state');show('onboardingView');$('#profileForm').reset();$('#pPersona').value='custom';$('#pName').value=STATE.profile?.name&&!['Riley','Sam'].includes(STATE.profile.name)?STATE.profile.name:'My plan';$('#pIncome').value='';$('#pRange').value='';$('#pPct').value='5';$('#pctOut').value='5%';$('#pCap').value='60';$('#pFloor').value='0';$('#pApproval').value='each';$('#pQuietStart').value='22:00';$('#pQuietEnd').value='08:00';$('#pChannel').value='in_app'}catch(e){toast(e.message)}}
-async function runScout(showToast=true){const r=await api('/api/scout',{method:'POST'});const rows=[];if(r.subscriptions?.length){rows.push(...r.subscriptions.map(x=>`<div class="finding"><div><strong>${escapeHtml(x.merchant)}</strong><span>${escapeHtml(x.signal||'Example recurring payment')}</span></div><b>${money(x.monthly)}/month</b></div>`))}else{rows.push('<p class="muted">No recurring expenses were identified in this example. You can still add your debts below and build a payoff plan.</p>')}if(r.safe_to_move_daily>0)rows.unshift(`<div class="finding"><div><strong>Estimated available amount</strong><span>Calculated from the example income, expenses and safety floor.</span></div><b>${money(r.safe_to_move_daily)}/day</b></div>`);$('#scoutResults').innerHTML=rows.join('');if(showToast)toast('Spending patterns refreshed.')}
+async function runScout(showToast=true){const r=await api('/api/scout',{method:'POST'});const rows=[];if(r.subscriptions?.length){rows.push(...r.subscriptions.map(x=>{const rawSignal=String(x.signal||'');const signal=/seeded|paypal|sandbox/i.test(rawSignal)?'Illustrative recurring expense':rawSignal;return `<div class="finding"><div><strong>${escapeHtml(x.merchant)}</strong><span>${escapeHtml(signal||'Illustrative recurring expense')}</span></div><b>${money(x.monthly)}/month</b></div>`}))}else{rows.push('<p class="muted">No recurring costs are available to review yet. You can still add your debts below and build a payoff estimate.</p>')}if(r.safe_to_move_daily>0)rows.unshift(`<div class="finding"><div><strong>Estimated available amount</strong><span>Calculated from your income, expense estimate and chosen safety floor.</span></div><b>${money(r.safe_to_move_daily)}/day</b></div>`);$('#scoutResults').innerHTML=rows.join('');if(showToast)toast('Spending patterns refreshed.')}
 async function buildPlan(){if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt from Overview before building a payoff plan.');return}try{STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})});render();toast('Plan recalculated.')}catch(e){toast(e.message)}}
 
 function focusSignIn(){const email=$('#authEmail');email.focus({preventScroll:true});email.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
@@ -148,7 +168,7 @@ $('#whatIfBtn').addEventListener('click',async()=>{if(!STATE?.plan?.projection){
 $('#approveDrip').addEventListener('click',async()=>{try{const r=await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast(`Practice step recorded: ${money(r.amount)} in your plan. No money moved.`);await load()}catch(e){toast(e.message)}});
 $('#freezeBtn').addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Streak freeze used.')}catch(e){toast(e.message)}});
 $('#pauseBtn').addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
-$$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
+$$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';if(input.value.trim()) $('#chatForm').requestSubmit()}));
 $('#chatForm').addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>${escapeHtml(r.agent||'Glim')}</strong><br>${escapeHtml(r.message)}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast(e.message)}});
 $('#nudgeBtn').addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=lastNudge.message;$('#nudgeWhy').textContent=lastNudge.why||'Why will appear here.';await renderNotifications()}catch(e){toast(e.message)}});
 $$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
@@ -169,9 +189,30 @@ $$('.persona-card').forEach(b=>b.addEventListener('click',()=>seed(b.dataset.per
 $('#fontSmallBtn')?.addEventListener('click',()=>setTextSize('small'));$('#fontMediumBtn')?.addEventListener('click',()=>setTextSize('medium'));$('#fontLargeBtn')?.addEventListener('click',()=>setTextSize('large'));
 $('#fontSmallSetting')?.addEventListener('click',()=>setTextSize('small'));$('#fontMediumSetting')?.addEventListener('click',()=>setTextSize('medium'));$('#fontLargeSetting')?.addEventListener('click',()=>setTextSize('large'));
 syncDisplayControls();syncThemeControls();
+
+const WALKTHROUGH_STEPS = [
+  {tab:'overview',title:'Overview: your starting point',copy:'Review the savings buffer, total debt, repayment estimate and the next action. Add your debts here so the estimates use your own balances and interest rates.'},
+  {tab:'savings',title:'Savings: build a buffer and set goals',copy:'Track your emergency reserve, name savings goals, set monthly planning targets and review a monthly recap. These entries are planning records only; no transfer is scheduled.'},
+  {tab:'plan',title:'Debt plan: compare payoff methods',copy:'Compare Avalanche (highest interest first), Snowball (smallest balance first) and Hybrid. Estimates depend on the balances, rates and payments you entered.'},
+  {tab:'coach',title:'Coach: get an explanation',copy:'Choose a suggested question or type your own. The current version uses built-in guidance based on the plan; it is not a live AI chat. Check-ins let you set the tone and frequency of reminders.'},
+  {tab:'game',title:'Habits and milestones: track consistency',copy:'A practice step is an in-app check-in, not a transfer. Streaks and points measure use of the plan and never represent cash, credit score or payment status.'},
+  {tab:'squad',title:'Squad: a personal challenge',copy:'Create a named consistency challenge and set a target number of practice days. In this browser-only version it is not a live group: other people cannot join or sync.'},
+  {tab:'learn',title:'Learn: short applied lessons',copy:'Open a lesson to review a money concept and answer a question. The content is educational and does not replace professional financial advice.'},
+  {tab:'settings',title:'Settings: preferences and privacy',copy:'Adjust text size, appearance, practice tracking and notifications. Export your browser data or delete the local profile here. Browser push is not configured; in-app reminders are the available option.'}
+];
+let walkthroughIndex=0;
+function openWalkthrough(){walkthroughIndex=0;showWalkthroughStep();const d=$('#walkthroughDialog');if(d&&!d.open)d.showModal();}
+function showWalkthroughStep(){const s=WALKTHROUGH_STEPS[walkthroughIndex];$$('.tab').forEach(x=>{const selected=x.dataset.tab===s.tab;x.classList.toggle('active',selected);x.setAttribute('aria-selected',String(selected));});$$('.tab-panel').forEach(x=>x.classList.toggle('hidden',x.id!=='tab-'+s.tab));$('#walkthroughStep').textContent=`Step ${walkthroughIndex+1} of ${WALKTHROUGH_STEPS.length}`;$('#walkthroughTitle').textContent=s.title;$('#walkthroughCopy').textContent=s.copy;$('#walkthroughProgressFill').style.width=`${(walkthroughIndex+1)/WALKTHROUGH_STEPS.length*100}%`;$('#walkthroughBack').disabled=walkthroughIndex===0;$('#walkthroughNext').textContent=walkthroughIndex===WALKTHROUGH_STEPS.length-1?'Finish':'Next';}
+function finishWalkthrough(){const d=$('#walkthroughDialog');if(d?.open)d.close();try{localStorage.setItem(WALKTHROUGH_SEEN_KEY,'true')}catch{}}
+$('#walkthroughBtn')?.addEventListener('click',openWalkthrough);
+$('#walkthroughSettingsBtn')?.addEventListener('click',openWalkthrough);
+$('#walkthroughClose')?.addEventListener('click',finishWalkthrough);
+$('#walkthroughBack')?.addEventListener('click',()=>{if(walkthroughIndex>0){walkthroughIndex--;showWalkthroughStep();}});
+$('#walkthroughNext')?.addEventListener('click',()=>{if(walkthroughIndex<WALKTHROUGH_STEPS.length-1){walkthroughIndex++;showWalkthroughStep();}else finishWalkthrough();});
+$('#walkthroughDialog')?.addEventListener('close',()=>{try{localStorage.setItem(WALKTHROUGH_SEEN_KEY,'true')}catch{}});
+
 $('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;show('authView');toast('Signed out.')}catch(e){toast(e.message)}});
-$('#pushEnableBtn').addEventListener('click',async()=>{try{if(window.GlimStorage.mode==='localStorage')throw new Error('Browser push notifications are not configured in this prototype.');if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error('Web push is not configured. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY on the server.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Web push enabled.')}catch(e){toast(e.message)}});
-function urlBase64ToUint8Array(base64){const pad='='.repeat((4-base64.length%4)%4);const raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
+// Browser push is intentionally not exposed until a server-side delivery service exists.
 
 $('#recapMonth').value=new Date().toISOString().slice(0,7);
 load();

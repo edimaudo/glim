@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#4c60eb"/>
 <title>Glim — one plan for savings and debt</title>
 <link rel="manifest" href="/static/manifest.json"/>
-<link rel="stylesheet" href="/static/styles.css?v=20261012ux1"/>
+<link rel="stylesheet" href="/static/styles.css?v=20261013ux4"/>
 </head>
 <body>
 <header class="topbar">
@@ -41,7 +41,7 @@
     </div>
     <aside class="landing-signin" aria-labelledby="signInHeading">
       <h2 id="signInHeading">Start with your goals</h2>
-      <p>Enter your email to start a personal planning session.</p>
+      <p>Enter your email to start your plan on this device. No email is sent in this version.</p>
       <form id="authForm" class="auth-form">
         <label for="authEmail">Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required/></label>
         <button class="primary" type="submit">Continue</button>
@@ -79,8 +79,8 @@
     <p class="lede">Choose a starting point, or enter your own figures. You can review and change every value before saving.</p>
   </div>
   <div class="persona-grid">
-    <button type="button" class="persona-card" data-persona="riley"><strong>Credit-card payoff example</strong><span>An illustrative credit-card balance and a savings buffer goal.</span><span class="persona-action">Use example <span aria-hidden="true">→</span></span></button>
-    <button type="button" class="persona-card" data-persona="sam"><strong>Loan and savings example</strong><span>An illustrative loan, credit card and starter savings goal.</span><span class="persona-action">Use example <span aria-hidden="true">→</span></span></button>
+    <button type="button" class="persona-card" data-persona="riley"><strong>Credit-card payoff example</strong><span>An illustrative credit-card balance and a savings buffer goal.</span><span class="persona-action">Use example</span></button>
+    <button type="button" class="persona-card" data-persona="sam"><strong>Loan and savings example</strong><span>An illustrative loan, credit card and starter savings goal.</span><span class="persona-action">Use example</span></button>
   </div>
   <div class="setup-custom"><div><strong>Start with your own numbers</strong><p class="muted">Add your income, guardrails and debt details yourself.</p></div><button type="button" class="primary" id="customPlanBtn">Build my own plan</button></div>
   <p class="demo-note setup-note">Example figures are illustrative. You can edit them before saving your plan.</p>
@@ -98,7 +98,7 @@
       <label>Minimum balance to keep (CAD)<input id="pFloor" type="number" min="0" step="0.01" placeholder="500" required/></label>
       <label>Quiet hours start<input id="pQuietStart" value="22:00" type="time"/></label>
       <label>Quiet hours end<input id="pQuietEnd" value="08:00" type="time"/></label>
-      <label>Notification channel<select id="pChannel"><option value="in_app">In-app notifications</option><option value="web_push" disabled>Browser notifications (unavailable)</option></select></label>
+      <label>Notification channel<select id="pChannel"><option value="in_app">In-app only</option></select></label>
       <input type="hidden" id="pPersona" value="custom"/>
       <button class="primary" type="submit">Save my plan</button>
     </form>
@@ -108,7 +108,7 @@
 
 <section id="dashboardView" class="view hidden">
   <div class="dashboard-head">
-    <div><h1>Build your buffer. Reduce your debt.</h1><p class="lede" id="coachLine">A clear view of your savings buffer, debt and next step.</p></div>
+    <div><h1>Build your buffer. Reduce your debt.</h1><p class="lede" id="coachLine">A clear view of your savings buffer, debt and next step.</p></div><button type="button" class="secondary walkthrough-launch" id="walkthroughBtn">Walk me through Glim</button>
   </div>
 
     <nav class="tabs" role="tablist" aria-label="Glim sections">
@@ -117,7 +117,7 @@
     <button class="tab" data-tab="plan" role="tab" aria-selected="false"><strong>Debt plan</strong><small>Strategies and estimates</small></button>
     <button class="tab" data-tab="coach" role="tab" aria-selected="false"><strong>Coach</strong><small>Ask questions and get plan guidance</small></button>
     <button class="tab" data-tab="game" role="tab" aria-selected="false"><strong>Habits & rewards</strong><small>Track routines and earn in-app rewards</small></button>
-    <button class="tab" data-tab="squad" role="tab" aria-selected="false"><strong>Squad</strong><small>Set shared goals in this browser</small></button>
+    <button class="tab" data-tab="squad" role="tab" aria-selected="false"><strong>Challenges</strong><small>Personal consistency goals</small></button>
     <button class="tab" data-tab="learn" role="tab" aria-selected="false"><strong>Learn</strong><small>Understand debt, interest and savings</small></button>
     <button class="tab" data-tab="settings" role="tab" aria-selected="false"><strong>Settings</strong><small>Preferences and data</small></button>
   </nav>
@@ -136,8 +136,8 @@
       <article class="card stat"><span class="data-label">Payoff strategy</span><strong id="planStrategy">Not set</strong><small id="planMeta">Add debt to see a projection.</small></article>
     </div>
     <div class="overview-lower">
-      <section class="card section-card"><div class="section-head"><div><h2>Spending patterns to review</h2><p class="muted">Illustrative recurring expenses that may be worth reviewing. These are not connected to your bank or verified transactions.</p></div><button class="secondary" id="scanBtn" type="button">Refresh spending patterns</button></div><div id="scoutResults" class="stack"></div></section>
-      <section class="card section-card"><div class="section-head"><div><h2>Your debts</h2><p class="muted">Add each credit card or loan here. These details power the payoff estimates and repayment order.</p></div></div><form id="debtForm" class="compact-form">
+      <section class="card section-card"><div class="section-head"><div><h2>Recurring costs to review</h2><p class="muted">Recurring charges appear here only when the selected starting point includes illustrative activity. Glim does not import bank transactions in this version.</p></div><button class="secondary" id="scanBtn" type="button">Refresh review</button></div><div id="scoutResults" class="stack"></div></section>
+      <section class="card section-card"><div class="section-head"><div><h2>Add a debt to your plan</h2><p class="muted">Enter one credit card or loan at a time. Glim uses the balance, interest rate and minimum payment to estimate repayment.</p></div></div><form id="debtForm" class="compact-form">
         <label>Debt name<input id="dName" placeholder="e.g. Main credit card" autocomplete="off" required/></label>
         <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select></label>
         <label>Current balance (CAD)<input id="dBalance" type="number" min="1" step="0.01" placeholder="3500" required/></label>
@@ -151,8 +151,8 @@
   <section id="tab-savings" class="tab-panel hidden">
     <div class="panel-intro"><h2>Savings</h2><p>Track your emergency buffer, create named savings goals and set a monthly target. Targets are for planning only; Glim does not transfer money.</p></div>
     <section class="card section-card">
-      <div class="section-head"><div><h2>Emergency savings buffer</h2><p class="muted">Track the amount you have recorded toward your first safety target.</p></div><span class="badge" id="forestLevel">Getting started</span></div>
-      <div class="buffer-progress" role="group" aria-label="Savings buffer progress"><div class="progressbar"><span id="bufferFill" style="width:0%"></span></div><div class="buffer-progress-meta"><strong id="forestSummary">Your savings buffer starts here.</strong><span id="forestProgress" class="muted"></span></div></div>
+      <div class="section-head"><div><h2>Emergency savings buffer</h2><p class="muted">Track progress toward the minimum reserve you want to keep available for unexpected costs.</p></div><span class="badge" id="bufferStatus">Not started</span></div>
+      <div class="buffer-progress" role="group" aria-label="Savings buffer progress"><div class="progressbar"><span id="bufferFill" style="width:0%"></span></div><div class="buffer-progress-meta"><strong id="bufferSummary">Your savings buffer starts here.</strong><span id="bufferProgressText" class="muted"></span></div></div>
     </section>
     <section class="card section-card">
       <div class="section-head"><div><h2>Savings goals</h2><p class="muted">Create a target, set the amount you want to reach, and track progress over time.</p></div></div>
@@ -191,27 +191,31 @@
     <div class="two-col">
       <section class="card section-card"><div class="section-head"><div><h2>Ask Glim</h2><p class="muted">Choose a question to get a useful explanation, or type your own question.</p></div></div>
         <div class="question-suggestions" aria-label="Suggested questions"><button type="button" class="question-suggestion" data-question="What is my safety floor?">What is my safety floor?</button><button type="button" class="question-suggestion" data-question="How does the avalanche strategy work?">How does avalanche work?</button><button type="button" class="question-suggestion" data-question="Why do you suggest a daily step?">Why a daily step?</button></div><form id="chatForm" class="chat-form"><div id="chatWindow" class="chat-window" aria-live="polite"><div class="bubble">Hello. Ask me about your plan or try one of the examples above.</div></div><div class="input-row"><input id="chatInput" aria-label="Ask Glim a question" placeholder="Type your question…" required/><button class="primary" id="chatBtn" type="submit">Ask Glim</button></div></form>
-        <p class="muted guidance-note">Answers in this prototype use built-in guidance and your saved plan; they are not generated by a live AI service.</p>
+        <p class="muted guidance-note">Glim uses built-in explanations and your saved plan to answer. A live AI service is not connected in this version.</p>
       </section>
       <section class="card section-card"><div class="section-head"><div><h2>Check-in</h2><p class="muted">Choose a response to help Glim adjust the tone and frequency of future prompts.</p></div><button class="secondary" id="nudgeBtn" type="button">Get a check-in</button></div><div class="nudge-card"><strong id="nudgeText">No check-in yet.</strong><p id="nudgeWhy" class="muted">Glim will explain why each check-in was selected.</p><div class="button-row"><button class="secondary nudge-action" data-response="acted" type="button">I took a step</button><button class="secondary nudge-action" data-response="opened" type="button">I read this</button><button class="secondary nudge-action" data-response="snoozed" type="button">Remind me later</button><button class="secondary nudge-action" data-response="dismissed" type="button">Dismiss</button><button class="secondary nudge-action" data-response="muted" type="button">Fewer check-ins</button></div></div><div class="notice"><strong id="stressCopy">Check-in settings</strong><span id="stressDetail">Glim adjusts message tone based on your responses.</span></div></section>
     </div>
   </section>
 
   <section id="tab-game" class="tab-panel hidden">
-    <div class="panel-intro"><h2>Habits and rewards</h2><p>Track how regularly you follow your plan. Points unlock visual themes only; they have no cash value and do not affect your financial estimates.</p></div>
-    <div class="two-col">
-      <section class="card section-card"><div class="section-head"><div><h2>Your habits</h2><p class="muted">A streak counts consecutive days with a recorded practice step. One monthly freeze can protect a streak when you miss a day.</p></div></div>
-        <div class="game-grid"><div><span class="metric-label">Streak protection</span><strong id="freezes">1</strong><small>Protect your current streak once per month if you miss a day.</small><button class="secondary" id="freezeBtn" type="button">Use streak protection</button></div><div><span class="metric-label">Level</span><strong id="level">1</strong><small>Progress unlocks levels.</small></div><div><span class="metric-label">Current stage</span><strong id="stage">Building momentum</strong><small>Stages follow savings and debt milestones.</small></div></div>
-      </section>
-      <section class="card section-card"><div class="section-head"><div><h2>Visual themes</h2><p class="muted">Use habit points to unlock alternate app themes. These rewards have no monetary value.</p></div></div><div id="shop" class="shop-grid"></div></section>
-    </div>
+    <div class="panel-intro"><h2>Habits and milestones</h2><p>This section tracks consistency, not spending. A practice step is simply a check-in that you reviewed your plan. It does not move money or change a lender balance.</p></div>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Your progress</h2><p class="muted">Use these measures to see whether you are returning to your plan regularly. Missing a day is not a financial setback.</p></div></div>
+      <div class="game-grid">
+        <div><span class="metric-label">Current streak</span><strong id="gameStreak">0 days</strong><small>Consecutive days with a recorded practice step.</small></div>
+        <div><span class="metric-label">Plan points</span><strong id="pointsGame">0</strong><small>Points reflect app activity only. They are not dollars or a credit score.</small></div>
+        <div><span class="metric-label">Milestone</span><strong id="stage">Getting started</strong><small>Milestones reflect progress toward your savings buffer and debt payoff.</small></div>
+      </div>
+      <div class="practice-protection"><div><strong>Missed a day?</strong><p class="muted">You have <strong id="freezes">1</strong> monthly streak protection. Use it only if you want to preserve the streak counter; your savings and debt figures do not change.</p></div><button class="secondary" id="freezeBtn" type="button">Use streak protection</button></div>
+    </section>
+    <section class="card section-card"><div class="section-head"><div><h2>How progress works</h2><p class="muted">A practice step is recorded when you choose “Record today’s progress” on Overview. Glim updates the local activity history and habit measures. No payment, transfer or lender update happens.</p></div></div></section>
   </section>
 
   <section id="tab-squad" class="tab-panel hidden">
-    <div class="panel-intro"><h2>Make progress together</h2><p>Create a personal group label and track a consistency challenge. This version stores the group in this browser; it does not support invitations or syncing with other people.</p></div>
-    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Group name</h2><p class="muted">Give your personal consistency challenge a name.</p></div></div><div id="squadInfo"></div><form id="createSquadForm" class="form-inline"><label class="fill-label">Squad name<input id="squadName" placeholder="e.g. Weekend momentum" maxlength="50" required/></label><button class="primary" id="createSquadBtn" type="submit">Create squad</button></form></section>
+    <div class="panel-intro"><h2>Personal consistency challenges</h2><p>Give your own practice goal a name, choose a target and track your progress. Group invitations and cross-device sharing are not available in this version.</p></div>
+    <div class="two-col"><section class="card section-card"><div class="section-head"><div><h2>Challenge name</h2><p class="muted">Choose a label for the habit you want to build.</p></div></div><div id="squadInfo"></div><form id="createSquadForm" class="form-inline"><label class="fill-label">Challenge name<input id="squadName" placeholder="e.g. 12 consistent days" maxlength="50" required/></label><button class="primary" id="createSquadBtn" type="submit">Create challenge</button></form></section>
       <section class="card section-card"><div class="section-head"><div><h2>Your consistency</h2><p class="muted">Review your own streak and challenge progress. This is not a shared leaderboard.</p></div></div><div id="leaderboard" class="leaderboard"></div><div id="cheerFeed" class="cheer-feed"></div></section></div>
-    <section class="card section-card"><div class="section-head"><div><h2>Consistency goal</h2><p class="muted">Choose a number of practice days to work toward. Each recorded practice day advances the goal.</p></div></div><form id="squadGoalForm" class="goal-form squad-goal-form"><label>Goal name<input id="squadGoalTitle" maxlength="80" placeholder="12 consistency days" required/></label><label>Target days<input id="squadGoalTarget" type="number" min="1" max="1000" value="12" required/></label><label>Completion theme<select id="squadGoalReward"><option value="1">Green trail</option><option value="2">Milestone badge</option><option value="3">Night sky</option></select></label><button class="primary" type="submit">Create goal</button></form><div id="squadGoals" class="squad-goals"></div><div id="squadRewards" class="squad-rewards"></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Consistency goal</h2><p class="muted">Choose a number of practice days to work toward. Each recorded practice day advances the goal.</p></div></div><form id="squadGoalForm" class="goal-form squad-goal-form"><label>Goal name<input id="squadGoalTitle" maxlength="80" placeholder="12 consistency days" required/></label><label>Target days<input id="squadGoalTarget" type="number" min="1" max="1000" value="12" required/></label><label>Completion reward<select id="squadGoalReward"><option value="1">Focused layout</option><option value="2">Milestone style</option><option value="3">Night palette</option></select></label><button class="primary" type="submit">Create goal</button></form><div id="squadGoals" class="squad-goals"></div><div id="squadRewards" class="squad-rewards"></div></section>
   </section>
 
   <section id="tab-learn" class="tab-panel hidden">
@@ -220,18 +224,26 @@
   </section>
 
   <section id="tab-settings" class="tab-panel hidden">
-    <div class="panel-intro"><h2>Settings</h2><p>Manage display, reminders, practice controls and your prototype data in one place.</p></div>
-    <section class="card section-card"><div class="section-head"><div><h2>Display</h2><p class="muted">Choose a comfortable text size and appearance. Medium is the default.</p></div></div><div class="settings-display"><div class="font-size-group" role="group" aria-label="Text size setting"><span class="font-size-label">Text size</span><button type="button" class="font-choice" id="fontSmallSetting" aria-pressed="false">Small</button><button type="button" class="font-choice active" id="fontMediumSetting" aria-pressed="true">Medium</button><button type="button" class="font-choice" id="fontLargeSetting" aria-pressed="false">Large</button></div><button type="button" class="secondary" id="themeToggleSetting">Toggle light/dark appearance</button></div></section>
+    <div class="panel-intro"><h2>Settings</h2><p>Manage display, reminders, practice tracking, privacy and your saved plan in one place.</p></div>
+    <section class="card section-card"><div class="section-head"><div><h2>Display</h2><p class="muted">Choose Small, Medium or Large text and switch between light and dark appearance. Medium is the default.</p></div></div><div class="settings-display"><div class="font-size-group" role="group" aria-label="Text size setting"><span class="font-size-label">Text size</span><button type="button" class="font-choice" id="fontSmallSetting" aria-pressed="false">Small</button><button type="button" class="font-choice active" id="fontMediumSetting" aria-pressed="true">Medium</button><button type="button" class="font-choice" id="fontLargeSetting" aria-pressed="false">Large</button></div><button type="button" class="secondary" id="themeToggleSetting">Toggle light/dark appearance</button></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>App walkthrough</h2><p class="muted">Get a guided explanation of every section and the main actions.</p></div><button type="button" class="secondary" id="walkthroughSettingsBtn">Start walkthrough</button></div></section>
     <section class="card section-card"><div class="section-head"><div><h2>Practice controls</h2><p class="muted">Pause temporarily stops Glim from recording practice progress, updating your streak or awarding points. It does not affect a bank payment. No money moves in this version.</p></div></div><div class="pause-control"><div><strong id="pauseTitle">Practice steps are active</strong><p class="muted" id="pauseHelp">While paused, Glim will not record a practice step or increase your streak or points.</p></div><button type="button" class="secondary" id="pauseBtn">Pause practice tracking</button></div></section>
-    <section class="card section-card"><div class="section-head"><div><h2>Notifications</h2><p class="muted">Choose quiet hours and how often Glim checks in. Quiet hours use your device’s local time.</p></div><button class="secondary" id="saveNotifBtn" type="button">Save preferences</button></div><div class="settings-grid"><label>Quiet start<input id="notifStart" type="time" aria-label="Quiet hours start time"/></label><label>Quiet end<input id="notifEnd" type="time" aria-label="Quiet hours end time"/></label><label>Daily reminder limit<input id="notifCap" type="number" min="0" max="10" step="1"/></label><label>Notification channel<select id="notifChannel"><option value="in_app">In-app only</option><option value="web_push" disabled>Browser notifications (unavailable)</option></select></label></div><div class="push-control"><div><strong>In-app reminders</strong><p class="muted">Only in-app reminders are available in this prototype. Browser notifications are not active.</p></div><button class="secondary" id="pushEnableBtn" type="button" disabled>Not configured</button></div><div id="inbox" class="inbox-list"></div></section>
-    <section class="card section-card"><div class="section-head"><div><h2>Activity history</h2><p class="muted">Review changes you made in Glim and why they were recorded. This is a history of app activity, not bank transactions.</p></div><button class="secondary" id="auditBtn" type="button">Refresh history</button></div><div id="auditList" class="audit-list"></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Notifications</h2><p class="muted">Choose quiet hours and how often Glim checks in. Quiet hours use your device’s local time.</p></div><button class="secondary" id="saveNotifBtn" type="button">Save preferences</button></div><div class="settings-grid"><label>Quiet start<input id="notifStart" type="time" aria-label="Quiet hours start time"/></label><label>Quiet end<input id="notifEnd" type="time" aria-label="Quiet hours end time"/></label><label>Daily reminder limit<input id="notifCap" type="number" min="0" max="10" step="1"/></label><label>Notification channel<select id="notifChannel"><option value="in_app">In-app only</option></select></label></div><p class="notification-support-note">Only in-app reminders are available in this version. Browser notifications are not configured.</p><div id="inbox" class="inbox-list"></div></section>
+    <section class="card section-card"><div class="section-head"><div><h2>Activity history</h2><p class="muted">Review a plain-language history of changes made in Glim. These entries describe app actions, not bank transactions.</p></div><button class="secondary" id="auditBtn" type="button">Refresh history</button></div><div id="auditList" class="audit-list"></div></section>
     <section class="card section-card"><div class="section-head"><div><h2>Privacy and data</h2><p class="muted">Your plan is saved in this browser and is not synced across devices. You can export a copy or delete it here. Glim does not move money.</p></div></div><div class="trust-grid"><div><strong>Planning only</strong><p>Balances, recurring expenses and progress entries are illustrative. Recording a step does not pay a lender or transfer savings.</p></div><div><strong>Your decisions stay yours</strong><p>Glim offers estimates and learning prompts, not personalized professional financial advice.</p></div></div><div class="button-row"><button class="secondary" id="exportBtn" type="button">Export my data</button><button class="secondary danger" id="deleteBtn" type="button">Delete local profile</button></div><div id="dataMsg" class="muted" aria-live="polite"></div></section>
   </section>
 </section>
 </main>
+<dialog id="walkthroughDialog" class="walkthrough-dialog" aria-labelledby="walkthroughTitle">
+  <div class="walkthrough-dialog-head"><span id="walkthroughStep">Step 1 of 8</span><button class="icon-button" id="walkthroughClose" type="button" aria-label="Close walkthrough">Close</button></div>
+  <h2 id="walkthroughTitle">Start with Overview</h2>
+  <p id="walkthroughCopy">See your current savings buffer, debt total, estimated daily practice and next useful action in one place.</p>
+  <div class="walkthrough-progress" aria-hidden="true"><span id="walkthroughProgressFill" style="width:12.5%"></span></div>
+  <div class="walkthrough-actions"><button class="secondary" id="walkthroughBack" type="button" disabled>Back</button><button class="primary" id="walkthroughNext" type="button">Next</button></div>
+</dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="/storage-config.js"></script>
-<script src="/static/storage.js?v=20261012ux1"></script>
-<script src="/static/app.js?v=20261012ux1"></script>
+<script src="/static/storage.js?v=20261013ux4"></script>
+<script src="/static/app.js?v=20261013ux4"></script>
 </body>
 </html>

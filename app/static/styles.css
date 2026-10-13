@@ -404,3 +404,77 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .form-inline button { width:100%; }
  .buffer-progress-meta { flex-direction:column; }
 }
+
+
+/* Glim UX correction build — 2026-10-13 */
+:root { --control-height: 48px; }
+/* Avoid decorative micro-headings/eyebrows; keep useful field captions in normal case. */
+.eyebrow, .mini-label, .section-kicker { display:none !important; }
+.data-label, .metric-label, .font-size-label { text-transform:none !important; letter-spacing:0 !important; font-variant:normal !important; }
+.data-label { font-size:14px; line-height:1.4; font-weight:650; color:var(--muted); }
+.metric-label { font-size:14px; font-weight:650; color:var(--muted); }
+/* The debt form must be readable: two columns rather than six compressed controls. */
+.compact-form { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:end; }
+.compact-form label { min-width:0; font-size:14px; line-height:1.4; }
+.compact-form input, .compact-form select { width:100%; min-width:0; min-height:var(--control-height); height:var(--control-height); }
+.compact-form button { min-height:var(--control-height); align-self:end; }
+/* Consistent field sizing for time inputs, selects and the reward dropdown. */
+.settings-grid input, .settings-grid select, .goal-form input, .goal-form select, .squad-goal-form input, .squad-goal-form select, .auto-deposit-form input:not([type=checkbox]), .auto-deposit-form select, .form-inline input, .form-inline select { height:var(--control-height); min-height:var(--control-height); font:inherit; }
+.settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:end; gap:16px; }
+.settings-grid label { min-width:0; }
+.push-control { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:20px; padding:18px 0; }
+.push-control>div { min-width:0; }
+.push-control button { min-width:150px; min-height:var(--control-height); }
+.settings-display, .pause-control { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.font-size-group { display:flex; align-items:center; flex-wrap:nowrap; border:1px solid var(--line); background:var(--surface); }
+.font-choice { min-width:64px; height:38px; border-left:1px solid var(--line); font-size:14px; }
+.font-choice:first-of-type { border-left:0; }
+.walkthrough-launch { min-height:44px; white-space:nowrap; }
+.walkthrough-dialog { width:min(560px,calc(100vw - 32px)); border:1px solid var(--line); border-radius:6px; padding:26px; background:var(--surface); color:var(--ink); box-shadow:0 24px 80px rgba(0,0,0,.25); }
+.walkthrough-dialog::backdrop { background:rgba(10,25,40,.55); }
+.walkthrough-dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:16px; border-bottom:1px solid var(--line); color:var(--muted); font-size:14px; }
+.walkthrough-dialog h2 { margin:22px 0 8px; font-family:Georgia,"Times New Roman",serif; font-size:28px; line-height:1.2; }
+.walkthrough-dialog p { line-height:1.6; }
+.walkthrough-progress { height:5px; background:var(--line); margin:24px 0; overflow:hidden; }
+.walkthrough-progress span { display:block; height:100%; background:var(--blue); transition:width .15s ease; }
+.walkthrough-actions { display:flex; justify-content:space-between; gap:12px; }
+.practice-protection { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-top:18px; padding-top:18px; border-top:1px solid var(--line); }
+.practice-protection>div { min-width:0; }
+.practice-protection p { margin:5px 0 0; }
+.game-grid>div { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+.game-grid strong { font-size:clamp(22px,2.5vw,30px); line-height:1.2; }
+.game-grid small { font-size:14px; line-height:1.5; }
+/* Clear, neutral labels and controls; no emoji/mascot decoration. */
+.mascot, .mascot-card .mascot, .mascot.large { display:none !important; }
+@media(max-width:800px) {
+  .compact-form, .settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .walkthrough-launch { width:100%; }
+  .practice-protection { align-items:stretch; flex-direction:column; }
+}
+@media(max-width:540px) {
+  .compact-form, .settings-grid { grid-template-columns:minmax(0,1fr); }
+  .push-control { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+  .push-control button { width:100%; }
+  .settings-display { align-items:stretch; flex-direction:column; }
+  .font-size-group { width:100%; }
+  .font-choice { flex:1; min-width:0; }
+  .walkthrough-dialog { padding:20px; }
+}
+
+#pQuietStart,#pQuietEnd,#pChannel,#notifStart,#notifEnd,#notifChannel { width:100%; min-height:var(--control-height); height:var(--control-height); box-sizing:border-box; }
+.form-card input:not([type="range"]):not([type="checkbox"]),.form-card select { min-height:var(--control-height); height:var(--control-height); box-sizing:border-box; }
+#pPct { min-height:24px; height:auto; }
+.walkthrough-dialog::backdrop { background:rgba(10,25,40,.22); }
+
+.tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; overflow:visible; border-bottom:1px solid var(--line); }
+.tab { width:100%; }
+@media(max-width:800px){ .tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px){ .tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+.forest-scene,.forest-tree { display:none !important; }
+
+/* Final interaction polish: all visible controls align and unsupported features are explained, not clickable. */
+.notification-support-note { margin: 14px 0 0; padding: 12px 14px; border-left: 3px solid var(--line); color: var(--muted); font-size: 14px; line-height: 1.5; }
+.settings-grid input, .settings-grid select, .form-inline input, .compact-form input, .compact-form select, .goal-form input, .goal-form select { height: 48px; min-height: 48px; box-sizing: border-box; }
+.form-inline .fill-label { min-width: 0; flex: 1 1 0; }
+.form-inline input { width: 100%; }

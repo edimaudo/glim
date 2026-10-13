@@ -91,7 +91,7 @@ def current_user(request: Request) -> dict:
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(BASE / "static" / "index.html")
+    return FileResponse(BASE / "static" / "index.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"})
 
 
 @app.get("/sw.js", include_in_schema=False)
