@@ -1,0 +1,32 @@
+<section id="tab-savings" class="tab-panel {{ 'active' if active_section == 'savings' else 'hidden' }}">
+    <div class="panel-intro"><h2>Savings</h2><p>Track your emergency buffer, create named savings goals and set a monthly target. Targets are for planning only; Glim does not transfer money.</p></div>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Emergency savings buffer</h2><p class="muted">Track the amount you have recorded toward your first safety target.</p></div><span class="badge" id="forestLevel">Getting started</span></div>
+      <div class="buffer-progress" role="group" aria-label="Savings buffer progress"><div class="progressbar"><span id="bufferFill" style="width:0%"></span></div><div class="buffer-progress-meta"><strong id="forestSummary">Your savings buffer starts here.</strong><span id="forestProgress" class="muted"></span></div></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Savings goals</h2><p class="muted">Create a target, set the amount you want to reach, and track progress over time.</p></div></div>
+      <form id="stashGoalForm" class="goal-form">
+        <label>Goal name<input id="stashGoalName" maxlength="60" placeholder="e.g. New laptop" required/></label>
+        <label>Target amount (CAD)<input id="stashGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label>
+        <label>Monthly target (CAD, optional)<input id="stashGoalMonthly" type="number" min="0" step="0.01" placeholder="100" value="0"/></label>
+        <button class="primary" type="submit">Add goal</button>
+      </form>
+      <div id="stashGoals" class="stash-goals"></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Monthly savings target</h2><p class="muted">Set a target to track in your plan. This does not schedule a transfer or move money.</p></div><span class="badge">CAD</span></div>
+      <form id="monthlyDepositForm" class="auto-deposit-form">
+        <label class="check-label"><input id="monthlyDepositEnabled" type="checkbox"/> Track a monthly contribution target</label>
+        <label>Monthly target (CAD)<input id="monthlyDepositAmount" type="number" min="0.01" step="0.01" value="25.00" required/></label>
+        <label>Target day of month<input id="monthlyDepositDay" type="number" min="1" max="28" value="1" required/></label>
+        <label class="check-label consent-label"><input id="monthlyDepositConsent" type="checkbox"/> I understand this is a planning target only; no transfer is scheduled.</label>
+        <button class="primary" type="submit">Save monthly target</button>
+      </form>
+      <div class="auto-deposit-status"><div id="monthlyDepositStatus" class="muted" aria-live="polite">No monthly target saved.</div></div>
+    </section>
+    <section class="card section-card">
+      <div class="section-head"><div><h2>Monthly progress recap</h2><p class="muted">A summary of recorded activity, savings progress, debt contributions, and consistency.</p></div><div class="recap-controls"><label for="recapMonth">Month</label><input id="recapMonth" type="month"/><button class="secondary" id="loadRecapBtn" type="button">Build recap</button></div></div>
+      <div id="monthlyRecap" class="monthly-recap"><p class="muted">Select a month to build your recap.</p></div>
+    </section>
+  </section>

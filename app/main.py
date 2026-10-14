@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -92,38 +92,31 @@ def current_user(request: Request) -> dict:
 
 
 @app.get("/", include_in_schema=False)
-def landing(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="landing.html",
-        context={},
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
-    )
+def index(request: Request):
+    return templates.TemplateResponse(request=request, name="landing.html", context={"app_shell": False})
 
 
-def render_workspace(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="workspace.html",
-        context={},
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
-    )
+@app.get("/signin", include_in_schema=False)
+def signin(request: Request):
+    return templates.TemplateResponse(request=request, name="signin.html", context={"app_shell": False})
 
 
-@app.get("/start", include_in_schema=False)
-@app.get("/start/setup", include_in_schema=False)
-@app.get("/setup/guardrails", include_in_schema=False)
+@app.get("/setup", include_in_schema=False)
+def setup_page(request: Request):
+    return templates.TemplateResponse(request=request, name="app.html", context={"app_shell": True, "active_section": "overview"})
+
+
 @app.get("/app", include_in_schema=False)
-def workspace(request: Request):
-    return render_workspace(request)
+def app_home():
+    return RedirectResponse(url="/app/overview", status_code=302)
 
 
-@app.get("/app/{section}", include_in_schema=False)
-def workspace_section(section: str, request: Request):
-    allowed_sections = {"overview", "savings", "plan", "coach", "game", "squad", "learn", "settings"}
-    if section not in allowed_sections:
-        raise HTTPException(status_code=404, detail="Workspace section not found.")
-    return render_workspace(request)
+@app.get("/app/{active_section}", include_in_schema=False)
+def app_section(request: Request, active_section: str):
+    allowed = {"overview", "savings", "plan", "coach", "game", "squad", "learn", "settings"}
+    if active_section not in allowed:
+        raise HTTPException(404, "Glim section not found.")
+    return templates.TemplateResponse(request=request, name="app.html", context={"app_shell": True, "active_section": active_section})
 
 
 @app.get("/sw.js", include_in_schema=False)
@@ -141,7 +134,7 @@ def auth_magic(token: str):
     sid = verify_magic_link(db, token)
     if not sid:
         raise HTTPException(400, "That magic link has expired or is no longer valid.")
-    response = RedirectResponse(url="/")
+    response = RedirectResponse(url="/app/overview")
     response.set_cookie("glim_session", sid, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 14)
     return response
 
@@ -180,8 +173,9 @@ def persona(key: str, user=Depends(current_user)):
     if key not in PERSONAS:
         raise HTTPException(404, "Unknown persona")
     p = PERSONAS[key]
-    seed_persona(db, p.__dict__, p.average_monthly_expenses)
-    set_user_name(db, user["email"], p.name)
+    example_profile = {**p.__dict__, "name": "", "setup_completed": False}
+    seed_persona(db, example_profile, p.average_monthly_expenses)
+    set_user_name(db, user["email"], "")
     return state(user)
 
 
@@ -189,6 +183,7 @@ def persona(key: str, user=Depends(current_user)):
 def update_profile(profile: Profile, user=Depends(current_user)):
     s = get_state(db)
     s["profile"] = profile.model_dump()
+    s["profile"]["setup_completed"] = True
     s["profile"]["average_monthly_expenses"] = s["profile"].get("monthly_income", 0) * 0.75
     active = [d for d in get_debts(db) if d["status"] == "active"]
     s["stash"]["shield_threshold"] = active[0]["minimum"] if active else 1000.0
@@ -229,7 +224,7 @@ def paypal_health(user=Depends(current_user)):
 @app.get("/api/paypal/callback")
 def paypal_callback(setup_token: str | None = None, token: str | None = None, order_id: str | None = None, cancelled: str | None = None):
     if cancelled:
-        return RedirectResponse("/")
+        return RedirectResponse("/app/overview")
     s = get_state(db)
     pending_order_id = s.get("paypal", {}).get("pending_order_id")
     if pending_order_id and (order_id or token):
@@ -237,14 +232,14 @@ def paypal_callback(setup_token: str | None = None, token: str | None = None, or
             complete_pending_settlement(db, order_id or token)
         except PayPalAPIError as e:
             s["paypal"]["settlement_error"] = str(e); write_state(db, s)
-        return RedirectResponse("/")
+        return RedirectResponse("/app/overview")
     setup = setup_token or token or s.get("paypal", {}).get("setup_token")
     if setup:
         try:
             PayPalSandbox(db).complete_connection(setup)
         except PayPalAPIError as e:
             s["paypal"]["status"] = "error"; s["paypal"]["error"] = str(e); write_state(db, s)
-    return RedirectResponse("/")
+    return RedirectResponse("/app/overview")
 
 
 @app.post("/webhooks/paypal")

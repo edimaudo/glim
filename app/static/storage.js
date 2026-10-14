@@ -4,12 +4,11 @@
  */
 (() => {
   'use strict';
-  const STORAGE_KEY = 'glim.prototype.v3';
-  const LEGACY_STORAGE_KEYS = ['glim.prototype.v2', 'glim.prototype.v1'];
+  const STORAGE_KEY = 'glim.prototype.v1';
   const COSMETICS = [
-    { id: 1, name: 'Focused layout', description: 'A restrained progress layout reward.', cost: 80 },
-    { id: 2, name: 'Milestone style', description: 'A simple milestone emphasis reward.', cost: 120 },
-    { id: 3, name: 'Night palette', description: 'A low-glare appearance reward.', cost: 180 },
+    { id: 1, name: 'Leaf trail', description: 'A calm trail effect for your forest path.', cost: 80, icon: 'leaf' },
+    { id: 2, name: 'Acorn crown', description: 'A tiny crown for a consistent week.', cost: 120, icon: 'acorn' },
+    { id: 3, name: 'Moonlit grove', description: 'A night look for the forest.', cost: 180, icon: 'moon' },
   ];
   const LESSONS = [
     { id: 1, title: 'Keep the safety floor', description: 'A safe plan leaves your chosen floor untouched.', prompt: 'What should Glim do if a drip would breach your safety floor?', points: 15, accepted: ['pause', 'skip', 'not move', 'not breach', 'keep the floor'] },
@@ -22,12 +21,12 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const id = () => (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const newState = () => ({
-    schemaVersion: 3,
+    schemaVersion: 1,
     mode: 'localStorage',
     authenticated: false,
     user: null,
     profile: {},
-    
+    paypal: { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] },
     stash: { balance: 0, shield_threshold: 1000, goals: [] },
     game: { streak: 0, freezes: 1, points: 0, level: 1, evolution_stage: 'Revolver' },
     plan: {}, paused: false, pending_redirect: null,
@@ -44,59 +43,18 @@
     read() {
       try {
         const raw = localStorage.getItem(this.key);
-        if (raw) {
-          const value = JSON.parse(raw);
-          const oldName = String(value.profile?.name || '');
-          const outdated = Number(value.schemaVersion || 0) < 3;
-          const looksLikeSeededProfile = Boolean(value.profile?.sample_selected || (value.seeded_transactions || []).length || (value.seeded_subscriptions || []).length);
-          const knownSampleName = ['Riley', 'Sam', 'Credit-card payoff example', 'Loan and savings example'].includes(oldName);
-          if (outdated && (knownSampleName || looksLikeSeededProfile)) {
-            // Old versions automatically restored example balances for some returning users.
-            // Preserve the session email, but do not present sample finances as personal data.
-            const clean = newState();
-            clean.authenticated = Boolean(value.authenticated && value.user?.email);
-            clean.user = value.user?.email ? { email: value.user.email, display_name: '' } : null;
-            localStorage.setItem(this.key, JSON.stringify(clean));
-            for (const key of LEGACY_STORAGE_KEYS) { try { localStorage.removeItem(key); } catch {} }
-            return clean;
-          }
-          const normalized = { ...newState(), ...value, schemaVersion: 3 };
-          if (['Riley', 'Sam'].includes(oldName)) {
-            normalized.profile.name = '';
-            if (normalized.user) normalized.user.display_name = '';
-          }
-          if (outdated) localStorage.setItem(this.key, JSON.stringify(normalized));
-          return normalized;
+        if (!raw) return newState();
+        const value = JSON.parse(raw);
+        if (value.schemaVersion !== 1) return { ...newState(), ...value, schemaVersion: 1 };
+        // Clear legacy sample identities that were automatically restored by earlier prototype builds.
+        if (['Riley', 'Sam', 'Credit-card payoff example', 'Loan and savings example'].includes(String(value.profile?.name || '')) && (value.profile?.sample_selected === true || ['riley', 'sam'].includes(String(value.profile?.persona || '')))) {
+          value.profile.name = '';
+          value.profile.setup_completed = true;
+          if (value.user) value.user.display_name = '';
         }
-
-        // Migrate prior versions once. Old builds could silently restore a seeded person,
-        // debts and transactions at sign-in, so do not carry those sample records forward.
-        let legacy = null;
-        let legacyKey = null;
-        for (const key of LEGACY_STORAGE_KEYS) {
-          const candidate = localStorage.getItem(key);
-          if (candidate) { legacy = JSON.parse(candidate); legacyKey = key; break; }
-        }
-        if (!legacy) return newState();
-
-        const profile = legacy.profile || {};
-        const oldName = String(profile.name || '');
-        const hasDemoIdentity = ['Riley', 'Sam', 'Credit-card payoff example', 'Loan and savings example'].includes(oldName);
-        const hasSeededDemoState = Boolean(profile.sample_selected || (legacy.seeded_transactions || []).length || (legacy.seeded_subscriptions || []).length);
-        let migrated;
-        if (hasDemoIdentity || hasSeededDemoState) {
-          migrated = newState();
-          migrated.authenticated = Boolean(legacy.authenticated && legacy.user?.email);
-          migrated.user = legacy.user?.email ? { email: legacy.user.email, display_name: '' } : null;
-        } else {
-          migrated = { ...newState(), ...legacy, schemaVersion: 1 };
-          if (migrated.user && ['Riley', 'Sam'].includes(String(migrated.user.display_name || ''))) migrated.user.display_name = '';
-        }
-        localStorage.setItem(this.key, JSON.stringify(migrated));
-        for (const key of LEGACY_STORAGE_KEYS) { try { localStorage.removeItem(key); } catch {} }
-        return migrated;
+        return { ...newState(), ...value };
       } catch (error) {
-        console.warn('Glim browser data could not be read; starting a fresh plan.', error);
+        console.warn('Glim local storage could not be read; starting an empty prototype state.', error);
         return newState();
       }
     }
@@ -104,16 +62,16 @@
       try { localStorage.setItem(this.key, JSON.stringify(s)); }
       catch (error) { throw new Error('Glim could not save to this browser. Check available site storage or export your data before continuing.'); }
     }
-    clear() { for (const key of [this.key, ...LEGACY_STORAGE_KEYS]) { try { localStorage.removeItem(key); } catch {} } }
+    clear() { try { localStorage.removeItem(this.key); } catch {} }
     addAudit(s, agent, inputRef, rationale, approval, result) {
       s.audit.unshift({ id: id(), created_at: now(), agent, input_ref: inputRef, proposal: {}, rationale, approval, result });
       s.audit = s.audit.slice(0, 100);
     }
     state(s) {
       return {
-        profile: s.profile, stash: s.stash, game: s.game, plan: s.plan,
+        profile: s.profile, paypal: s.paypal, stash: s.stash, game: s.game, plan: s.plan,
         paused: s.paused, pending_redirect: s.pending_redirect, user: s.user,
-        debts: s.debts, daily_drip: this.dailyDrip(s.profile),
+        debts: s.debts, daily_drip: this.dailyDrip(s.profile), paypal_configured: false,
         weekly_approved: this.weeklyTotal(s), standing_rule_today: this.canAutoApprove(s),
         stress_mode: this.stressMode(s), storage_mode: 'localStorage',
       };
@@ -189,10 +147,10 @@
       const personas = {
         riley: { key: 'riley', name: 'Credit-card payoff example', income: 5200, range: '$4,500–$6,000', expenses: 3900, pct: 5, floor: 1000, balance: 4200, apr: 19.99, min: 110, debt: 'Everyday Card', streak: 6, points: 180, level: 3, stash: 260, tx: [
           { date: '2026-04-02', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-03', merchant: 'Rent Co.', amount: -1650, category: 'housing' }, { date: '2026-04-05', merchant: 'Streamly', amount: -18.99, category: 'subscription' }, { date: '2026-04-06', merchant: 'Metro Market', amount: -96.2, category: 'groceries' }, { date: '2026-04-08', merchant: 'Foodly', amount: -28.4, category: 'dining' }, { date: '2026-04-15', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-18', merchant: 'Gym Club', amount: -54.99, category: 'subscription' }, { date: '2026-04-21', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-24', merchant: 'Metro Market', amount: -112.8, category: 'groceries' }
-        ], subs: [{ merchant: 'Streamly', monthly: 18.99, signal: 'Illustrative recurring expense' }, { merchant: 'Gym Club', monthly: 54.99, signal: 'Illustrative recurring expense' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Illustrative recurring expense' }] },
+        ], subs: [{ merchant: 'Streamly', monthly: 18.99, signal: 'Seeded recurring charge' }, { merchant: 'Gym Club', monthly: 54.99, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
         sam: { key: 'sam', name: 'Loan and savings example', income: 3800, range: '$3,000–$4,500', expenses: 2800, pct: 6, floor: 600, balance: 6800, apr: 7.2, min: 160, debt: 'Starter Loan', streak: 3, points: 90, level: 2, stash: 145, tx: [
           { date: '2026-04-01', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-03', merchant: 'Home Share', amount: -900, category: 'housing' }, { date: '2026-04-06', merchant: 'LearnHub', amount: -29, category: 'subscription' }, { date: '2026-04-08', merchant: 'Metro Market', amount: -74.1, category: 'groceries' }, { date: '2026-04-15', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-16', merchant: 'RideNow', amount: -39.2, category: 'transport' }, { date: '2026-04-19', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-25', merchant: 'Metro Market', amount: -82.6, category: 'groceries' }
-        ], subs: [{ merchant: 'LearnHub', monthly: 29, signal: 'Illustrative recurring expense' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Illustrative recurring expense' }] },
+        ], subs: [{ merchant: 'LearnHub', monthly: 29, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
       };
       const p = personas[key]; if (!p) throw new Error('Unknown persona.');
       const identity = s.user;
@@ -200,7 +158,7 @@
       Object.keys(s).forEach(key => delete s[key]);
       Object.assign(s, fresh);
       s.authenticated = true; s.user = identity;
-      s.profile = { name: '', persona: p.key, sample_selected: true, income_range: p.range, monthly_income: p.income, savings_pct: p.pct, approval_mode: 'each', weekly_cap: 60, floor_balance: p.floor, average_monthly_expenses: p.expenses, quiet_start: '22:00', quiet_end: '08:00', notification_cap: 3, notification_channel: 'in_app' };
+      s.profile = { name: '', persona: p.key, sample_selected: true, setup_completed: false, income_range: p.range, monthly_income: p.income, savings_pct: p.pct, approval_mode: 'each', weekly_cap: 60, floor_balance: p.floor, average_monthly_expenses: p.expenses, quiet_start: '22:00', quiet_end: '08:00', notification_cap: 3, notification_channel: 'in_app' };
       s.stash = { balance: p.stash, shield_threshold: p.min, goals: [] };
       s.game = { streak: p.streak, freezes: 1, points: p.points, level: p.level, evolution_stage: 'Sprout' };
       s.debts = [{ id: 1, name: p.debt, type: key === 'sam' ? 'loan' : 'credit_card', balance: p.balance, apr: p.apr, minimum: p.min, due_day: key === 'sam' ? 12 : 18, status: 'active' }];
@@ -277,8 +235,8 @@
       else if (route === '/api/profile' && method === 'POST') {
         mustBeSignedIn();
         if (!(Number(body.monthly_income) > 0)) throw new Error('Enter a monthly income greater than zero.');
-        if (body.notification_channel === 'web_push') throw new Error('Only in-app reminders are available in this version.');
-        s.profile = { ...s.profile, ...body, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
+        if (body.notification_channel === 'web_push') throw new Error('Web Push is not available in localStorage-only mode. Select In-app, or enable a server API adapter later.');
+        s.profile = { ...s.profile, ...body, setup_completed: true, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
         s.stash.shield_threshold = s.debts.find(d => d.status === 'active')?.minimum || s.stash.shield_threshold || 1000;
         s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app' };
         s.user.display_name = s.profile.name || s.user.display_name; this.save(s); result = this.state(s);
@@ -378,7 +336,7 @@
       else if (route === '/api/squads/goals' && method === 'POST') {
         mustBeSignedIn(); if (!s.squad) throw new Error('Create a local squad first.'); if (s.squad_goals.filter(g => g.status === 'active').length >= 3) throw new Error('You can keep up to three active shared goals.');
         const reward = COSMETICS.find(c => c.id === Number(body.reward_cosmetic_id)); if (!reward) throw new Error('Select a valid cosmetic.');
-        s.squad_goals.push({ id: id(), title: String(body.title || '').trim().slice(0,80), target_count: Number(body.target_count), progress_count: 0, reward_cosmetic_id: reward.id, reward_name: reward.name, status: 'active', created_at: now() }); this.save(s); result = this.getSquad(s);
+        s.squad_goals.push({ id: id(), title: String(body.title || '').trim().slice(0,80), target_count: Number(body.target_count), progress_count: 0, reward_cosmetic_id: reward.id, reward_name: reward.name, reward_icon: reward.icon, status: 'active', created_at: now() }); this.save(s); result = this.getSquad(s);
       }
       else if (route === '/api/lessons/next' && method === 'GET') {
         mustBeSignedIn(); const lesson = LESSONS.find(l => !s.completed_lessons.includes(l.id));
@@ -428,6 +386,9 @@
         }
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
+      else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'External payment calls are disabled in browser-only mode.' };
+      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('External payment connections are disabled in browser-only mode. No token was created. Configure a secure server integration before enabling payments.');
+      else if (route === '/api/paypal/disconnect' && method === 'POST') { s.paypal = { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] }; this.save(s); result = s.paypal; }
       else throw new Error(`This action is not available in the localStorage adapter: ${method} ${route}`);
 
       return clone(result);

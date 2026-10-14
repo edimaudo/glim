@@ -42,14 +42,14 @@ SAM_TX = [
 
 PERSONAS = {
     "riley": PersonaSeed(
-        key="riley", name="", age_band="25–38", monthly_income=5200,
+        key="riley", name="Riley", age_band="25–38", monthly_income=5200,
         income_range="$4,500–$6,000", average_monthly_expenses=3900,
         savings_pct=5, floor_balance=1000,
         debt={"name": "Everyday Card", "type": "credit_card", "balance": 4200, "apr": 19.99, "minimum": 110, "due_day": 18},
         paypal_transactions=RILEY_TX,
     ),
     "sam": PersonaSeed(
-        key="sam", name="", age_band="21–28", monthly_income=3800,
+        key="sam", name="Sam", age_band="21–28", monthly_income=3800,
         income_range="$3,000–$4,500", average_monthly_expenses=2800,
         savings_pct=6, floor_balance=600,
         debt={"name": "Starter Loan", "type": "loan", "balance": 6800, "apr": 7.2, "minimum": 160, "due_day": 12},

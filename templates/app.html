@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set app_shell = true %}
+{% block title %}Glim — your financial plan{% endblock %}
+{% block main %}
+<main class="shell app-shell">
+  {% include "partials/setup_flow.html" %}
+  {% include "partials/onboarding.html" %}
+  <section id="dashboardView" class="view hidden">
+  <div class="dashboard-head">
+    <div><h1>Build your buffer. Reduce your debt.</h1><p class="lede" id="coachLine">Review your savings buffer, debt estimates and next step.</p></div>
+    <button type="button" class="secondary" id="startWalkthroughBtn">Tour the app</button>
+  </div>
+
+    <nav class="tabs" aria-label="Glim sections">
+    <a class="tab {{ 'active' if active_section == 'overview' else '' }}" href="/app/overview" data-tab="overview" {% if active_section == 'overview' %}aria-current="page"{% endif %}><strong>Overview</strong><small>Balances and next steps</small></a>
+    <a class="tab {{ 'active' if active_section == 'savings' else '' }}" href="/app/savings" data-tab="savings" {% if active_section == 'savings' %}aria-current="page"{% endif %}><strong>Savings</strong><small>Buffer, goals and targets</small></a>
+    <a class="tab {{ 'active' if active_section == 'plan' else '' }}" href="/app/plan" data-tab="plan" {% if active_section == 'plan' %}aria-current="page"{% endif %}><strong>Debt plan</strong><small>Strategies and estimates</small></a>
+    <a class="tab {{ 'active' if active_section == 'coach' else '' }}" href="/app/coach" data-tab="coach" {% if active_section == 'coach' %}aria-current="page"{% endif %}><strong>Coach</strong><small>Questions and plan guidance</small></a>
+    <a class="tab {{ 'active' if active_section == 'game' else '' }}" href="/app/game" data-tab="game" {% if active_section == 'game' %}aria-current="page"{% endif %}><strong>Habits &amp; rewards</strong><small>Consistency and milestones</small></a>
+    <a class="tab {{ 'active' if active_section == 'squad' else '' }}" href="/app/squad" data-tab="squad" {% if active_section == 'squad' %}aria-current="page"{% endif %}><strong>Squad</strong><small>Personal consistency challenge</small></a>
+    <a class="tab {{ 'active' if active_section == 'learn' else '' }}" href="/app/learn" data-tab="learn" {% if active_section == 'learn' %}aria-current="page"{% endif %}><strong>Learn</strong><small>Short money lessons</small></a>
+    <a class="tab {{ 'active' if active_section == 'settings' else '' }}" href="/app/settings" data-tab="settings" {% if active_section == 'settings' %}aria-current="page"{% endif %}><strong>Settings</strong><small>Display, reminders and data</small></a>
+  </nav>
+
+  {% include "partials/overview.html" %}
+
+  {% include "partials/savings.html" %}
+
+  {% include "partials/plan.html" %}
+
+  {% include "partials/coach.html" %}
+
+  {% include "partials/game.html" %}
+
+  {% include "partials/squad.html" %}
+
+  {% include "partials/learn.html" %}
+
+  {% include "partials/settings.html" %}
+</section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="walkthroughOverlay" class="walkthrough-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="walkthroughTitle" aria-describedby="walkthroughCopy">
+  <div class="walkthrough-dialog">
+    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 8</span><button id="walkthroughSkipBtn" type="button" class="text-button">Skip tour</button></div>
+    <h2 id="walkthroughTitle">Welcome to Glim</h2>
+    <p id="walkthroughCopy">This tour explains where to find each part of your plan.</p>
+    <div class="walkthrough-actions"><button type="button" class="secondary" id="walkthroughBackBtn" disabled>Back</button><button type="button" class="primary" id="walkthroughNextBtn">Next</button></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/storage-config.js"></script>
+<script src="/static/storage.js?v=20261013templates"></script>
+<script src="/static/app.js?v=20261013templates"></script>
+{% endblock %}
