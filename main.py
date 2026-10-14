@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .data import PERSONAS
+#from .data import PERSONAS
 from .models import (
     ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
     LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
