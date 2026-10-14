@@ -66,3 +66,15 @@ def test_pause_blocks_approval():
             assert False, 'expected ValueError'
         except ValueError as e:
             assert 'paused' in str(e).lower()
+
+
+def test_scout_does_not_invent_recurring_activity_without_paypal(monkeypatch, tmp_path):
+    from app.services import run_scout
+    monkeypatch.delenv('PAYPAL_CLIENT_ID', raising=False)
+    monkeypatch.delenv('PAYPAL_CLIENT_SECRET', raising=False)
+    db = DB(str(Path(tmp_path) / 'scout.db'))
+    persona = PERSONAS['riley']
+    seed_persona(db, persona.__dict__, persona.average_monthly_expenses)
+    result = run_scout(db)
+    assert result['subscriptions'] == []
+    assert result['source'] == 'No connected PayPal activity'

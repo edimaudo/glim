@@ -27,6 +27,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   const migrated = await adapter.request('/api/state');
   assert.equal(migrated.profile.name, '', 'legacy sample names should not be displayed as the user name');
   assert.equal(migrated.user.display_name, '', 'legacy sample names should be cleared from account display identity');
+  assert.equal(JSON.parse(values.get('glim.prototype.v1')).legacy_sample_cleared, true, 'legacy sample cleanup should persist and run only once');
   const seeded = await adapter.request('/api/personas/riley', { method: 'POST' });
   assert.equal(seeded.profile.name, '', 'example persona data must not become the signed-in user name');
   const safetyAnswer = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'What is my safety floor?' }) });
@@ -34,7 +35,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   const avalancheAnswer = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'How does the avalanche strategy work?' }) });
   assert.match(avalancheAnswer.message, /highest APR/i);
   const dailyStepAnswer = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'Why a daily step?' }) });
-  assert.match(dailyStepAnswer.message, /practice amount/i);
+  assert.match(dailyStepAnswer.message, /suggested daily amount/i);
   assert.equal(seeded.daily_drip, 8.67);
   const plan = await adapter.request('/api/plan', { method: 'POST', body: JSON.stringify({ strategy: 'avalanche', stash_pct: 65 }) });
   assert.ok(plan.projection.months > 0);
@@ -66,7 +67,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.ok(shop.items.length >= 3);
   await adapter.request('/api/stash/auto-deposit', { method: 'PUT', body: JSON.stringify({ enabled: true, amount: 25, due_day: 1, consent: true }) });
   assert.equal((await adapter.request('/api/stash/auto-deposit')).status, 'local_settings_only');
-  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /No money moved/);
+  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /server-side payment integration is required/);
   await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /No token was created/);
   const beforeCappedAttempt = (await adapter.request('/api/ledger')).length;
   const state = await adapter.request('/api/state');
