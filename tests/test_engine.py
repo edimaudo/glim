@@ -129,4 +129,4 @@ def test_scout_does_not_invent_recurring_activity_without_paypal(monkeypatch, tm
     seed_persona(db, persona.__dict__, persona.average_monthly_expenses)
     result = run_scout(db)
     assert result['subscriptions'] == []
-    assert result['source'] == 'No connected PayPal activity'
+    assert result['source'] == 'No connected account activity'

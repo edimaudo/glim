@@ -27,7 +27,7 @@ def test_localstorage_mode_does_not_initialize_sqlite_or_accept_api_writes(monke
         landing = client.get("/")
         assert landing.status_code == 200
         assert "/static/storage.js" not in landing.text
-        assert "Pay down debt. Build your shield. Level up." in landing.text
+        assert "Make progress on debt without putting savings last." in landing.text
         assert 'id="authForm"' not in landing.text
         signin = client.get("/signin")
         assert signin.status_code == 200

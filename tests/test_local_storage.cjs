@@ -38,13 +38,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
     savings_pct: 5, approval_mode: 'each', weekly_cap: 60, floor_balance: 1000,
     timezone: 'America/Toronto', notification_channel: 'in_app', quiet_start: '22:00',
     quiet_end: '08:00', notification_cap: 3,
-    show_habits: false, show_squad: false, show_lessons: true, show_coach: false,
   }) });
-  const savedPrefs = (await adapter.request('/api/state')).profile;
-  assert.equal(savedPrefs.show_habits, false, 'supporting-card preferences persist per profile');
-  assert.equal(savedPrefs.show_squad, false, 'squad visibility preference persists');
-  assert.equal(savedPrefs.show_lessons, true, 'lesson visibility preference persists');
-  assert.equal(savedPrefs.show_coach, false, 'coach visibility preference persists');
   await adapter.request('/api/debts', { method: 'POST', body: JSON.stringify({ name: 'Credit card', type: 'credit_card', balance: 1200, apr: 22.9, minimum: 45, due_day: 15 }) });
 
   const safetyAnswer = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'What is my safety floor?' }) });
@@ -65,10 +59,10 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
 
   const scout = await adapter.request('/api/scout', { method: 'POST' });
   assert.equal(scout.subscriptions.length, 0, 'no synthetic recurring activity may be generated in local mode');
-  assert.match(scout.source, /No account activity to review yet/);
+  assert.match(scout.source, /No connected activity/);
 
   const before = await adapter.request('/api/state');
-  await assert.rejects(() => adapter.request('/api/drip/approve', { method: 'POST', body: JSON.stringify({ approve: true }) }), /Automatic contributions are not set up for this account yet/);
+  await assert.rejects(() => adapter.request('/api/drip/approve', { method: 'POST', body: JSON.stringify({ approve: true }) }), /funding connection is required before a contribution can be approved/);
   const after = await adapter.request('/api/state');
   assert.equal(after.game.streak, before.game.streak, 'a failed local-only payment must not increment a streak');
   assert.equal(after.game.points, before.game.points, 'a failed local-only payment must not award points');
@@ -90,8 +84,8 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.equal(completedLesson.status, 'complete');
   const shop = await adapter.request('/api/cosmetics');
   assert.ok(shop.items.length >= 3);
-  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /Automatic monthly contributions are not set up for this account yet/);
-  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /Account connections are unavailable in this session/);
+  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /Monthly savings targets cannot initiate transfers/);
+  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /funding account connection is unavailable for this profile/);
   const exported = await adapter.request('/api/data/export');
   assert.equal(exported.product, 'Glim');
   assert.equal(exported.storage_mode, 'localStorage');

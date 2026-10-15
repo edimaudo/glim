@@ -204,10 +204,11 @@ def app_home():
 
 @app.get("/app/{active_section}", include_in_schema=False)
 def app_section(request: Request, active_section: str):
-    # Old bookmarks remain useful but no longer create separate feature destinations.
-    if active_section in {"savings", "coach", "game", "squad", "learn"}:
-        return RedirectResponse(url="/app/overview", status_code=302)
+    # Supporting features are deliberately integrated into Overview instead of top-level destinations.
+    legacy_sections = {"savings", "coach", "game", "squad", "learn"}
     allowed = {"overview", "plan", "settings"}
+    if active_section in legacy_sections:
+        return RedirectResponse(url="/app/overview", status_code=302)
     if active_section not in allowed:
         raise HTTPException(404, "Glim section not found.")
     if DATABASE_ENABLED and not get_session_user(db, request.cookies.get("glim_session")):

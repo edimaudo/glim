@@ -206,9 +206,9 @@ class DB:
         ]
         c.executemany("INSERT OR IGNORE INTO lessons(id,slug,title,description,points,prompt,answer_hint) VALUES(?,?,?,?,?,?,?)", lessons)
         cosmetics = [
-            (1, "Leaf trail", "A calm trail effect for your forest path.", 80, "🍃"),
-            (2, "Acorn crown", "A tiny crown for a consistent week.", 120, "🌰"),
-            (3, "Moonlit grove", "A night look for the forest.", 180, "🌙"),
+            (1, "Leaf detail", "A subtle leaf accent for your progress screen.", 80, "🍃"),
+            (2, "Milestone badge", "A small badge for a consistent week.", 120, "🌰"),
+            (3, "Night palette", "A darker colour palette for your progress screen.", 180, "🌙"),
         ]
         c.executemany("INSERT OR IGNORE INTO cosmetics(id,name,description,cost,icon) VALUES(?,?,?,?,?)", cosmetics)
 
@@ -788,7 +788,7 @@ def run_scout(db):
         "safe_to_move_daily": compute_safe_to_move(profile),
         "subscriptions": subscriptions,
         "debt_suggestions": pending,
-        "source": "PayPal Sandbox Transaction Search" if live else ("No connected PayPal activity" if state.get("paypal", {}).get("status") != "connected" or not paypal.configured else "No verified recurring activity in connected PayPal history"),
+        "source": "Connected account activity" if live else ("No connected account activity" if state.get("paypal", {}).get("status") != "connected" or not paypal.configured else "No verified recurring activity in the connected account"),
     }
     log_action(db, "Scout", "transaction_search", {"range": "180 days", "source": result["source"]}, "Read available PayPal activity; classify recurrence only when transaction dates and amounts support it", "Read-only; no sample transactions added", result)
     return result
