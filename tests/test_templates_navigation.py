@@ -9,11 +9,16 @@ def test_public_landing_is_separate_from_sign_in():
     with TestClient(app) as client:
         landing = client.get("/")
         assert landing.status_code == 200
-        assert "Plan to pay down debt while building savings." in landing.text
+        assert "Pay down debt. Build your shield. Level up." in landing.text
         assert 'id="authForm"' not in landing.text
         assert "One plan for savings and debt" not in landing.text
         assert "Saving and debt, in one economy." not in landing.text
         assert 'href="/signin"' in landing.text
+        assert 'Explore the tools' not in landing.text
+        assert 'href="#glim-tools"' not in landing.text
+        assert 'PayPal' not in landing.text
+        assert 'Sandbox' not in landing.text
+        assert 'Gemini' not in landing.text
         assert "Glim is a planning prototype" not in landing.text
         assert "records are stored in this browser" not in landing.text
         assert "How Glim works" not in landing.text
@@ -25,21 +30,44 @@ def test_public_landing_is_separate_from_sign_in():
         assert "In this prototype, your plan is stored in this browser" not in signin.text
 
 
-def test_each_app_section_has_a_real_url_and_template_navigation():
-    sections = ["overview", "savings", "plan", "coach", "game", "squad", "learn", "settings"]
+def test_main_navigation_is_unified_and_legacy_sections_redirect():
     with TestClient(app) as client:
-        for section in sections:
+        for section in ["overview", "plan", "settings"]:
             response = client.get(f"/app/{section}")
             assert response.status_code == 200, section
             assert f'href="/app/{section}"' in response.text
             assert f'class="tab active" href="/app/{section}"' in response.text
-            assert f'class="tab-panel active"' in response.text
             assert "walkthroughOverlay" in response.text
             assert "pExpenses" in response.text
-            assert "Income range" not in response.text
-            assert "Credit-card payoff example" not in response.text
-            assert "Connections and AI" in response.text
-            assert 'id="startWalkthroughBtn"' in response.text
+            assert "Connections and AI" not in response.text
+            assert "PayPal" not in response.text
+            assert "Sandbox" not in response.text
+            assert "Gemini" not in response.text
+        for section in ["savings", "coach", "game", "squad", "learn"]:
+            response = client.get(f"/app/{section}", follow_redirects=False)
+            assert response.status_code == 302
+            assert response.headers["location"] == "/app/overview"
+        overview = client.get("/app/overview").text
+        assert 'id="savingsTools"' in overview
+        assert 'Consistency points' in overview
+        assert 'Habit points' not in overview
+        assert 'id="habitTools"' in overview
+        assert 'id="squadTools"' in overview
+        assert 'id="lessonTools"' in overview
+        assert 'id="coachTools"' in overview
+        assert 'id="overviewTourBtn"' in overview
+        assert 'id="prefShowSquad"' in overview
+        assert 'id="prefShowHabits"' in overview
+        assert 'id="prefShowLessons"' in overview
+        assert 'id="prefShowCoach"' in overview
+        assert 'id="saveFeaturePrefsBtn"' in overview
+        assert 'id="overviewTourBtn"' in overview
+        assert 'id="startWalkthroughBtn"' in overview
+        assert 'id="paypalConnectBtn"' in overview
+        assert "Planning only until PayPal Sandbox is connected" not in overview
+        assert "PayPal" not in overview
+        assert "Sandbox" not in overview
+        assert "Gemini" not in overview
         assert client.get("/app/not-a-section").status_code == 404
         assert client.get("/app", follow_redirects=False).status_code == 302
 

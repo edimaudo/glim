@@ -17,6 +17,10 @@ class Profile(BaseModel):
     notification_cap: int = Field(default=3, ge=0, le=10)
     notification_channel: Literal["in_app", "web_push", "email"] = "in_app"
     timezone: str = "America/Toronto"
+    show_habits: bool = True
+    show_squad: bool = True
+    show_lessons: bool = True
+    show_coach: bool = True
 
 
 class DebtCreate(BaseModel):

@@ -1,19 +1,19 @@
 <section id="tab-overview" class="tab-panel {{ 'active' if active_section == 'overview' else 'hidden' }}">
-    <div class="panel-intro"><h2>Overview</h2><p>Review your savings target, debt balances and the next step in your plan.</p></div>
+    <div class="panel-intro overview-intro"><div><h2>Your forest</h2><p>One plan, one streak: build your shield while chipping away at debt.</p></div><button type="button" class="secondary" id="overviewTourBtn">Take a quick tour</button></div>
     <div class="hero-grid">
       <article class="card journey-card"><div class="journey-copy"><p class="data-label">Progress stage</p><strong id="evolution">Building momentum</strong><p id="evolutionCopy">Build a savings buffer while reducing debt.</p></div><div class="journey-streak"><strong id="streak">0</strong><span>day streak</span></div></article>
-      <article class="card drip-card"><div class="card-top"><div><span class="data-label">Suggested daily allocation</span><div class="big-number" id="dailyDrip">$0.00</div></div></div><div class="split-bars"><div><span>To savings</span><b id="stashShare">—</b></div><div><span>Toward debt payoff</span><b id="bossShare">—</b></div></div><button class="primary" id="approveDrip" type="button">Connect PayPal to approve</button><p class="muted small-note" id="dripStatusNote">The daily allocation is an estimate. Savings and debt balances change only after PayPal confirms a payout.</p></article>
+      <article class="card drip-card"><div class="card-top"><div><span class="data-label">Today’s drip</span><div class="big-number" id="dailyDrip">$0.00</div></div></div><div class="split-bars"><div><span>To savings</span><b id="stashShare">—</b></div><div><span>Toward debt payoff</span><b id="bossShare">—</b></div></div><button class="primary" id="approveDrip" type="button">Set up contributions</button><p class="muted small-note" id="dripStatusNote">Your daily target supports both savings and debt payoff.</p></article>
     </div>
     <div id="defeatBanner" class="callout hidden"></div>
     <div class="stats-grid">
       <article class="card stat"><span class="data-label">Debt remaining</span><strong id="debtBalance">$0</strong><div class="healthbar"><span id="healthFill"></span></div><small id="debtInfo">Add a debt to begin a payoff estimate.</small></article>
       <article class="card stat"><span class="data-label">Savings buffer</span><strong id="stashBalance">$0</strong><div class="progressbar"><span id="stashFill"></span></div><small id="shieldInfo">First buffer target —</small></article>
-      <article class="card stat"><span class="data-label">Habit points</span><strong id="points">0</strong><small>Earned through consistent activity.</small></article>
+      <article class="card stat"><span class="data-label">Consistency points</span><strong id="points">0</strong><small>Earned through consistent activity.</small></article>
       <article class="card stat"><span class="data-label">Payoff strategy</span><strong id="planStrategy">Not set</strong><small id="planMeta">Add debt to see a projection.</small></article>
     </div>
     <div class="overview-lower">
-      <section class="card section-card"><div class="section-head"><div><h2>Recurring activity</h2><p class="muted">Review recurring charges identified in connected account activity.</p></div><button class="secondary" id="scanBtn" type="button">Refresh activity</button></div><div id="scoutResults" class="stack"></div><div id="scoutDebtSuggestions" class="stack" aria-live="polite"></div></section>
-      <section class="card section-card"><div class="section-head"><div><h2>Your debts</h2><p class="muted">Add each credit card or loan here. These details power the payoff estimates and repayment order.</p></div></div><form id="debtForm" class="compact-form">
+      <section class="card section-card"><div class="section-head"><div><h2>Spending patterns</h2><p class="muted">Review recurring charges that could free up more money for your goals.</p></div><button class="secondary" id="scanBtn" type="button">Refresh activity</button></div><div id="scoutResults" class="stack"></div><div id="scoutDebtSuggestions" class="stack" aria-live="polite"></div></section>
+      <section class="card section-card"><div class="section-head"><div><h2>Your debts</h2><p class="muted">Add each credit card or loan to give your payoff plan a clear starting point.</p></div></div><form id="debtForm" class="compact-form">
         <label>Debt name<input id="dName" placeholder="e.g. Main credit card" autocomplete="off" required/></label>
         <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select></label>
         <label>Current balance (CAD)<input id="dBalance" type="number" min="1" step="0.01" placeholder="3500" required/></label>
@@ -21,5 +21,14 @@
         <label>Minimum monthly payment (CAD)<input id="dMin" type="number" min="1" step="0.01" placeholder="100" required/></label>
         <button class="primary" type="submit">Add debt</button>
       </form></section>
+    </div>
+    <div class="integrated-dashboard-features">
+      {% include "partials/savings.html" %}
+      <div class="integrated-feature-grid">
+        {% include "partials/game.html" %}
+        {% include "partials/learn.html" %}
+      </div>
+      {% include "partials/squad.html" %}
+      {% include "partials/coach.html" %}
     </div>
   </section>

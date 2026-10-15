@@ -33,14 +33,15 @@ function render(){
   const health=debt?Math.max(0,Math.min(100,(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)/(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)+(s.daily_drip*30*12||1)))*100)):0;
   $('#healthFill').style.width=health+'%';
   $('#stashFill').style.width=Math.min(100,s.stash.balance/Math.max(1,s.stash.shield_threshold)*100)+'%';
-  const paypalConnected=s.paypal?.status==='connected' && window.GlimStorage?.mode!=='localStorage' && s.payment_readiness!==false;
-  $('#approveDrip').disabled=s.paused||!paypalConnected||!activeDebts.length||!s.plan?.projection||Number(s.daily_drip)<=0;
+  const accountConnected=s.paypal?.status==='connected' && window.GlimStorage?.mode!=='localStorage' && s.payment_readiness!==false;
+  $('#approveDrip').disabled=s.paused||!activeDebts.length||!s.plan?.projection||Number(s.daily_drip)<=0;
   const dripNote=$('#dripStatusNote');
-  if(dripNote) dripNote.textContent=s.paused?'Contributions are paused. Resolve any pending payment and resume before approving another daily allocation.':(s.paypal?.status==='connected'&&s.payment_readiness===false)?`PayPal is connected, but settlement setup is incomplete: ${(s.payment_blockers||[]).join(' ')}`:!paypalConnected?'Planning only until PayPal Sandbox is connected in server mode. Savings and debt balances change only after PayPal confirms the payout.':"Approval records today\'s allocation once. Savings and debt balances change only after PayPal confirms the payout.";
+  if(dripNote) dripNote.textContent=s.paused?'Contributions are paused. Resume when you are ready to continue.':(s.paypal?.status==='connected'&&s.payment_readiness===false)?'Finish setting up contributions in Settings.':!accountConnected?'Connect an account in Settings to enable automatic contributions.':'Review and approve today’s contribution. Your progress updates when it is confirmed.';
   $('#planBtn').disabled=!activeDebts.length;$('#whatIfBtn').disabled=!s.plan?.projection;$$('.strategy').forEach(button=>button.disabled=!activeDebts.length);
-  $('#approveDrip').textContent=s.paused?'Contributions paused':(s.paypal?.status==='connected'&&s.payment_readiness===false)?'Finish PayPal setup':!paypalConnected?'Connect PayPal in Settings':!activeDebts.length?'Add a debt to begin':"Approve today's allocation";
+  $('#approveDrip').textContent=s.paused?'Contributions paused':!activeDebts.length?'Add a debt to begin':!accountConnected?'Set up contributions':"Approve today’s drip";
   if(s.plan?.projection){const stash=s.daily_drip*s.plan.stash_pct/100;$('#stashShare').textContent=money(stash);$('#bossShare').textContent=money(s.daily_drip-stash);renderProjection(s.plan.projection);$('#attackOrder').textContent=`Repayment order: ${(s.plan.attack_order||[]).join(' → ')}`;}
   else{$('#stashShare').textContent='—';$('#bossShare').textContent='—';$('#projection').innerHTML='<p class="muted">Add a debt from Overview to see a payoff estimate.</p>';$('#attackOrder').textContent='Your strategy will appear after you add a debt.';}
+  applyFeaturePreferences(s.profile||{});
   renderDefeat(); renderNotifications(); renderAudit(); renderChart(); renderShop(); renderSquad(); renderStash();
   $('#pauseTitle').textContent=s.paused?'Practice steps are paused':'Practice steps are active';
   $('#pauseHelp').textContent=s.paused?'Resume when you are ready to track daily steps again.':'Pause stops new daily-step records and streak updates.';
@@ -96,8 +97,8 @@ async function renderSquad(){
   const x=await api('/api/squads');const squad=x.squad;const localMode=window.GlimStorage?.mode==='localStorage';
   const joinForm=$('#joinSquadForm'),joinBtn=$('#joinSquadBtn'),leaveBtn=$('#leaveSquadBtn'),createBtn=$('#createSquadBtn');
   if(joinForm)joinForm.classList.toggle('hidden',localMode);if(joinBtn)joinBtn.disabled=localMode;if(createBtn)createBtn.disabled=false;if(leaveBtn)leaveBtn.classList.add('hidden');
-  if(!squad){$('#squadInfo').innerHTML=localMode?'<p class="muted">No local challenge yet. In browser-only mode, this challenge stays in this browser; invite codes and cross-device sharing require server mode.</p>':'<p class="muted">No squad yet. Create one, then share its invite code with other Glim accounts.</p>';$('#leaderboard').innerHTML='<p class="muted">Your consistency board appears after you create a squad.</p>';$('#cheerFeed').innerHTML='';$('#squadGoals').innerHTML='<p class="muted">Create a squad to set a consistency goal.</p>';$('#squadRewards').innerHTML='';return;}
-  const codeMarkup=localMode?'<p class="muted">Invite sharing is disabled in browser-only mode.</p>':`<p>Invite code: <strong>${escapeHtml(squad.invite_code||'Unavailable')}</strong> <button class="secondary" type="button" id="copySquadCodeBtn">Copy code</button></p>`;
+  if(!squad){$('#squadInfo').innerHTML=localMode?'<p class="muted">No squad yet. You can set a personal challenge here; inviting friends is not available for this account yet.</p>':'<p class="muted">No squad yet. Create one, then share its invite code with other Glim accounts.</p>';$('#leaderboard').innerHTML='<p class="muted">Your consistency board appears after you create a squad.</p>';$('#cheerFeed').innerHTML='';$('#squadGoals').innerHTML='<p class="muted">Create a squad to set a consistency goal.</p>';$('#squadRewards').innerHTML='';return;}
+  const codeMarkup=localMode?'<p class="muted">Inviting friends is not available for this account yet.</p>':`<p>Invite code: <strong>${escapeHtml(squad.invite_code||'Unavailable')}</strong> <button class="secondary" type="button" id="copySquadCodeBtn">Copy code</button></p>`;
   $('#squadInfo').innerHTML=`<div class="callout"><strong>${escapeHtml(squad.name)}</strong>${codeMarkup}<p class="muted">Only streak, level and habit consistency are shared. Financial balances, income and debt details are not included.</p></div>`;
   const members=Array.isArray(x.members)?x.members:[];
   $('#leaderboard').innerHTML=members.length?members.map((m,i)=>`<div class="leader-row"><strong>${i+1}. ${escapeHtml(m.display_name||'Member')}${m.is_self?' (you)':''}</strong><span>${Number(m.streak||0)}-day streak · Level ${Number(m.level||1)} · ${Number(m.goal_pct||0).toFixed(0)}% consistency</span>${!localMode&&!m.is_self?`<div class="button-row"><button class="secondary" data-cheer-member="${Number(m.id)}" data-cheer="Nice streak!">Nice streak!</button><button class="secondary" data-cheer-member="${Number(m.id)}" data-cheer="Keep going!">Keep going!</button></div>`:''}</div>`).join(''):'<p class="muted">No members to show yet.</p>';
@@ -110,7 +111,7 @@ async function renderSquad(){
 }
 async function renderStash(){
   try{
-    const [x,deposit]=await Promise.all([api('/api/stash/goals'),api('/api/stash/auto-deposit')]);
+    const x=await api('/api/stash/goals');
     const balance=Number(x.stash_balance||0);const level=balance<100?'Getting started':balance<350?'Early growth':balance<800?'Growing':'Established';
     const target=Math.max(1,Number(STATE?.stash?.shield_threshold||500));
     const pct=Math.max(0,Math.min(100,balance/target*100));
@@ -119,20 +120,8 @@ async function renderStash(){
     $('#forestProgress').textContent=`${pct.toFixed(0)}% of ${money(target)} target`;
     const fill=$('#bufferFill'); if(fill) fill.style.width=pct+'%';
     $('#stashGoals').innerHTML=x.goals.length?x.goals.map(g=>{const pct=Math.min(100,Number(g.saved_amount)/Math.max(1,Number(g.target_amount))*100);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.name)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(g.saved_amount)}</strong><span class="muted">of ${money(g.target_amount)}</span></div><div class="progressbar"><span style="width:${pct}%"></span></div><div class="goal-foot"><span>${pct.toFixed(0)}% funded</span><span>${Number(g.monthly_target)>0?money(g.monthly_target)+'/mo target':'No monthly target'}</span></div></article>`}).join(''):'<p class="muted">No named goals yet. Add one and future Stash contributions will be earmarked in the order shown here.</p>';
-    $('#monthlyDepositEnabled').checked=!!deposit.enabled;$('#monthlyDepositAmount').value=Number(deposit.amount||0).toFixed(2);$('#monthlyDepositDay').value=deposit.due_day||1;
-    let status=deposit.enabled?`Monthly planning target: ${money(deposit.amount)} on day ${deposit.due_day}.`:'No monthly savings target saved.';
-    if(window.GlimStorage.mode==='localStorage') status += ' This is a reminder target only; it does not schedule a transfer.';
-    $('#monthlyDepositStatus').textContent=status;
-  }catch(e){console.error(e)}
-}
 
-async function renderMonthlyRecap(){
-  try{
-    const month=$('#recapMonth').value||new Date().toISOString().slice(0,7);const r=await api('/api/monthly-recap?month='+encodeURIComponent(month));
-    const metrics=[['Recorded steps',r.drip_count],['Active days',r.active_days],['Behavior points',r.points_earned],['Goals completed',r.goals_completed]];
-    const max=Math.max(Number(r.stash_contribution),Number(r.debt_contribution),1);
-    $('#monthlyRecap').innerHTML=`<div class="recap-heading"><div><span class="data-label">${escapeHtml(r.month)} recap</span><h3>${money(r.total_moved)} in recorded practice contributions</h3></div><span class="badge">CAD</span></div><div class="recap-metrics">${metrics.map(([label,val])=>`<div class="recap-metric"><span>${label}</span><strong>${val}</strong></div>`).join('')}</div><div class="recap-allocation"><div class="recap-bar-row"><div><span>Savings contribution</span><strong>${money(r.stash_contribution)}</strong></div><div class="recap-track"><span style="width:${Math.max(0,Math.min(100,Number(r.stash_contribution)/max*100))}%"></span></div></div><div class="recap-bar-row"><div><span>Debt contribution</span><strong>${money(r.debt_contribution)}</strong></div><div class="recap-track"><span style="width:${Math.max(0,Math.min(100,Number(r.debt_contribution)/max*100))}%"></span></div></div></div><div class="recap-current"><div><span>Current savings</span><strong>${money(r.current_stash_balance)}</strong></div><div><span>Current active debt</span><strong>${money(r.current_active_debt)}</strong></div><div><span>Current streak</span><strong>${r.streak} days</strong></div></div><p class="muted recap-note">${escapeHtml(r.note)}</p>`;
-  }catch(e){$('#monthlyRecap').innerHTML=`<p class="muted">${escapeHtml(e.message)}</p>`}
+  }catch(e){console.error(e)}
 }
 
 async function load(){
@@ -162,7 +151,7 @@ async function load(){
 async function renderScoutDebtSuggestions(suggestions){
   const host=$('#scoutDebtSuggestions'); if(!host)return;
   if(window.GlimStorage?.mode==='localStorage'){
-    host.innerHTML='<p class="muted">Debt suggestions require connected PayPal history in server mode. No sample findings are shown.</p>';return;
+    host.innerHTML='<p class="muted">Spending insights appear when account activity is available. No sample findings are shown.</p>';return;
   }
   const items=Array.isArray(suggestions)?suggestions:[];
   if(!items.length){host.innerHTML='<p class="muted">No debt-related recurring payment needs review. Scout never adds a debt without your confirmation and account figures.</p>';return;}
@@ -192,7 +181,7 @@ $('#profileForm').addEventListener('submit',async e=>{
   const income=Number($('#pIncome').value), expenses=Number($('#pExpenses').value), floor=Number($('#pFloor').value);
   if(!(income>0)||expenses<0||floor<0){toast('Check your monthly income, expenses and minimum balance.');return}
   try{
-    await api('/api/profile',{method:'POST',body:JSON.stringify({name:'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:'each',weekly_cap:60,floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app'})});
+    await api('/api/profile',{method:'POST',body:JSON.stringify({name:'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:'each',weekly_cap:60,floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',show_habits:true,show_squad:true,show_lessons:true,show_coach:true})});
     if(debtStarted) await api('/api/debts',{method:'POST',body:JSON.stringify({name:debtName,type:$('#setupDebtType').value,balance:Number(debtBalance),apr:Number(debtApr),minimum:Number(debtMinimum),due_day:15})});
     window.location.assign('/app/overview');
   }catch(error){toast(error.message||'Unable to save your plan.');}
@@ -201,26 +190,46 @@ $('#debtForm').addEventListener('submit',async e=>{e.preventDefault();try{await 
 $('#scanBtn').addEventListener('click',()=>runScout(true));
 $$('.strategy').forEach(b=>b.addEventListener('click',()=>{$$('.strategy').forEach(x=>x.classList.remove('active'));b.classList.add('active');selectedStrategy=b.dataset.strategy;buildPlan()}));
 $('#planBtn').addEventListener('click',buildPlan);
-$('#whatIfBtn').addEventListener('click',async()=>{if(!STATE?.plan?.projection){$('#whatIfResult').textContent='Add a debt from Overview before comparing scenarios.';return}try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Add a more specific what-if phrase.';return}$('#whatIfResult').textContent=`${r.parsed.label}${r.parsed.assumptions?.length?' Assumptions: '+r.parsed.assumptions.join(' '):''}${r.parsed.needs_clarification?' Add the missing detail before Glim estimates the impact.':r.what_if?` Estimated payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} modeled interest.`:''}`;$('#scenarioComparison').innerHTML=r.what_if?`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest<br><span class="muted">${Number(r.what_if.months_saved_vs_baseline||0)} months and ${money(r.what_if.interest_saved_vs_baseline||0)} interest difference versus current plan</span></div>`:''}catch(e){$('#whatIfResult').textContent=e.message}});
-$('#approveDrip').addEventListener('click',async()=>{try{const r=await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s step has been recorded.');await load()}catch(e){toast(e.message)}});
+$('#whatIfBtn').addEventListener('click',async()=>{if(!STATE?.plan?.projection){$('#whatIfResult').textContent='Add a debt in Your forest before comparing scenarios.';return}try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Add a more specific what-if phrase.';return}$('#whatIfResult').textContent=`${r.parsed.label}${r.parsed.assumptions?.length?' Assumptions: '+r.parsed.assumptions.join(' '):''}${r.parsed.needs_clarification?' Add the missing detail before Glim estimates the impact.':r.what_if?` Estimated payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} modeled interest.`:''}`;$('#scenarioComparison').innerHTML=r.what_if?`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest<br><span class="muted">${Number(r.what_if.months_saved_vs_baseline||0)} months and ${money(r.what_if.interest_saved_vs_baseline||0)} interest difference versus current plan</span></div>`:''}catch(e){$('#whatIfResult').textContent=e.message}});
+$('#approveDrip').addEventListener('click',async()=>{if(!STATE?.paypal||STATE.paypal.status!=='connected'||window.GlimStorage?.mode==='localStorage'||STATE.payment_readiness===false){activateSection('settings',{push:true});return;}try{await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s drip is approved.');await load()}catch(e){toast('We couldn’t approve today’s contribution. Review the connection and try again.')}});
 $('#freezeBtn').addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Streak freeze used.')}catch(e){toast(e.message)}});
 $('#pauseBtn').addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
 $$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
-$('#chatForm').addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>${escapeHtml(r.agent||'Glim')}</strong><br>${escapeHtml(r.message)}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast(e.message)}});
+$('#chatForm').addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>Chipper</strong><br>${escapeHtml(r.message)}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast('I couldn’t answer that just now. Please try again.')}});
 $('#nudgeBtn').addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=lastNudge.message;$('#nudgeWhy').textContent=lastNudge.why||'Why will appear here.';await renderNotifications()}catch(e){toast(e.message)}});
 $$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
 $('#saveNotifBtn').addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Notification settings saved.')}catch(e){toast(e.message)}});
 
 $('#stashGoalForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#stashGoalName').value.trim(),target_amount:+$('#stashGoalTarget').value,monthly_target:+$('#stashGoalMonthly').value||0})});$('#stashGoalForm').reset();$('#stashGoalMonthly').value='0';await renderStash();toast('Savings goal added.')}catch(e){toast(e.message)}});
-$('#monthlyDepositForm').addEventListener('submit',async e=>{e.preventDefault();try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,amount:+$('#monthlyDepositAmount').value,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const r=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});await renderStash();$('#monthlyDepositConsent').checked=false;toast(enabled?'Monthly savings target saved.':'Monthly savings target updated.')}catch(e){toast(e.message)}});
-$('#loadRecapBtn').addEventListener('click',renderMonthlyRecap);
 $('#auditBtn')?.addEventListener('click',renderAudit);
-$('#squadGoalForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/goals',{method:'POST',body:JSON.stringify({title:$('#squadGoalTitle').value.trim(),target_count:+$('#squadGoalTarget').value,reward_cosmetic_id:+$('#squadGoalReward').value})});await renderSquad();$('#squadGoalTitle').value='';toast('Shared goal created.')}catch(e){toast(e.message)}});
+$('#squadGoalForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/goals',{method:'POST',body:JSON.stringify({title:$('#squadGoalTitle').value.trim(),target_count:+$('#squadGoalTarget').value,reward_cosmetic_id:+$('#squadGoalReward').value})});await renderSquad();$('#squadGoalTitle').value='';toast('Squad goal created.')}catch(e){toast(e.message)}});
 $('#createSquadForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads',{method:'POST',body:JSON.stringify({name:$('#squadName').value.trim()})});await load();toast('Squad created.')}catch(e){toast(e.message)}});
-$('#loadLessonBtn').addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">${r.points} points</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Nice. +${x.points} points.</strong><p>Glim logged the applied challenge.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
+$('#loadLessonBtn').addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">${r.points} points</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Nice. +${x.points} points.</strong><p>Your lesson progress is saved.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn').addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
 $('#deleteBtn').addEventListener('click',async()=>{if(!confirm('Delete the Glim account and all prototype data?'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/signin')}catch(e){toast(e.message)}});
-const APP_SECTIONS=['overview','savings','plan','coach','game','squad','learn','settings'];
+
+function applyFeaturePreferences(profile){
+ const prefs=[['show_habits','prefShowHabits','habitTools'],['show_lessons','prefShowLessons','lessonTools'],['show_squad','prefShowSquad','squadTools'],['show_coach','prefShowCoach','coachTools']];
+ for(const [key,controlId,widgetId] of prefs){
+   const enabled=profile[key]!==false;
+   const control=$('#'+controlId),widget=$('#'+widgetId);
+   if(control)control.checked=enabled;
+   if(widget)widget.classList.toggle('hidden',!enabled);
+ }
+}
+$('#saveFeaturePrefsBtn')?.addEventListener('click',async()=>{
+ const button=$('#saveFeaturePrefsBtn'),note=$('#featurePrefsStatus');
+ button.disabled=true;
+ try{
+   const profile={...(STATE?.profile||{}),show_habits:$('#prefShowHabits').checked,show_lessons:$('#prefShowLessons').checked,show_squad:$('#prefShowSquad').checked,show_coach:$('#prefShowCoach').checked};
+   await api('/api/profile',{method:'POST',body:JSON.stringify(profile)});
+   if(note)note.textContent='Preferences saved.';
+   await load();toast('Forest preferences saved.');
+ }catch(e){if(note)note.textContent='Could not save preferences. Check your settings and try again.';}
+ finally{button.disabled=false;}
+});
+
+const APP_SECTIONS=['overview','plan','settings'];
 function activeSectionFromPath(){const part=window.location.pathname.split('/').filter(Boolean).pop();return APP_SECTIONS.includes(part)?part:'overview'}
 function activateSection(section,{push=false,replace=false}={}){
   if(!APP_SECTIONS.includes(section))section='overview';
@@ -233,50 +242,79 @@ $$('.tab').forEach(link=>link.addEventListener('click',event=>{event.preventDefa
 window.addEventListener('popstate',()=>activateSection(activeSectionFromPath()));
 activateSection(activeSectionFromPath());
 $('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/signin')}catch(e){toast(e.message)}});
-$('#paypalConnectBtn')?.addEventListener('click',async()=>{const b=$('#paypalConnectBtn');b.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){$('#paypalApprovalLink').innerHTML=`<a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue PayPal approval</a>`;window.location.assign(r.approval_url);return;}await load();}catch(e){toast(e.message)}finally{b.disabled=false;await setIntegrationStatus()}});
-$('#paypalDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect PayPal Sandbox? Existing pending settlements must be reconciled first.'))return;const b=$('#paypalDisconnectBtn');b.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('PayPal disconnected.')}catch(e){toast(e.message)}finally{b.disabled=false;await setIntegrationStatus()}});
-$('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBtn');b.disabled=true;const out=$('#settlementActionResult');try{const r=await api('/api/drip/settle',{method:'POST'});out.textContent=`Settlement status: ${r.status||'submitted'} · ${r.amount==null?'':money(r.amount)+' CAD'}.`;if(r.approval_url)out.innerHTML+=` <a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Approve in PayPal</a>`;await load()}catch(e){out.textContent=e.message;await setIntegrationStatus()}finally{b.disabled=false}});
-$('#reconcileBtn')?.addEventListener('click',async()=>{const b=$('#reconcileBtn'),out=$('#settlementActionResult');b.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});out.textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){out.textContent=e.message}finally{b.disabled=false}});
+$('#paypalConnectBtn')?.addEventListener('click',async()=>{const b=$('#paypalConnectBtn');b.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){$('#paypalApprovalLink').innerHTML=`<a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure approval</a>`;window.location.assign(r.approval_url);return;}await load();}catch(e){toast('We couldn’t start the account connection. Please try again later.')}finally{b.disabled=false;await setIntegrationStatus()}});
+$('#paypalDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this account? Any contribution already processing may need to be reviewed first.'))return;const b=$('#paypalDisconnectBtn');b.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Account disconnected.')}catch(e){toast('We couldn’t disconnect the account. Please try again.')}finally{b.disabled=false;await setIntegrationStatus()}});
+$('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBtn');b.disabled=true;const out=$('#settlementActionResult');try{const r=await api('/api/drip/settle',{method:'POST'});out.textContent=`Contribution update: ${{complete:'Complete',completed:'Complete',paid:'Complete',awaiting_approval:'Awaiting approval',processing:'Processing',submitted:'Submitted'}[r.status]||'Submitted'}${r.amount==null?'':` · ${money(r.amount)}`}.`;if(r.approval_url)out.innerHTML+=` <a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue approval</a>`;await load()}catch(e){out.textContent='We couldn’t process pending contributions. Refresh status or try again later.';await setIntegrationStatus()}finally{b.disabled=false}});
+$('#reconcileBtn')?.addEventListener('click',async()=>{const b=$('#reconcileBtn'),out=$('#settlementActionResult');b.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});out.textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){out.textContent='We couldn’t refresh contribution status. Try again later.'}finally{b.disabled=false}});
 $('#joinSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/join',{method:'POST',body:JSON.stringify({invite_code:$('#squadInviteCode').value.trim()})});$('#squadActionNote').textContent='Joined squad.';$('#squadInviteCode').value='';await load()}catch(error){$('#squadActionNote').textContent=error.message}});
 $('#leaveSquadBtn')?.addEventListener('click',async()=>{if(!confirm('Leave this squad? Your shared membership and cheers will be removed.'))return;try{await api('/api/squads/leave',{method:'POST'});await load();toast('Left squad.')}catch(e){toast(e.message)}});
-$('#pushEnableBtn').addEventListener('click',async()=>{try{if(window.GlimStorage.mode==='localStorage')throw new Error('Browser push requires server mode and VAPID credentials; no subscription was stored.');if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error(cfg.reason||'Web push is not configured on the server.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Web push enabled.')}catch(e){toast(e.message)}});
+$('#pushEnableBtn').addEventListener('click',async()=>{try{if(window.GlimStorage.mode==='localStorage')throw new Error('Browser notifications are not available in this session.');if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error('Browser notifications are not available yet.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Web push enabled.')}catch(e){toast(e.message)}});
 function urlBase64ToUint8Array(base64){const pad='='.repeat((4-base64.length%4)%4);const raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
 
 
 async function setIntegrationStatus(){
- const localMode=window.GlimStorage?.mode==='localStorage';const mode=$('#integrationModeStatus'),paypal=$('#paypalIntegrationStatus'),ai=$('#aiIntegrationStatus');const connect=$('#paypalConnectBtn'),disconnect=$('#paypalDisconnectBtn'),scopeHost=$('#paypalScopes'),approvalHost=$('#paypalApprovalLink'),pushBtn=$('#pushEnableBtn'),external=$('#externalNotificationStatus'),privacy=$('#privacyStorageStatus');
- if(localMode){if(mode)mode.textContent='Browser-only storage. Email entry selects a local profile; it does not verify identity or enable account integrations.';if(paypal)paypal.textContent='Unavailable in browser-only mode';if(ai)ai.textContent='Deterministic local guidance; live Gemini calls are unavailable';if(connect)connect.disabled=true;if(disconnect)disconnect.classList.add('hidden');if(scopeHost)scopeHost.textContent='No PayPal tokens or permissions are held in this browser.';if(approvalHost)approvalHost.textContent='';if(pushBtn)pushBtn.disabled=true;if(external)external.textContent='Only in-app check-ins are available in browser-only mode. Email and browser push require server credentials.';if(privacy)privacy.textContent='Saved per email namespace in this browser only. This is not verified authentication and does not sync across devices.';const settle=$('#settleWeekBtn'),rec=$('#reconcileBtn');if(settle)settle.disabled=true;if(rec)rec.disabled=true;return;}
- if(mode)mode.textContent='Server-backed profile with per-account database storage. External services still depend on configured credentials.';if(privacy)privacy.textContent='Your profile and financial plan are stored in an account-specific server database. Export or delete controls apply to this account.';
- const [health,cfg]=await Promise.all([api('/api/paypal/health').catch(e=>({configured:false,authenticated:false,error:e.message,status:STATE?.paypal?.status||'disconnected'})),api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}))]);
- const status=STATE?.paypal?.status||health.status||'disconnected';if(paypal){paypal.textContent=status==='connected'?(health.settlement_ready?'Connected to PayPal Sandbox':`Connected, but not payment-ready: ${(health.settlement_blockers||[]).join(' ')}`):status==='awaiting_approval'?'Waiting for PayPal approval':health.error?`Not available: ${health.error}`:health.configured?(health.authenticated?'Credentials verified; not connected':'Credentials need attention'):'PayPal Sandbox credentials are not configured';}
- if(connect){connect.disabled=!health.configured||status==='connected'||status==='awaiting_approval';connect.textContent=status==='awaiting_approval'?'Waiting for approval':'Connect PayPal Sandbox';}if(disconnect)disconnect.classList.toggle('hidden',status!=='connected');
- if(scopeHost)scopeHost.textContent=(STATE?.paypal?.scopes||health.scopes||[]).join(' · ')||(health.configured?'Scopes are requested during payer approval.':'Required: PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.');
- const approval=STATE?.paypal?.approval_url||health.approval_url;if(approvalHost)approvalHost.innerHTML=status==='awaiting_approval'&&approval?`<a class="text-link" href="${escapeHtml(approval)}" rel="noopener">Continue PayPal approval</a>`:'';
- if(ai)ai.textContent=STATE?.connections?.gemini_configured?'Gemini configured; responses remain grounded and payment tools are excluded.':'Gemini API key not configured; deterministic tool-backed guidance is active.';
- const emailOption=$('#notifChannel option[value="email"]'),pushOption=$('#notifChannel option[value="web_push"]');if(emailOption)emailOption.disabled=!cfg.email_enabled;if(pushOption)pushOption.disabled=!cfg.enabled;
- if(external)external.textContent=`Email ${cfg.email_enabled?'configured':'not configured'}; browser push ${cfg.enabled?'configured':'not configured'}. Delivery is confirmed only when the channel reports success.`;
- if(pushBtn)pushBtn.disabled=!cfg.enabled||!('serviceWorker' in navigator)||!('PushManager' in window);if(pushBtn)pushBtn.textContent=cfg.enabled?'Enable browser notifications':'Browser notifications not configured';
+ const localMode=window.GlimStorage?.mode==='localStorage';
+ const mode=$('#integrationModeStatus'),statusHost=$('#paypalIntegrationStatus');
+ const connect=$('#paypalConnectBtn'),disconnect=$('#paypalDisconnectBtn');
+ const approvalHost=$('#paypalApprovalLink'),pushBtn=$('#pushEnableBtn');
+ const external=$('#externalNotificationStatus'),privacy=$('#privacyStorageStatus');
+ const scopes=$('#paypalScopes');
+ if(scopes){scopes.textContent='';scopes.classList.add('hidden');}
+ if(localMode){
+   if(mode)mode.textContent='Automatic contributions are not set up for this account yet. Your debt plan, savings goals and progress tracking still work.';
+   if(statusHost)statusHost.textContent='Not connected';
+   if(connect){connect.disabled=true;connect.textContent='Not available yet';}
+   if(disconnect)disconnect.classList.add('hidden');
+   if(approvalHost)approvalHost.textContent='';
+   if(pushBtn)pushBtn.disabled=true;
+   if(external)external.textContent='In-app check-ins are available. Other reminder methods are not available yet.';
+   if(privacy)privacy.textContent='Your plan is saved on this device and does not sync across devices.';
+   const settle=$('#settleWeekBtn'),rec=$('#reconcileBtn');if(settle)settle.disabled=true;if(rec)rec.disabled=true;
+   return;
+ }
+ if(mode)mode.textContent='Manage the account used for approved contributions.';
+ if(privacy)privacy.textContent='Your profile and financial plan are stored in your account. Export or delete controls apply to this account.';
+ const [health,cfg]=await Promise.all([
+   api('/api/paypal/health').catch(()=>({configured:false,authenticated:false,status:STATE?.paypal?.status||'disconnected'})),
+   api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}))
+ ]);
+ const connectionStatus=STATE?.paypal?.status||health.status||'disconnected';
+ if(statusHost){
+   statusHost.textContent=connectionStatus==='connected'?(health.settlement_ready?'Connected':'Setup needed'):
+     connectionStatus==='awaiting_approval'?'Approval needed':health.configured?'Ready to connect':'Not available';
+ }
+ if(connect){
+   connect.disabled=!health.configured||connectionStatus==='connected'||connectionStatus==='awaiting_approval';
+   connect.textContent=connectionStatus==='awaiting_approval'?'Approval needed':'Connect account';
+ }
+ if(disconnect)disconnect.classList.toggle('hidden',connectionStatus!=='connected');
+ const approval=STATE?.paypal?.approval_url||health.approval_url;
+ if(approvalHost)approvalHost.innerHTML=connectionStatus==='awaiting_approval'&&approval?`<a class="text-link" href="${escapeHtml(approval)}" rel="noopener">Continue secure approval</a>`:'';
+ const emailOption=$('#notifChannel option[value="email"]'),pushOption=$('#notifChannel option[value="web_push"]');
+ if(emailOption)emailOption.disabled=!cfg.email_enabled;if(pushOption)pushOption.disabled=!cfg.enabled;
+ if(external)external.textContent=`In-app check-ins are available. Email ${cfg.email_enabled?'is ready':'is unavailable'}; browser notifications ${cfg.enabled?'are ready':'are unavailable'}.`;
+ if(pushBtn)pushBtn.disabled=!cfg.enabled||!('serviceWorker' in navigator)||!('PushManager' in window);
+ if(pushBtn)pushBtn.textContent=cfg.enabled?'Enable browser notifications':'Browser notifications unavailable';
 }
+
 async function renderSettlements(){
- const host=$('#settlementList');if(!host)return;const localMode=window.GlimStorage?.mode==='localStorage';if(localMode){host.innerHTML='<p class="muted">Payment submission and reconciliation are disabled in browser-only mode. No transfers are made.</p>';return;}
- try{const rows=await api('/api/ledger');const pending=Array.isArray(STATE?.settlements)?STATE.settlements:[];const accrued=(rows||[]).filter(r=>r.status==='accrued');const details=pending.map(r=>`<article class="inbox-item"><strong>${escapeHtml(r.reference)} · ${escapeHtml(r.status)}</strong><p>${money(r.amount)} CAD${r.last_error?` · ${escapeHtml(r.last_error)}`:''}</p>${r.status==='awaiting_approval'&&STATE?.paypal?.pending_settlement_approval_url?`<p><a class="text-link" href="${escapeHtml(STATE.paypal.pending_settlement_approval_url)}" rel="noopener">Continue PayPal approval</a></p>`:''}<div class="button-row"><button class="secondary" type="button" data-reconcile-ref="${escapeHtml(r.reference)}">Refresh status</button>${['creating_order','capture_pending','capture_unknown','capture_failed','payout_error','payout_failed','creating_payout'].includes(r.status)?`<button class="secondary" type="button" data-retry-ref="${escapeHtml(r.reference)}">Recover payment</button>`:''}</div></article>`);
+ const host=$('#settlementList');if(!host)return;const localMode=window.GlimStorage?.mode==='localStorage';if(localMode){host.innerHTML='<p class="muted">Automatic contributions are unavailable in this session. Your debt plan, savings goals and progress tracking still work.</p>';return;}
+ try{const rows=await api('/api/ledger');const pending=Array.isArray(STATE?.settlements)?STATE.settlements:[];const accrued=(rows||[]).filter(r=>r.status==='accrued');const statusLabel={awaiting_approval:'Awaiting approval',creating_order:'Processing',capture_pending:'Processing',capture_unknown:'Needs review',capture_failed:'Needs review',payout_error:'Needs review',payout_failed:'Needs review',creating_payout:'Processing',paid:'Complete',completed:'Complete',failed:'Needs review',accrued:'Ready to process'};
+  const details=pending.map(r=>`<article class="inbox-item"><strong>${escapeHtml(statusLabel[r.status]||'In progress')}</strong><p>${money(r.amount)} CAD${r.last_error?' · Needs review':''}</p>${r.status==='awaiting_approval'&&STATE?.paypal?.pending_settlement_approval_url?`<p><a class="text-link" href="${escapeHtml(STATE.paypal.pending_settlement_approval_url)}" rel="noopener">Continue secure approval</a></p>`:''}<div class="button-row"><button class="secondary" type="button" data-reconcile-ref="${escapeHtml(r.reference)}">Refresh status</button>${['creating_order','capture_pending','capture_unknown','capture_failed','payout_error','payout_failed','creating_payout'].includes(r.status)?`<button class="secondary" type="button" data-retry-ref="${escapeHtml(r.reference)}">Review contribution</button>`:''}</div></article>`);
   if(accrued.length)details.unshift(`<p class="muted">${accrued.length} approved daily allocation(s), ${money(accrued.reduce((a,r)=>a+Number(r.amount||0),0))} CAD, waiting for the settlement batch.</p>`);
-  host.innerHTML=details.length?details.join(''):'<p class="muted">No accrued contributions or unresolved payment settlements.</p>';
-  host.querySelectorAll('[data-retry-ref]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api(`/api/drip/settlements/${encodeURIComponent(btn.dataset.retryRef)}/retry`,{method:'POST'});$('#settlementActionResult').textContent=`Recovery status: ${r.status||'checked'}.`;await load()}catch(e){$('#settlementActionResult').textContent=e.message;btn.disabled=false}}));
-  host.querySelectorAll('[data-reconcile-ref]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});$('#settlementActionResult').textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){$('#settlementActionResult').textContent=e.message;btn.disabled=false}}));
+  host.innerHTML=details.length?details.join(''):'<p class="muted">No pending contributions.</p>';
+  host.querySelectorAll('[data-retry-ref]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api(`/api/drip/settlements/${encodeURIComponent(btn.dataset.retryRef)}/retry`,{method:'POST'});$('#settlementActionResult').textContent='Contribution status refreshed.';await load()}catch(e){$('#settlementActionResult').textContent='Could not refresh this contribution. Try again later.';btn.disabled=false}}));
+  host.querySelectorAll('[data-reconcile-ref]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});$('#settlementActionResult').textContent='Contribution status refreshed.';await load()}catch(e){$('#settlementActionResult').textContent='Could not refresh contribution status. Try again later.';btn.disabled=false}}));
  }catch(e){host.innerHTML=`<p class="muted">${escapeHtml(e.message)}</p>`;}
 }
 
-const WALKTHROUGH_KEY='glim.walkthrough.completed.v1';
+const WALKTHROUGH_KEY='glim.walkthrough.completed.v2';
 const WALKTHROUGH_STEPS=[
-  {section:'overview',title:'Start with Overview',copy:'Review your savings buffer, debt balance and the next step. If no debt appears yet, you can add one here.'},
-  {section:'savings',title:'Plan your savings',copy:'Track your cash buffer, create named savings goals and set targets to work toward.'},
-  {section:'plan',title:'Compare debt payoff options',copy:'Add debt details from Overview, then compare highest-interest-first, smallest-balance-first and balanced strategies with estimated timelines and interest.'},
-  {section:'coach',title:'Ask for guidance',copy:'Ask about a payoff strategy, your safety floor or a possible change to your budget.'},
-  {section:'game',title:'Track habits and milestones',copy:'Practice steps, streaks and lessons earn points. Points unlock app themes only; they are not money and do not change debt calculations.'},
-  {section:'squad',title:'Consistency challenge',copy:'Set a habit target and review your progress. Shared team features depend on the server-backed integration.'},
-  {section:'learn',title:'Learn one concept at a time',copy:'Complete short lessons on cash buffers, interest and repayment strategies.'},
-  {section:'settings',title:'Settings',copy:'Change your display and reminders, check integration availability, review activity, export your data or clear your profile.'}
+  {section:'overview',title:'Welcome to your forest',copy:'This is your single progress view. Chipper’s stage, your streak, debt, and savings buffer all move together.',target:'#tab-overview'},
+  {section:'overview',title:'Build your shield and defeat the Ogre',copy:'Add your cards or loans and track the savings buffer. A small buffer helps protect progress when unexpected costs appear.',target:'#savingsTools'},
+  {section:'plan',title:'Choose a debt strategy',copy:'Compare highest-interest-first, smallest-balance-first, and balanced repayment. Estimates use the balances and rates you entered.',target:'#tab-plan'},
+  {section:'overview',title:'Consistency powers the game',copy:'Streaks, points, short lessons and optional squad challenges live right here in Overview. Points reward consistency, not how much money you have.',target:'#habitTools'},
+  {section:'settings',title:'Make Glim fit you',copy:'Use Settings to choose which supporting cards appear, tune check-ins, manage contributions, and export or delete your data.',target:'#tab-settings'}
 ];
 let walkthroughIndex=0;
 let walkthroughReturnSection='overview';
@@ -286,6 +324,7 @@ function showWalkthroughStep(){
   $('#walkthroughStepLabel').textContent=`Step ${walkthroughIndex+1} of ${WALKTHROUGH_STEPS.length}`;
   $('#walkthroughTitle').textContent=step.title;
   $('#walkthroughCopy').textContent=step.copy;
+  const target=step.target?$(step.target):null;if(target && target.scrollIntoView)target.scrollIntoView({block:'nearest',behavior:'auto'});
   $('#walkthroughBackBtn').disabled=walkthroughIndex===0;
   $('#walkthroughNextBtn').textContent=walkthroughIndex===WALKTHROUGH_STEPS.length-1?'Finish tour':'Next';
 }
@@ -307,10 +346,10 @@ function maybeStartWalkthrough(){
   if(!localStorage.getItem(WALKTHROUGH_KEY))startWalkthrough();
 }
 $('#startWalkthroughBtn')?.addEventListener('click',()=>startWalkthrough(true));
+$('#overviewTourBtn')?.addEventListener('click',()=>startWalkthrough(true));
 $('#walkthroughNextBtn')?.addEventListener('click',()=>{if(walkthroughIndex>=WALKTHROUGH_STEPS.length-1){closeWalkthrough();return}walkthroughIndex++;showWalkthroughStep()});
 $('#walkthroughBackBtn')?.addEventListener('click',()=>{if(walkthroughIndex>0){walkthroughIndex--;showWalkthroughStep()}});
 $('#walkthroughSkipBtn')?.addEventListener('click',closeWalkthrough);
 
-$('#recapMonth').value=new Date().toISOString().slice(0,7);
 setIntegrationStatus();
 load();

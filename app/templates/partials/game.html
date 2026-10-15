@@ -1,9 +1,9 @@
-<section id="tab-game" class="tab-panel {{ 'active' if active_section == 'game' else 'hidden' }}">
-    <div class="panel-intro"><h2>Habits and rewards</h2><p>Track how regularly you follow your plan. Points unlock visual themes only; they have no cash value and do not affect your financial estimates.</p></div>
+<section id="habitTools" class="feature-widget" data-feature="habits" aria-labelledby="habitHeading">
+    
     <div class="two-col">
-      <section class="card section-card"><div class="section-head"><div><h2>Your habits</h2><p class="muted">A streak counts consecutive days with a recorded practice step. One monthly freeze can protect a streak when you miss a day.</p></div></div>
+      <section class="card section-card"><div class="section-head"><div><h2 id="habitHeading">Streaks and rewards</h2><p class="muted">Show up consistently to protect your streak. One monthly freeze can help when a day gets away from you.</p></div></div>
         <div class="game-grid"><div><span class="metric-label">Streak protection</span><strong id="freezes">1</strong><small>Protect your current streak once per month if you miss a day.</small><button class="secondary" id="freezeBtn" type="button">Use streak protection</button></div><div><span class="metric-label">Level</span><strong id="level">1</strong><small>Progress unlocks levels.</small></div><div><span class="metric-label">Current stage</span><strong id="stage">Building momentum</strong><small>Stages follow savings and debt milestones.</small></div></div>
       </section>
-      <section class="card section-card"><div class="section-head"><div><h2>Visual themes</h2><p class="muted">Use habit points to unlock alternate app themes. These rewards have no monetary value.</p></div></div><div id="shop" class="shop-grid"></div></section>
+      <section class="card section-card"><div class="section-head"><div><h2>Visual themes</h2><p class="muted">Spend points earned from consistency on visual themes.</p></div></div><div id="shop" class="shop-grid"></div></section>
     </div>
   </section>

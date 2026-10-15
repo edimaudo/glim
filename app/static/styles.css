@@ -499,3 +499,27 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
   .form-inline button{width:100%}
   .button-row>*{max-width:100%}
 }
+
+
+/* Glim unified forest dashboard: debt, savings and game progress share one view. */
+.tabs{grid-template-columns:repeat(3,minmax(0,1fr));max-width:980px}
+.overview-intro{display:flex;align-items:center;justify-content:space-between;gap:18px;max-width:none}
+.overview-intro>div{min-width:0}
+.integrated-dashboard-features{display:grid;grid-template-columns:1fr;gap:18px;margin-top:22px}
+.integrated-dashboard-features>.feature-widget{min-width:0}
+.integrated-feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0}
+.feature-widget{min-width:0}
+.feature-widget .section-card{margin:0}
+#savingsTools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#savingsTools>.section-card{min-width:0}
+#habitTools .two-col,#coachTools .two-col,#squadTools .two-col{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#habitTools .game-grid{gap:12px}
+#coachTools .question-suggestions{display:flex;flex-wrap:wrap;gap:8px}
+#coachTools .nudge-card .button-row{gap:7px}
+.feature-preferences{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.feature-preferences .check-label{display:flex;align-items:center;gap:10px;font-weight:500}
+.feature-preferences input[type=checkbox]{width:18px;height:18px;flex:0 0 auto}
+#paypalScopes:empty{display:none}
+#integrationModeStatus{margin:0 0 12px}
+@media(max-width:800px){#savingsTools{grid-template-columns:1fr}.integrated-feature-grid{grid-template-columns:1fr}#habitTools .two-col,#coachTools .two-col,#squadTools .two-col{grid-template-columns:1fr}}
+@media(max-width:650px){.tabs{grid-template-columns:repeat(3,minmax(0,1fr));overflow-x:auto}.tabs .tab{padding:10px 7px;min-width:0}.tabs .tab small{font-size:10px}.overview-intro{align-items:flex-start;flex-direction:column}.overview-intro #overviewTourBtn{align-self:flex-start}.feature-preferences{grid-template-columns:1fr}}

@@ -253,7 +253,7 @@
       }
       let s = this.read();
       const mustBeSignedIn = () => { if (!s.authenticated || !s.user?.email) throw new Error('Sign in to open your Glim plan.'); };
-      const makeScout = () => ({ income_pattern: `Profile estimate: ${money(s.profile.monthly_income || 0)}/month`, safe_to_move_daily: this.safeToMove(s.profile), subscriptions: [], suggested_debts: [], debt_suggestions: [], source: 'No connected PayPal activity; no findings generated' });
+      const makeScout = () => ({ income_pattern: `Profile estimate: ${money(s.profile.monthly_income || 0)}/month`, safe_to_move_daily: this.safeToMove(s.profile), subscriptions: [], suggested_debts: [], debt_suggestions: [], source: 'No account activity to review yet' });
       let result;
 
       if (route === '/api/auth/me' && method === 'GET') result = { authenticated: Boolean(s.authenticated && s.user?.email) };
@@ -265,7 +265,7 @@
       else if (route === '/api/profile' && method === 'POST') {
         mustBeSignedIn();
         if (!(Number(body.monthly_income) > 0)) throw new Error('Enter a monthly income greater than zero.');
-        if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('External reminders are not available in localStorage-only mode. Select In-app or enable the server adapter with channel credentials.');
+        if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('Only in-app reminders are available for this account right now. Choose in-app delivery to continue.');
         s.profile = { ...s.profile, ...body, setup_completed: true, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
         s.stash.shield_threshold = s.debts.find(d => d.status === 'active')?.minimum || s.stash.shield_threshold || 1000;
         s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app' };
@@ -304,9 +304,9 @@
       }
       else if (route === '/api/drip/approve' && method === 'POST') {
         mustBeSignedIn();
-        throw new Error('A daily contribution can only be approved after a PayPal connection is active in server mode. Browser-only mode can calculate a plan but cannot record a payment.');
+        throw new Error('Automatic contributions are not set up for this account yet. No transfer was made.');
       }
-      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Real payments are disabled in browser-only mode. No payment was sent. A secure server payment integration is required.');
+      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Automatic contributions are not set up for this account yet. No transfer was made.');
       else if (route === '/api/debt/redirect' && method === 'POST') {
         mustBeSignedIn(); if (!s.pending_redirect) throw new Error('No paid-off debt is awaiting a payment redirect decision.');
         s.pending_redirect.destination = body.destination; s.pending_redirect = null; this.addAudit(s, 'Tactician', 'freed_payment_redirect', 'Save the user-selected destination for the freed payment.', 'User choice', { destination: body.destination }); this.save(s); result = { status: 'redirected' };
@@ -321,8 +321,8 @@
         else if (/how.*snowball|snowball.*work/.test(low)) { agent = 'Tactician'; message = 'Snowball prioritizes the smallest active balance first. It can create earlier payoff milestones, though total interest may be higher.'; }
         else if (/daily step|suggest.*step|why.*step/.test(low)) { message = `The suggested daily amount is calculated from your income, expenses, savings target and minimum balance.`; }
         else if (/what if|payoff|interest|avalanche|snowball|debt free/.test(low)) { agent = 'Tactician'; message = s.plan?.projection ? `Your ${s.plan.strategy} plan models about ${s.plan.projection.months} months to pay off the active debts, with approximately ${money(s.plan.projection.interest_paid)} in modeled interest. These are estimates from the local calculator.` : 'Add a debt and build a plan first. The calculator will produce projections.'; }
-        else if (/subscription|scout|transaction/.test(low)) { agent = 'Scout'; message = 'No connected PayPal activity is available to review yet.'; }
-        else if (/saving|buffer|shield|stash/.test(low)) { message = `Your savings buffer is ${money(s.stash.balance)} toward a first buffer target of ${money(s.stash.shield_threshold)}. A recorded practice step updates this browser only; no money moves.`; }
+        else if (/subscription|scout|transaction/.test(low)) { agent = 'Scout'; message = 'No connected account activity is available to review yet.'; }
+        else if (/saving|buffer|shield|stash/.test(low)) { message = `Your savings buffer is ${money(s.stash.balance)} toward a first buffer target of ${money(s.stash.shield_threshold)}. Recording progress here updates your plan only; no transfer is made.`; }
         else { message = `A small step still counts. ${s.paused ? 'Practice steps are paused.' : 'Your safety floor and approval rules remain in place.'}`; }
         this.addAudit(s, agent, 'coach_chat', 'Answer using your current plan and the built-in guidance available in this prototype.', 'User asked Glim', { message }); this.save(s); result = { agent, message, mode: 'Deterministic fallback' };
       }
@@ -342,7 +342,7 @@
         this.addAudit(s, 'Glim', 'nudge_response', 'Save your check-in response so future prompts can be adjusted.', response, { response, reward, supportive_mode: this.stressMode(s) }); this.save(s); result = { status: 'saved', reward };
       }
       else if (route === '/api/push/config' && method === 'GET') result = { enabled: false, public_key: '', reason: 'External push subscriptions need a server-side endpoint; local-only prototype stores application data in this browser.' };
-      else if (route === '/api/push/subscribe' && method === 'POST') throw new Error('Web Push subscription storage requires a server endpoint. It is unavailable in localStorage-only mode.');
+      else if (route === '/api/push/subscribe' && method === 'POST') throw new Error('Browser notifications are not available for this account yet.');
       else if (route === '/api/notifications' && method === 'GET') result = { settings: s.notifications, items: s.inbox, stress_mode: this.stressMode(s) };
       else if (route === '/api/squads' && method === 'GET') result = this.getSquad(s);
       else if (route === '/api/squads' && method === 'POST') {
@@ -353,7 +353,7 @@
         this.save(s); result = this.getSquad(s);
       }
       else if (route === '/api/squads/join' && method === 'POST') {
-        mustBeSignedIn(); if (!s.squad || String(body.invite_code || '').toUpperCase() !== s.squad.invite_code) throw new Error('Squad invites cannot sync between browsers in localStorage-only mode. Configure shared database storage to support cross-user invitations.');
+        mustBeSignedIn(); if (!s.squad || String(body.invite_code || '').toUpperCase() !== s.squad.invite_code) throw new Error('Inviting friends is not available for this account yet.');
         result = this.getSquad(s);
       }
       else if (route === '/api/squads/cheer' && method === 'POST') {
@@ -395,7 +395,7 @@
         s.monthly_deposit = { enabled: Boolean(body.enabled), amount: round2(body.amount || 0), due_day: Math.max(1, Math.min(28, Number(body.due_day || 1))), consent: Boolean(body.consent), status: body.enabled ? 'local_settings_only' : 'disabled', note: 'Saved locally only. No schedule, collection, or payout runs in localStorage mode.' };
         this.addAudit(s, 'Banker', 'monthly_deposit_preference', 'Save this monthly target as a reminder only; no transfer is scheduled.', 'User confirmed local preference', { ...s.monthly_deposit }); this.save(s); result = s.monthly_deposit;
       }
-      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Monthly savings targets cannot initiate transfers in browser-only mode. A server-side payment integration is required.');
+      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Automatic monthly contributions are not set up for this account yet. No transfer was made.');
       else if (route === '/api/monthly-recap' && method === 'GET') {
         mustBeSignedIn(); const month = url.searchParams.get('month') || new Date().toISOString().slice(0,7); if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Month must use YYYY-MM format.');
         const rows = s.ledger.filter(x => x.kind === 'drip' && x.created_at.slice(0,7) === month); const amount = rows.reduce((a,x)=>a+Number(x.amount||0),0); const stash = rows.reduce((a,x)=>a+Number(x.stash_share||0),0); const debt = rows.reduce((a,x)=>a+Number(x.debt_share||0),0);
@@ -414,10 +414,10 @@
         }
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
-      else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'External payment calls are disabled in browser-only mode.' };
-      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('External payment connections are disabled in browser-only mode. No token was created. Configure a secure server integration before enabling payments.');
+      else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, country: 'CA', currency: 'CAD', reason: 'Automatic contributions are unavailable in this session.' };
+      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('Account connections are unavailable in this session. Your plan and progress tools still work.');
       else if (route === '/api/paypal/disconnect' && method === 'POST') { s.paypal = { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] }; this.save(s); result = s.paypal; }
-      else throw new Error(`This action is not available in the localStorage adapter: ${method} ${route}`);
+      else throw new Error('This action is not available for this account yet.');
 
       return clone(result);
     }
