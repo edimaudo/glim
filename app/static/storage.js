@@ -5,6 +5,8 @@
 (() => {
   'use strict';
   const STORAGE_KEY = 'glim.prototype.v1';
+  const ACTIVE_EMAIL_KEY = 'glim.prototype.active-email';
+  const accountKey = email => `${STORAGE_KEY}.user.${encodeURIComponent(String(email || '').trim().toLowerCase())}`;
   const COSMETICS = [
     { id: 1, name: 'Leaf trail', description: 'A calm trail effect for your forest path.', cost: 80, icon: 'leaf' },
     { id: 2, name: 'Acorn crown', description: 'A tiny crown for a consistent week.', cost: 120, icon: 'acorn' },
@@ -39,9 +41,31 @@
   });
 
   class BrowserLocalStorageAdapter {
-    constructor(key = STORAGE_KEY) { this.key = key; this.name = 'localStorage'; }
+    constructor(key = STORAGE_KEY) { this.baseKey = key; this.key = key; this.name = 'localStorage'; }
+    resolveKey() {
+      const email = String(localStorage.getItem(ACTIVE_EMAIL_KEY) || '').trim().toLowerCase();
+      if (email) { this.key = accountKey(email); return this.key; }
+      // One-time migration from the former single shared browser record. Only migrate it
+      // to the email already recorded inside that record; never copy it to another email.
+      try {
+        const raw = localStorage.getItem(this.baseKey);
+        const prior = raw ? JSON.parse(raw) : null;
+        const oldEmail = String(prior?.user?.email || '').trim().toLowerCase();
+        if (oldEmail) {
+          localStorage.setItem(ACTIVE_EMAIL_KEY, oldEmail);
+          const nextKey = accountKey(oldEmail);
+          if (!localStorage.getItem(nextKey)) localStorage.setItem(nextKey, raw);
+          localStorage.removeItem(this.baseKey);
+          this.key = nextKey;
+          return this.key;
+        }
+      } catch {}
+      this.key = this.baseKey;
+      return this.key;
+    }
     read() {
       try {
+        this.resolveKey();
         const raw = localStorage.getItem(this.key);
         if (!raw) return newState();
         const value = JSON.parse(raw);
@@ -74,10 +98,18 @@
       }
     }
     save(s) {
-      try { localStorage.setItem(this.key, JSON.stringify(s)); }
+      try { this.resolveKey(); localStorage.setItem(this.key, JSON.stringify(s)); }
       catch (error) { throw new Error('Glim could not save to this browser. Check available site storage or export your data before continuing.'); }
     }
-    clear() { try { localStorage.removeItem(this.key); } catch {} }
+    clear() {
+      try {
+        const email = String(localStorage.getItem(ACTIVE_EMAIL_KEY) || '').trim().toLowerCase();
+        if (email) localStorage.removeItem(accountKey(email));
+        if (this.key === this.baseKey) localStorage.removeItem(this.baseKey);
+        localStorage.removeItem(ACTIVE_EMAIL_KEY);
+        this.key = this.baseKey;
+      } catch {}
+    }
     addAudit(s, agent, inputRef, rationale, approval, result) {
       s.audit.unshift({ id: id(), created_at: now(), agent, input_ref: inputRef, proposal: {}, rationale, approval, result });
       s.audit = s.audit.slice(0, 100);
@@ -158,30 +190,6 @@
       if (!p || !p.monthly_income) return 0;
       return round2(Math.max(0, Number(p.monthly_income) - Number(p.average_monthly_expenses ?? p.monthly_income * .75) - Number(p.floor_balance || 0)) / 30);
     }
-    seedPersona(s, key) {
-      const personas = {
-        riley: { key: 'riley', name: 'Credit-card payoff example', income: 5200, range: '$4,500–$6,000', expenses: 3900, pct: 5, floor: 1000, balance: 4200, apr: 19.99, min: 110, debt: 'Everyday Card', streak: 6, points: 180, level: 3, stash: 260, tx: [
-          { date: '2026-04-02', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-03', merchant: 'Rent Co.', amount: -1650, category: 'housing' }, { date: '2026-04-05', merchant: 'Streamly', amount: -18.99, category: 'subscription' }, { date: '2026-04-06', merchant: 'Metro Market', amount: -96.2, category: 'groceries' }, { date: '2026-04-08', merchant: 'Foodly', amount: -28.4, category: 'dining' }, { date: '2026-04-15', merchant: 'ACME PAYROLL', amount: 2600, category: 'income' }, { date: '2026-04-18', merchant: 'Gym Club', amount: -54.99, category: 'subscription' }, { date: '2026-04-21', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-24', merchant: 'Metro Market', amount: -112.8, category: 'groceries' }
-        ], subs: [{ merchant: 'Streamly', monthly: 18.99, signal: 'Seeded recurring charge' }, { merchant: 'Gym Club', monthly: 54.99, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
-        sam: { key: 'sam', name: 'Loan and savings example', income: 3800, range: '$3,000–$4,500', expenses: 2800, pct: 6, floor: 600, balance: 6800, apr: 7.2, min: 160, debt: 'Starter Loan', streak: 3, points: 90, level: 2, stash: 145, tx: [
-          { date: '2026-04-01', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-03', merchant: 'Home Share', amount: -900, category: 'housing' }, { date: '2026-04-06', merchant: 'LearnHub', amount: -29, category: 'subscription' }, { date: '2026-04-08', merchant: 'Metro Market', amount: -74.1, category: 'groceries' }, { date: '2026-04-15', merchant: 'Campus Payroll', amount: 1900, category: 'income' }, { date: '2026-04-16', merchant: 'RideNow', amount: -39.2, category: 'transport' }, { date: '2026-04-19', merchant: 'MusicBox', amount: -11.99, category: 'subscription' }, { date: '2026-04-25', merchant: 'Metro Market', amount: -82.6, category: 'groceries' }
-        ], subs: [{ merchant: 'LearnHub', monthly: 29, signal: 'Seeded recurring charge' }, { merchant: 'MusicBox', monthly: 11.99, signal: 'Seeded recurring charge' }] },
-      };
-      const p = personas[key]; if (!p) throw new Error('Unknown persona.');
-      const identity = s.user;
-      const fresh = newState();
-      Object.keys(s).forEach(key => delete s[key]);
-      Object.assign(s, fresh);
-      s.legacy_sample_cleared = true;
-      s.authenticated = true; s.user = identity;
-      s.profile = { name: '', persona: p.key, sample_selected: true, setup_completed: false, income_range: p.range, monthly_income: p.income, savings_pct: p.pct, approval_mode: 'each', weekly_cap: 60, floor_balance: p.floor, average_monthly_expenses: p.expenses, quiet_start: '22:00', quiet_end: '08:00', notification_cap: 3, notification_channel: 'in_app' };
-      s.stash = { balance: p.stash, shield_threshold: p.min, goals: [] };
-      s.game = { streak: p.streak, freezes: 1, points: p.points, level: p.level, evolution_stage: 'Sprout' };
-      s.debts = [{ id: 1, name: p.debt, type: key === 'sam' ? 'loan' : 'credit_card', balance: p.balance, apr: p.apr, minimum: p.min, due_day: key === 'sam' ? 12 : 18, status: 'active' }];
-      s.seeded_transactions = p.tx; s.seeded_subscriptions = p.subs;
-      this.addAudit(s, 'Scout', 'persona_seed', 'Load example figures and activity that can be reviewed and edited before saving.', 'Illustrative local data; no bank connection was used', { persona: key === 'riley' ? 'Carrying a balance example' : 'Fresh start example', transaction_count: p.tx.length });
-      return this.state(s);
-    }
     allocateGoals(s, amount) {
       let left = round2(amount);
       for (const goal of (s.stash.goals || []).filter(g => g.status === 'active').sort((a, b) => a.id - b.id)) {
@@ -230,28 +238,34 @@
       const route = url.pathname;
       let body = {};
       try { body = typeof opts.body === 'string' ? JSON.parse(opts.body || '{}') : (opts.body || {}); } catch { body = {}; }
+      // Resolve an account namespace before touching current state. In localStorage mode
+      // email selection is an offline profile selector, not verified authentication.
+      if (route === '/api/auth/request' && method === 'POST') {
+        const email = String(body.email || '').trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
+        localStorage.setItem(ACTIVE_EMAIL_KEY, email);
+        this.key = accountKey(email);
+        let accountState = this.read();
+        accountState.user = { email, display_name: String(accountState.profile?.name || '') };
+        accountState.authenticated = true;
+        this.save(accountState);
+        return clone({ status: 'local_profile_opened', email, storage_mode: 'localStorage', secure_authentication: false });
+      }
       let s = this.read();
       const mustBeSignedIn = () => { if (!s.authenticated || !s.user?.email) throw new Error('Sign in to open your Glim plan.'); };
-      const makeScout = () => ({ income_pattern: `About ${money(s.profile.monthly_income || 0)}/month across the current profile`, safe_to_move_daily: this.safeToMove(s.profile), subscriptions: [], suggested_debts: this.getDebts(s), source: 'No connected PayPal activity' });
+      const makeScout = () => ({ income_pattern: `Profile estimate: ${money(s.profile.monthly_income || 0)}/month`, safe_to_move_daily: this.safeToMove(s.profile), subscriptions: [], suggested_debts: [], debt_suggestions: [], source: 'No connected PayPal activity; no findings generated' });
       let result;
 
       if (route === '/api/auth/me' && method === 'GET') result = { authenticated: Boolean(s.authenticated && s.user?.email) };
-      else if (route === '/api/auth/request' && method === 'POST') {
-        const email = String(body.email || '').trim().toLowerCase();
-        if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
-        if (s.user?.email && s.user.email !== email) { s = newState(); }
-        s.user = { email, display_name: String(s.profile?.name || '') }; s.authenticated = true; this.save(s);
-        result = { status: 'local_session_created', email, storage_mode: 'localStorage' };
-      }
       else if (route === '/api/auth/logout' && method === 'POST') { s.authenticated = false; this.save(s); result = { status: 'signed_out' }; }
       else if (route === '/api/account' && method === 'DELETE') { this.clear(); result = { status: 'deleted' }; }
       else if (route === '/api/data/export' && method === 'GET') { mustBeSignedIn(); result = clone({ product: 'Glim', exported_at: now(), storage_mode: 'localStorage', ...s }); }
       else if (route === '/api/state' && method === 'GET') { mustBeSignedIn(); result = this.state(s); }
-      else if (route.startsWith('/api/personas/') && method === 'POST') { mustBeSignedIn(); result = this.seedPersona(s, route.split('/').pop()); this.save(s); }
+      else if (route.startsWith('/api/personas/') && method === 'POST') throw new Error('Example identities have been removed. Enter your own profile and debt details.')
       else if (route === '/api/profile' && method === 'POST') {
         mustBeSignedIn();
         if (!(Number(body.monthly_income) > 0)) throw new Error('Enter a monthly income greater than zero.');
-        if (body.notification_channel === 'web_push') throw new Error('Web Push is not available in localStorage-only mode. Select In-app, or enable a server API adapter later.');
+        if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('External reminders are not available in localStorage-only mode. Select In-app or enable the server adapter with channel credentials.');
         s.profile = { ...s.profile, ...body, setup_completed: true, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
         s.stash.shield_threshold = s.debts.find(d => d.status === 'active')?.minimum || s.stash.shield_threshold || 1000;
         s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app' };
@@ -268,38 +282,36 @@
       else if (route === '/api/plan' && method === 'POST') { mustBeSignedIn(); result = this.buildPlan(s, body.strategy || 'avalanche', Number(body.stash_pct ?? 65)); this.save(s); }
       else if (route === '/api/what-if' && method === 'POST') {
         mustBeSignedIn(); if (!s.plan?.projection) this.buildPlan(s);
-        const text = String(body.text || ''), moneyMatch = text.match(/\$(\d+(?:\.\d+)?)/); let weekly = 0, label = 'No quantified change';
-        if (moneyMatch) { weekly = Number(moneyMatch[1]); label = `Adds ${money(weekly)}/week of capacity`; }
-        else if (/(twice|two times|2x)/i.test(text) && /(takeout|dining|restaurant)/i.test(text)) { weekly = 20; label = 'Assumes $20/week reclaimed from two fewer takeout occasions'; }
-        else if (/(once|one time|1x)/i.test(text) && /(takeout|dining|restaurant)/i.test(text)) { weekly = 10; label = 'Assumes $10/week reclaimed from one fewer takeout occasion'; }
-        const debts = s.debts.filter(d => d.status === 'active'); const extraDaily = round2(this.dailyDrip(s.profile) + weekly / 7);
-        const projected = debts.length ? this.projection(debts, extraDaily * 30 * (1 - Number(s.plan.stash_pct || 65) / 100), s.plan.strategy) : null;
-        result = { parsed: { input: text, weekly_extra: weekly, label }, baseline: s.plan.projection, what_if: projected ? { months: projected.months, interest_paid: projected.interest_paid } : null, daily_drip: extraDaily };
-        this.addAudit(s, 'Tactician', 'what_if', 'Compare a possible change against the current payoff estimate.', 'Financial figures calculated by code', result); this.save(s);
+        const text = String(body.text || '').trim(), low = text.toLowerCase();
+        let weekly = 0, label = 'I could not determine a quantified change from that sentence.', needs_clarification = false; const assumptions = [];
+        const cadenceMatch = low.match(/\b(twice|two times|2x|once|one time|1x|three times|thrice|3x)\b/);
+        const cadence = cadenceMatch ? (['twice','two times','2x'].includes(cadenceMatch[1]) ? 2 : (['three times','thrice','3x'].includes(cadenceMatch[1]) ? 3 : 1)) : 1;
+        const amountMatch = low.match(/(?:\$\s*)?([0-9]+(?:\.[0-9]{1,2})?)\s*(?:cad\s*)?(?:per\s+)?(week|weekly|month|monthly|day|daily|occasion|visit|meal)?\b/);
+        if (amountMatch) {
+          const amount=Number(amountMatch[1]),unit=amountMatch[2]||'',start=amountMatch.index||0;const hasCurrency=text.slice(Math.max(0,start-2),start+1).includes('$');
+          if(amount>0&&unit){if(['week','weekly'].includes(unit))weekly=amount;else if(['month','monthly'].includes(unit))weekly=amount*12/52;else if(['day','daily'].includes(unit))weekly=amount*7;else{weekly=amount*cadence;assumptions.push(`Treating ${cadence} avoided occasion(s) each week as $${amount.toFixed(2)} each.`)}label=`Models an additional $${weekly.toFixed(2)} per week from the amount and period entered.`;}
+          else if(hasCurrency&&amount>0&&/(takeout|dining|restaurant|coffee|lunch|delivery)/.test(low)){if(cadenceMatch){weekly=amount*cadence;assumptions.push(`Treating $${amount.toFixed(2)} as spend per avoided occasion, ${cadence} occasion(s) per week.`);label=`Models $${weekly.toFixed(2)}/week reclaimed from fewer occasions.`;}else{needs_clarification=true;label='I need to know whether that amount is per week, month or occasion.';}}
+          else if(hasCurrency&&amount>0){needs_clarification=true;label='I need a time period (per week, month or day) before calculating that amount.';}
+        }
+        if(!weekly&&!needs_clarification&&/\b(skip|cut|avoid|drop|reduce)\b/.test(low)&&/(takeout|dining|restaurant|delivery)/.test(low)){weekly=10*cadence;assumptions.push('Planning placeholder: $10.00 per avoided occasion because actual takeout spend is not recorded.');label=`Uses a disclosed $10-per-occasion placeholder for ${cadence} fewer takeout occasion(s) each week.`;}
+        if(!weekly&&!needs_clarification){const pct=low.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);if(pct&&/(expense|spend|budget|cost|spending)/.test(low)){const expense=Number(s.profile.average_monthly_expenses||0);if(Number(pct[1])>0&&expense>0){weekly=expense*Number(pct[1])/100*12/52;assumptions.push(`Applies ${pct[1]}% to all entered monthly expenses; category-level spend is not connected.`);label=`Models a ${pct[1]}% reduction in entered monthly expenses, about $${weekly.toFixed(2)}/week.`;}else{needs_clarification=true;label='Enter typical monthly expenses before estimating a percentage-based reduction.';}}}
+        if(!weekly&&!needs_clarification){needs_clarification=true;label='Add an amount and period (for example, “save $25 per week”) so I do not assume a figure.';}
+        weekly=round2(Math.max(0,weekly));
+        const debts=s.debts.filter(d=>d.status==='active');const extraDaily=round2(this.dailyDrip(s.profile)+weekly/7);
+        const projected=debts.length&&!needs_clarification?this.projection(debts,extraDaily*30*(1-Number(s.plan.stash_pct??65)/100),s.plan.strategy):null;
+        result={parsed:{input:text,weekly_extra:weekly,label,assumptions,needs_clarification},baseline:s.plan?.projection||null,what_if:projected?{months:projected.months,interest_paid:projected.interest_paid,interest_saved_vs_baseline:round2(Number(s.plan.projection?.interest_paid||0)-Number(projected.interest_paid||0)),months_saved_vs_baseline:Number(s.plan.projection?.months||projected.months)-Number(projected.months)}:null,daily_drip:extraDaily};
+        this.addAudit(s,'Tactician','what_if','Parse the phrase with explicit amount/period assumptions and compare deterministic projections.','Financial figures calculated by code; unknown amounts request clarification',result);this.save(s);
       }
       else if (route === '/api/drip/approve' && method === 'POST') {
-        mustBeSignedIn(); if (s.paused) throw new Error('Drips are paused.');
-        const amount = this.dailyDrip(s.profile); if (amount <= 0) throw new Error('The current plan has no safe-to-move amount above your safety floor.');
-        const mode = s.profile.approval_mode || 'each', cap = Number(s.profile.weekly_cap || 0);
-        if (['weekly_cap', 'standing_rule'].includes(mode) && this.weeklyTotal(s) + amount > cap) throw new Error(`Weekly cap of ${money(cap)} would be exceeded. No drip was recorded.`);
-        let stashPct = s.stash.balance < s.stash.shield_threshold ? 65 : 25;
-        if (s.plan?.stash_pct != null) stashPct = Number(s.plan.stash_pct);
-        let stashShare = round2(amount * stashPct / 100), debtShare = round2(amount - stashShare);
-        const debt = this.activeDebts(s, s.plan?.strategy || 'avalanche')[0]; if (debtShare > 0 && !debt) { stashShare = amount; debtShare = 0; }
-        const entry = { id: id(), created_at: now(), kind: 'drip', amount, stash_share: stashShare, debt_share: debtShare, debt_id: debt?.id || null, status: 'local_recorded', settlement_id: null, storage_mode: 'localStorage' };
-        s.ledger.push(entry); s.stash.balance = round2(s.stash.balance + stashShare); this.allocateGoals(s, stashShare);
-        let defeated = null;
-        if (debt && debtShare > 0) { debt.balance = Math.max(0, round2(debt.balance - debtShare)); if (debt.balance <= .01) { debt.balance = 0; debt.status = 'defeated'; defeated = { debt_id: debt.id, debt_name: debt.name, freed_payment: debt.minimum }; s.pending_redirect = defeated; } }
-        s.game.streak += 1; s.game.points += 20; s.points_events.push({ created_at: now(), points: 20, reason: 'daily drip' }); s.last_drip_date = new Date().toISOString().slice(0,10); this.updateEvolution(s); this.recordSquadDrip(s);
-        this.addAudit(s, 'Banker', 'local_drip_recorded', 'Record the daily step and update the planned savings and debt allocations.', 'User recorded a daily step', entry);
-        this.save(s); result = { status: 'approved', amount, stash_share: stashShare, debt_share: debtShare, streak: s.game.streak, points: s.game.points, debt_defeated: defeated, storage_mode: 'localStorage', money_moved: false };
+        mustBeSignedIn();
+        throw new Error('A daily contribution can only be approved after a PayPal connection is active in server mode. Browser-only mode can calculate a plan but cannot record a payment.');
       }
       else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Real payments are disabled in browser-only mode. No payment was sent. A secure server payment integration is required.');
       else if (route === '/api/debt/redirect' && method === 'POST') {
         mustBeSignedIn(); if (!s.pending_redirect) throw new Error('No paid-off debt is awaiting a payment redirect decision.');
         s.pending_redirect.destination = body.destination; s.pending_redirect = null; this.addAudit(s, 'Tactician', 'freed_payment_redirect', 'Save the user-selected destination for the freed payment.', 'User choice', { destination: body.destination }); this.save(s); result = { status: 'redirected' };
       }
-      else if (route === '/api/game/freeze' && method === 'POST') { mustBeSignedIn(); if (s.game.freezes < 1) throw new Error('No streak freezes remain this month.'); s.game.freezes -= 1; this.addAudit(s, 'Glim', 'streak_freeze', 'Use one forgiveness freeze without resetting the streak.', 'User choice', s.game); this.save(s); result = { game: s.game }; }
+      else if (route === '/api/game/freeze' && method === 'POST') { mustBeSignedIn(); throw new Error('Streak freezes require the server-side daily streak history. Connect to a server-backed Glim account to use this control.'); }
       else if (route === '/api/pause' && method === 'POST') { s.paused = true; this.addAudit(s, 'Banker', 'pause', 'Pause new practice steps and streak tracking.', 'User control', { paused: true }); this.save(s); result = { paused: true }; }
       else if (route === '/api/resume' && method === 'POST') { s.paused = false; this.addAudit(s, 'Banker', 'resume', 'Allow practice steps to be recorded again.', 'User control', { paused: false }); this.save(s); result = { paused: false }; }
       else if (route === '/api/chat' && method === 'POST') {

@@ -480,3 +480,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .integration-item strong{display:block;margin-bottom:8px;font-size:14px}
 .integration-item p{margin:0;color:var(--muted);font-size:14px}
 @media(max-width:700px){.setup-form,.setup-debt-grid,.integration-grid{grid-template-columns:1fr}.setup-form .setup-form-section,.setup-form .setup-debt-grid,.setup-form .setup-submit-row{grid-column:1}.setup-form{padding:18px}}
+
+
+/* Accessibility and smaller-screen integrity for the P0/P1 interaction surfaces. */
+:focus-visible{outline:3px solid var(--blue2);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+.scout-debt-card{display:flex;flex-direction:column;gap:12px}
+.scout-debt-card .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+.scout-debt-card label{min-width:0}
+#settlementList .inbox-item{overflow-wrap:anywhere}
+#paypalScopes{overflow-wrap:anywhere}
+#squadInfo .callout p{line-height:1.55}
+@media(max-width:700px){
+  .scout-debt-card .settings-grid{grid-template-columns:minmax(0,1fr)}
+  .settings-display,.pause-control,.push-control{align-items:flex-start;flex-direction:column}
+  .integration-grid,.shop-grid,.two-col{grid-template-columns:minmax(0,1fr)}
+  .form-inline{align-items:stretch;flex-direction:column}
+  .form-inline button{width:100%}
+  .button-row>*{max-width:100%}
+}

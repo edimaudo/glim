@@ -15,14 +15,15 @@ class Profile(BaseModel):
     quiet_start: str = "22:00"
     quiet_end: str = "08:00"
     notification_cap: int = Field(default=3, ge=0, le=10)
-    notification_channel: Literal["in_app", "web_push"] = "in_app"
+    notification_channel: Literal["in_app", "web_push", "email"] = "in_app"
+    timezone: str = "America/Toronto"
 
 
 class DebtCreate(BaseModel):
     name: str = Field(min_length=1)
     type: Literal["credit_card", "loan"] = "credit_card"
     balance: float = Field(gt=0)
-    apr: float = Field(ge=0)
+    apr: float = Field(ge=0, le=100)
     minimum: float = Field(gt=0)
     due_day: int = Field(default=15, ge=1, le=31)
 
@@ -91,3 +92,11 @@ class SquadGoalCreate(BaseModel):
     title: str = Field(min_length=3, max_length=80)
     target_count: int = Field(gt=0, le=1000)
     reward_cosmetic_id: int = Field(ge=1)
+
+
+class ScoutDebtConfirm(BaseModel):
+    type: Literal["credit_card", "loan"] = "credit_card"
+    balance: float = Field(gt=0)
+    apr: float = Field(ge=0, le=100)
+    minimum: float = Field(gt=0)
+    due_day: int = Field(default=15, ge=1, le=31)

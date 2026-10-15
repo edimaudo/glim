@@ -2,7 +2,7 @@
     <div class="panel-intro"><h2>Overview</h2><p>Review your savings target, debt balances and the next step in your plan.</p></div>
     <div class="hero-grid">
       <article class="card journey-card"><div class="journey-copy"><p class="data-label">Progress stage</p><strong id="evolution">Building momentum</strong><p id="evolutionCopy">Build a savings buffer while reducing debt.</p></div><div class="journey-streak"><strong id="streak">0</strong><span>day streak</span></div></article>
-      <article class="card drip-card"><div class="card-top"><div><span class="data-label">Suggested daily allocation</span><div class="big-number" id="dailyDrip">$0.00</div></div></div><div class="split-bars"><div><span>To savings</span><b id="stashShare">—</b></div><div><span>Toward debt payoff</span><b id="bossShare">—</b></div></div><button class="primary" id="approveDrip" type="button">Log today’s step</button></article>
+      <article class="card drip-card"><div class="card-top"><div><span class="data-label">Suggested daily allocation</span><div class="big-number" id="dailyDrip">$0.00</div></div></div><div class="split-bars"><div><span>To savings</span><b id="stashShare">—</b></div><div><span>Toward debt payoff</span><b id="bossShare">—</b></div></div><button class="primary" id="approveDrip" type="button">Connect PayPal to approve</button><p class="muted small-note" id="dripStatusNote">The daily allocation is an estimate. Savings and debt balances change only after PayPal confirms a payout.</p></article>
     </div>
     <div id="defeatBanner" class="callout hidden"></div>
     <div class="stats-grid">
@@ -12,7 +12,7 @@
       <article class="card stat"><span class="data-label">Payoff strategy</span><strong id="planStrategy">Not set</strong><small id="planMeta">Add debt to see a projection.</small></article>
     </div>
     <div class="overview-lower">
-      <section class="card section-card"><div class="section-head"><div><h2>Recurring activity</h2><p class="muted">Review recurring charges identified in connected account activity.</p></div><button class="secondary" id="scanBtn" type="button">Refresh activity</button></div><div id="scoutResults" class="stack"></div></section>
+      <section class="card section-card"><div class="section-head"><div><h2>Recurring activity</h2><p class="muted">Review recurring charges identified in connected account activity.</p></div><button class="secondary" id="scanBtn" type="button">Refresh activity</button></div><div id="scoutResults" class="stack"></div><div id="scoutDebtSuggestions" class="stack" aria-live="polite"></div></section>
       <section class="card section-card"><div class="section-head"><div><h2>Your debts</h2><p class="muted">Add each credit card or loan here. These details power the payoff estimates and repayment order.</p></div></div><form id="debtForm" class="compact-form">
         <label>Debt name<input id="dName" placeholder="e.g. Main credit card" autocomplete="off" required/></label>
         <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select></label>
