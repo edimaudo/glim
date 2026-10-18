@@ -1,10 +1,10 @@
 let STATE = null;
-let selectedStrategy = 'avalanche';
+let selectedStrategy = 'smart';
 let currentLesson = null;
 let lastNudge = null;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-function cleanCopy(value){return String(value??'').replace(/PayPal(?:\s+Sandbox)?/gi,'account provider').replace(/Gemini/gi,'the service').replace(/sandbox/gi,'test environment').replace(/server mode/gi,'this setup').replace(/browser-only mode/gi,'this version').replace(/GEMINI_API_KEY/gi,'the service configuration').replace(/PAYPAL_[A-Z_]+/g,'the account connection settings')}
+function cleanCopy(value){return String(value??'').replace(/PayPal(?:\s+Sandbox)?/gi,'connected payment provider').replace(/Gemini/gi,'the service').replace(/sandbox/gi,'test environment').replace(/server mode/gi,'this setup').replace(/browser-only mode/gi,'this version').replace(/GEMINI_API_KEY/gi,'the service configuration').replace(/PAYPAL_[A-Z_]+/g,'the account connection settings').replace(/agentic AI/gi,'Smart Strategy')}
 function toast(msg){const t=$('#toast');t.textContent=cleanCopy(msg);t.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove('show'),2800)}
 async function api(path, opts={}){return window.GlimStorage.adapter.request(path, opts)}
 function money(v){return new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(Number(v||0))}
@@ -31,6 +31,10 @@ function render(){
   if(!profileIsReady(s.profile)){show('onboardingView');return}
   show('dashboardView');
   const setText=(selector,value)=>{const el=$(selector);if(el)el.textContent=value};
+  const displayName=String(s.profile?.name||s.user?.display_name||'').trim();
+  setText('#welcomeTitle',displayName?`Welcome, ${displayName}`:'Welcome to your plan');
+  setText('#welcomeCopy','Your debt and savings at a glance, with a suggested next step.');
+  if(s.plan?.strategy) selectedStrategy=s.plan.strategy;
   setText('#suggestedAmount',money(s.daily_drip));
   setText('#debtBalance',money(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)));
   setText('#debtInfo',activeDebts.length?`${activeDebts.length} active ${activeDebts.length===1?'debt':'debts'} in your plan`:'Add a debt to see a repayment estimate.');
@@ -53,14 +57,19 @@ function render(){
   }
   const planButton=$('#planBtn');if(planButton)planButton.disabled=!activeDebts.length;
   const whatIfButton=$('#whatIfBtn');if(whatIfButton)whatIfButton.disabled=!s.plan?.projection;
-  $$('.strategy').forEach(button=>button.disabled=!activeDebts.length);
+  $$('.strategy').forEach(button=>{button.disabled=!activeDebts.length;const active=button.dataset.strategy===selectedStrategy;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
+  const smartRecommendation=$('#smartRecommendation');
+  if(smartRecommendation){smartRecommendation.classList.toggle('hidden',selectedStrategy!=='smart');setText('#smartRecommendationCopy',s.plan?.smart_summary||'Add your debts, then select Smart Strategy to compare the available repayment approaches.');setText('#smartResolvedStrategy',s.plan?.resolved_strategy?`Recommended repayment order: ${({avalanche:'highest interest rate first',snowball:'smallest balance first',hybrid:'balanced approach'})[s.plan.resolved_strategy]||s.plan.resolved_strategy}.`: '');}
+  const visualizationButton=$('#togglePaymentVisualization');if(visualizationButton)visualizationButton.disabled=!Boolean(s.plan?.projection);
   if(s.plan?.projection){
     const savingsShare=Number(s.daily_drip||0)*Number(s.plan.stash_pct||0)/100;
-    setText('#savingsAllocation',money(savingsShare));setText('#debtAllocation',money(Number(s.daily_drip||0)-savingsShare));
+    const debtShare=Number(s.daily_drip||0)-savingsShare;
+    setText('#savingsAllocation',money(savingsShare));setText('#debtAllocation',money(debtShare));
+    setText('#visualSavingsAllocation',money(savingsShare));setText('#visualDebtAllocation',money(debtShare));
     renderProjection(s.plan.projection);
     setText('#attackOrder',`Repayment order: ${(s.plan.attack_order||[]).join(' → ')}`);
   }else{
-    setText('#savingsAllocation','—');setText('#debtAllocation','—');
+    setText('#savingsAllocation','—');setText('#debtAllocation','—');setText('#visualSavingsAllocation','—');setText('#visualDebtAllocation','—');
     const projection=$('#projection');if(projection)projection.innerHTML='<p class="muted">Add a debt to see a payoff estimate.</p>';
     setText('#attackOrder','Your repayment order will appear here.');
   }
@@ -150,6 +159,7 @@ async function renderStash(){
   try{
     const x=await api('/api/stash/goals');
     const balance=Number(x.stash_balance||0);
+    const balanceInput=$('#savingsCurrentBalance');if(balanceInput&&document.activeElement!==balanceInput)balanceInput.value=balance.toFixed(2);
     const target=Math.max(1,Number(STATE?.stash?.shield_threshold||500));
     const pct=Math.max(0,Math.min(100,balance/target*100));
     const level=$('#savingsBufferStatus'); if(level) level.textContent=pct>=100?'Target reached':pct>=50?'Halfway there':balance>0?'In progress':'Not started';
@@ -181,8 +191,16 @@ async function renderMonthlyRecap(){
 async function load(){
   try{
     const me=await api('/api/auth/me');
-    if(!me.authenticated){STATE=null;window.location.replace('/signin');return}
+    if(!me.authenticated){
+      const startRequested=new URLSearchParams(window.location.search).get('start')==='1';
+      if(window.GlimStorage?.mode==='localStorage' && startRequested){
+        await api('/api/auth/guest',{method:'POST'});
+        window.history.replaceState({},'', '/app/overview');
+      }else{STATE=null;window.location.replace('/signin');return}
+    }
     STATE=await api('/api/state');
+    selectedStrategy=STATE.plan?.strategy||'smart';
+    const nameField=$('#pName');if(nameField&&!nameField.value)nameField.value=String(STATE.profile?.name||'');
     if(!profileIsReady(STATE.profile)){
       if(window.location.pathname==='/setup') window.history.replaceState({}, '', '/app/overview');
       else if(window.location.pathname!=='/app/overview') { window.location.replace('/app/overview'); return; }
@@ -198,6 +216,7 @@ async function load(){
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
     await Promise.all([renderNotifications(), renderSettlements(), setIntegrationStatus()]);
     render();
+    maybeStartWalkthrough();
   }catch(e){console.error(e);toast(e.message||'Unable to load your Glim plan.');}
 }
 
@@ -238,16 +257,16 @@ $('#profileForm')?.addEventListener('submit',async e=>{
   const income=Number($('#pIncome').value), expenses=Number($('#pExpenses').value), floor=Number($('#pFloor').value);
   if(!(income>0)||expenses<0||floor<0){toast('Check your monthly income, expenses and minimum balance.');return}
   try{
-    await api('/api/profile',{method:'POST',body:JSON.stringify({name:'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:$('#pApprovalMode')?.value||'each',weekly_cap:Number($('#pWeeklyCap')?.value||60),floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',show_consistency:true,show_learning_tips:true,show_friend_support:false,show_plan_help:true})});
+    await api('/api/profile',{method:'POST',body:JSON.stringify({name:$('#pName')?.value.trim()||'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:$('#pApprovalMode')?.value||'each',weekly_cap:Number($('#pWeeklyCap')?.value||60),floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',show_consistency:true,show_learning_tips:true,show_friend_support:false,show_plan_help:true})});
     if(debtStarted) await api('/api/debts',{method:'POST',body:JSON.stringify({name:debtName,type:$('#setupDebtType').value,balance:Number(debtBalance),apr:Number(debtApr),minimum:Number(debtMinimum),due_day:15})});
     window.location.assign('/app/overview');
   }catch(error){toast(error.message||'Unable to save your plan.');}
 });
 $('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:15})});$('#debtForm').reset();await load();toast('Debt added.')}catch(e){toast(e.message)}});
 $('#scanBtn')?.addEventListener('click',()=>runScout(true));
-$$('.strategy').forEach(b=>b.addEventListener('click',()=>{$$('.strategy').forEach(x=>x.classList.remove('active'));b.classList.add('active');selectedStrategy=b.dataset.strategy;buildPlan()}));
+$$('.strategy').forEach(b=>b.addEventListener('click',()=>{selectedStrategy=b.dataset.strategy;$$('.strategy').forEach(x=>{const active=x===b;x.classList.toggle('active',active);x.setAttribute('aria-pressed',String(active));});buildPlan()}));
+$('#togglePaymentVisualization')?.addEventListener('click',()=>{const panel=$('#paymentVisualizationPanel'),button=$('#togglePaymentVisualization');if(!panel||!button)return;const open=panel.classList.contains('hidden');panel.classList.toggle('hidden',!open);button.textContent=open?'Hide payment visualization':'View payment visualization';button.setAttribute('aria-expanded',String(open));if(open)panel.scrollIntoView({behavior:'smooth',block:'nearest'});});
 $('#planBtn')?.addEventListener('click',buildPlan);
-$('#whatIfBtn')?.addEventListener('click',async()=>{if(!STATE?.plan?.projection){$('#whatIfResult').textContent='Add a debt in Debt plan before comparing scenarios.';return}try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Describe one specific change, such as spending less on takeout each week.';return}$('#whatIfResult').textContent=`${r.parsed.label}${r.parsed.assumptions?.length?' Assumptions: '+r.parsed.assumptions.join(' '):''}${r.parsed.needs_clarification?' Add the missing detail before Glim estimates the impact.':r.what_if?` Estimated payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} modeled interest.`:''}`;$('#scenarioComparison').innerHTML=r.what_if?`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest<br><span class="muted">${Number(r.what_if.months_saved_vs_baseline||0)} months and ${money(r.what_if.interest_saved_vs_baseline||0)} interest difference versus current plan</span></div>`:''}catch(e){$('#whatIfResult').textContent=cleanCopy(e.message)}});
 $('#approveDrip')?.addEventListener('click',async()=>{const connected=STATE?.paypal?.status==='connected'&&window.GlimStorage?.mode!=='localStorage'&&STATE?.payment_readiness!==false;if(!connected){activateSection('plan',{push:true});return}try{await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s amount has been approved.');await load()}catch(e){toast(cleanCopy(e.message))}});
 $('#freezeBtn')?.addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Missed-day safeguard used.')}catch(e){toast(e.message)}});
 $('#pauseBtn')?.addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
@@ -285,6 +304,7 @@ $('#saveModulePreferencesBtn')?.addEventListener('click',async()=>{
   }catch(e){if(status)status.textContent=cleanCopy(e.message||'Unable to save preferences.');}
 });
 
+$('#savingsBalanceForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#savingsBalanceStatus');try{const balance=Number($('#savingsCurrentBalance').value);if(!Number.isFinite(balance)||balance<0)throw new Error('Enter a savings balance of zero or more.');await api('/api/stash/balance',{method:'POST',body:JSON.stringify({balance})});if(status)status.textContent='Savings balance updated.';await load();toast('Savings balance updated.')}catch(error){if(status)status.textContent=cleanCopy(error.message);else toast(cleanCopy(error.message))}});
 $('#savingsGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#savingsGoalName').value.trim(),target_amount:+$('#savingsGoalTarget').value,monthly_target:0})});$('#savingsGoalForm').reset();await renderStash();toast('Savings goal added.')}catch(e){toast(cleanCopy(e.message))}});
 $('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,amount:+$('#monthlyDepositAmount').value,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const r=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});await renderStash();$('#monthlyDepositConsent').checked=false;toast(enabled?'Monthly savings target saved.':'Monthly savings target updated.')}catch(e){toast(e.message)}});
 $('#loadRecapBtn')?.addEventListener('click',renderMonthlyRecap);
@@ -293,8 +313,8 @@ $('#squadGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{
 $('#createSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads',{method:'POST',body:JSON.stringify({name:$('#squadName').value.trim()})});await load();toast('Group created.')}catch(e){toast(e.message)}});
 $('#loadLessonBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">A quick check helps apply this to your own plan.</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Completed.</strong><p>Keep the useful idea in mind when reviewing your plan.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn')?.addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
-$('#deleteBtn')?.addEventListener('click',async()=>{if(!confirm('Delete all your Glim data? This cannot be undone.'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/signin')}catch(e){toast(e.message)}});
-const APP_SECTIONS=['overview','plan','settings'];
+$('#deleteBtn')?.addEventListener('click',async()=>{if(!confirm('Delete all your Glim data? This cannot be undone.'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
+const APP_SECTIONS=['overview','plan','savings','settings','help'];
 function activeSectionFromPath(){const part=window.location.pathname.split('/').filter(Boolean).pop();return APP_SECTIONS.includes(part)?part:'overview'}
 function activateSection(section,{push=false,replace=false}={}){
   if(!APP_SECTIONS.includes(section))section='overview';
@@ -303,10 +323,10 @@ function activateSection(section,{push=false,replace=false}={}){
   if(push)history.pushState({section},'',`/app/${section}`);
   else if(replace && window.location.pathname!==`/app/${section}`)history.replaceState({section},'',`/app/${section}`);
 }
-$$('.tab').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const section=link.dataset.tab;activateSection(section,{push:true});}));
+$$('[data-tab]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const section=link.dataset.tab;activateSection(section,{push:true});}));
 window.addEventListener('popstate',()=>activateSection(activeSectionFromPath()));
 activateSection(activeSectionFromPath());
-$('#logoutBtn')?.addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/signin')}catch(e){toast(e.message)}});
+$('#logoutBtn')?.addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
 $('#paypalConnectBtn')?.addEventListener('click',async()=>{const b=$('#paypalConnectBtn');b.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){$('#paypalApprovalLink').innerHTML=`<a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure connection</a>`;window.location.assign(r.approval_url);return;}await load();}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
 $('#paypalDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this funding source? Pending contributions must be checked first.'))return;const b=$('#paypalDisconnectBtn');b.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Funding source disconnected.')}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
 $('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBtn');b.disabled=true;const out=$('#settlementActionResult');try{const r=await api('/api/drip/settle',{method:'POST'});out.textContent=`Transfer status: ${settlementLabel(r.status||'submitted')}${r.amount==null?'':' · '+money(r.amount)+' CAD'}.`;if(r.approval_url)out.innerHTML+=` <a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure approval</a>`;await load()}catch(e){out.textContent=cleanCopy(e.message);await setIntegrationStatus()}finally{b.disabled=false}});
@@ -369,11 +389,13 @@ async function renderSettlements(){
  }catch(e){host.innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;}
 }
 
-const WALKTHROUGH_KEY='glim.guide.completed.v4';
+const WALKTHROUGH_KEY='glim.guide.completed.v5';
 const WALKTHROUGH_STEPS=[
-  {section:'overview',title:'Overview',copy:'Check your current debt, savings balance, and suggested amount.'},
-  {section:'plan',title:'Debt plan',copy:'Add debt balances and interest rates, then compare repayment strategies and estimated interest.'},
-  {section:'settings',title:'Settings',copy:'Adjust your minimum balance, savings target, approval preference, and reminders.'}
+  {section:'overview',title:'Overview',copy:'See your total debt, savings balance, and suggested allocation in one place.'},
+  {section:'plan',title:'Debt plan',copy:'Enter each debt and use Smart Strategy or choose a repayment method yourself. Review the payoff estimate before making changes.'},
+  {section:'savings',title:'Savings',copy:'Track your cash buffer and add other savings targets.'},
+  {section:'settings',title:'Settings',copy:'Update the monthly budget, savings target, safety balance, and reminders.'},
+  {section:'help',title:'Help',copy:'Find answers to common questions and reopen this walkthrough whenever you need it.'}
 ];
 let walkthroughIndex=0;
 let walkthroughReturnSection='overview';

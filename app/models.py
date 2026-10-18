@@ -33,7 +33,7 @@ class DebtCreate(BaseModel):
 
 
 class PlanRequest(BaseModel):
-    strategy: Literal["avalanche", "snowball", "hybrid"] = "avalanche"
+    strategy: Literal["smart", "avalanche", "snowball", "hybrid"] = "avalanche"
     stash_pct: float = Field(default=65.0, ge=0, le=100)
 
 
@@ -77,6 +77,10 @@ class CheerRequest(BaseModel):
 class LessonCompleteRequest(BaseModel):
     lesson_id: int
     answer: str = ""
+
+
+class SavingsBalanceRequest(BaseModel):
+    balance: float = Field(ge=0, le=1000000000)
 
 
 class StashGoalCreate(BaseModel):

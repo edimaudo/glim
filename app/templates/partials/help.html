@@ -1,0 +1,31 @@
+<section id="tab-help" class="tab-panel {{ 'active' if active_section == 'help' else 'hidden' }}">
+  <div class="page-heading">
+    <div><h1>Help</h1><p>Answers to common questions about your plan and its estimates.</p></div>
+  </div>
+  <section class="help-list" aria-label="Glim help topics">
+    <details class="help-item" open>
+      <summary>How does Glim set the suggested amount?</summary>
+      <p>It uses the monthly income and expenses you entered, your savings target, and the minimum balance you want to keep. Check the figures against your real budget before using the estimate.</p>
+    </details>
+    <details class="help-item">
+      <summary>What does Smart Strategy do?</summary>
+      <p>It compares your active debt balances, interest rates, minimum payments, and modeled payoff results, then recommends a repayment order. You can switch to another strategy at any time.</p>
+    </details>
+    <details class="help-item">
+      <summary>What is the savings buffer?</summary>
+      <p>It is cash you aim to keep available for unexpected costs. Glim shows your savings balance against the target, alongside the debt you still owe.</p>
+    </details>
+    <details class="help-item">
+      <summary>What does the payment visualization show?</summary>
+      <p>It compares the estimated debt balance under your chosen strategy with a minimum-payment-only estimate. The figures are projections, not a guarantee of a lender's result.</p>
+    </details>
+    <details class="help-item">
+      <summary>Does Glim move money?</summary>
+      <p>In this browser-based version, Glim helps you plan and calculate. It does not move money or make payments. Confirm balances, interest rates, and minimums with your statements.</p>
+    </details>
+  </section>
+  <section class="help-guide">
+    <div><h2>Take a quick tour</h2><p class="muted">Review where to find your balances, repayment plan, savings goals, and settings.</p></div>
+    <button type="button" class="secondary" id="startWalkthroughBtn">Start walkthrough</button>
+  </section>
+</section>

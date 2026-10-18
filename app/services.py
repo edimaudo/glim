@@ -554,28 +554,60 @@ def ordered_debts(debts,strategy):
 def multi_debt_projection(debts,monthly_extra,strategy):
     ds=[dict(d) for d in ordered_debts(debts,strategy)]; total_interest=0.0; months=0; freed=0.0
     while any(d["balance"]>0.01 for d in ds) and months<360:
-        months+=1; available_extra=monthly_extra+freed
+        months+=1; available_extra=max(0.0, float(monthly_extra)+freed); freed=0.0
         for d in ds:
             if d["balance"]<=0.01: continue
             interest=d["balance"]*float(d["apr"])/100/12; total_interest+=interest
-            payment=min(d["balance"]+interest,float(d["minimum"]))
-            if d is ds[0]: payment=min(d["balance"]+interest,payment+available_extra)
-            d["balance"]=max(0,d["balance"]+interest-payment)
+            due=d["balance"]+interest
+            payment=min(due,float(d["minimum"])+available_extra)
+            extra_used=max(0.0,payment-min(float(d["minimum"]),due))
+            d["balance"]=max(0,due-payment)
+            available_extra=max(0.0,available_extra-extra_used)
             if d["balance"]<=0.01: freed+=float(d["minimum"])
-        # Once the first is done, route the entire payment stack to the next target.
     return {"months":months,"interest_paid":round(total_interest,2)}
+
+
+def choose_smart_strategy(debts, monthly_extra):
+    """Compare deterministic repayment projections and choose a practical approach."""
+    candidates = {
+        name: multi_debt_projection(debts, monthly_extra, name)
+        for name in ("avalanche", "snowball", "hybrid")
+    }
+    lowest_cost = min(candidates, key=lambda name: (candidates[name]["interest_paid"], candidates[name]["months"]))
+    base = candidates[lowest_cost]
+    snowball = candidates["snowball"]
+    hybrid = candidates["hybrid"]
+    if snowball["months"] <= base["months"] + 1 and snowball["interest_paid"] <= max(1.0, base["interest_paid"] * 1.05):
+        chosen = "snowball"
+    elif hybrid["months"] <= base["months"] + 1 and hybrid["interest_paid"] <= max(1.0, base["interest_paid"] * 1.03):
+        chosen = "hybrid"
+    else:
+        chosen = lowest_cost
+    rationale = {
+        "avalanche": "it produces the lowest modeled interest cost among the approaches compared.",
+        "snowball": "it clears a smaller balance sooner while keeping modeled interest close to the lowest-cost option.",
+        "hybrid": "it offers a close balance between modeled payoff time and interest cost.",
+    }[chosen]
+    return chosen, candidates, rationale
 
 
 def build_plan(db,strategy="avalanche",stash_pct=65.0):
     state=get_state(db); debts=[d for d in get_debts(db) if d["status"]=="active"]
     if not debts: raise ValueError("Add a debt before building the plan.")
     daily=compute_daily_drip(state["profile"]); monthly_extra=daily*30*(1-stash_pct/100)
-    reason={"snowball":"Smallest balance first for faster visible wins.","hybrid":"Balances interest reduction with milestone wins.","avalanche":"Highest APR first to reduce interest fastest."}[strategy]
-    proj=multi_debt_projection(debts,monthly_extra,strategy)
+    smart_summary = None
+    resolved_strategy = strategy
+    if strategy == "smart":
+        resolved_strategy, scenarios, rationale = choose_smart_strategy(debts, monthly_extra)
+        smart_summary = f"Smart Strategy compared repayment approaches using your balances, interest rates, and minimum payments. It recommends {resolved_strategy.title()} because {rationale}"
+    reason={"snowball":"Smallest balance first for faster visible wins.","hybrid":"Balances interest reduction with milestone wins.","avalanche":"Highest APR first to reduce interest fastest."}[resolved_strategy]
+    if smart_summary:
+        reason = smart_summary
+    proj=multi_debt_projection(debts,monthly_extra,resolved_strategy)
     min_interest=sum(payoff_projection(d,0)["interest_paid"] for d in debts)
     projection={"months":proj["months"],"interest_paid":proj["interest_paid"],"interest_saved":round(max(0,min_interest-proj["interest_paid"]),2)}
-    plan={"strategy":strategy,"stash_pct":round(stash_pct,1),"boss_pct":round(100-stash_pct,1),"daily_drip":daily,"reason":reason,"projection":projection,"safe_to_move_daily":compute_safe_to_move(state["profile"]),"attack_order":[d["name"] for d in ordered_debts(debts,strategy)]}
-    state["plan"]=plan; write_state(db,state); log_action(db,"Tactician","build_plan",plan,reason,"Figures calculated by code only",plan); return plan
+    plan={"strategy":strategy,"resolved_strategy":resolved_strategy,"smart_summary":smart_summary,"stash_pct":round(stash_pct,1),"boss_pct":round(100-stash_pct,1),"daily_drip":daily,"reason":reason,"projection":projection,"safe_to_move_daily":compute_safe_to_move(state["profile"]),"attack_order":[d["name"] for d in ordered_debts(debts,resolved_strategy)]}
+    state["plan"]=plan; write_state(db,state); log_action(db,"Glim","build_plan",plan,reason,"Figures calculated by code only",plan); return plan
 
 
 def parse_what_if(text, profile=None):

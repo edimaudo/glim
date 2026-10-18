@@ -8,26 +8,33 @@
     <nav class="tabs" aria-label="Main navigation">
       <a class="tab {{ 'active' if active_section == 'overview' else '' }}" href="/app/overview" data-tab="overview" {% if active_section == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a class="tab {{ 'active' if active_section == 'plan' else '' }}" href="/app/plan" data-tab="plan" {% if active_section == 'plan' %}aria-current="page"{% endif %}>Debt plan</a>
+      <a class="tab {{ 'active' if active_section == 'savings' else '' }}" href="/app/savings" data-tab="savings" {% if active_section == 'savings' %}aria-current="page"{% endif %}>Savings</a>
       <a class="tab {{ 'active' if active_section == 'settings' else '' }}" href="/app/settings" data-tab="settings" {% if active_section == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+      <a class="tab {{ 'active' if active_section == 'help' else '' }}" href="/app/help" data-tab="help" {% if active_section == 'help' %}aria-current="page"{% endif %}>Help</a>
     </nav>
 
     {% include "partials/overview.html" %}
     {% include "partials/plan.html" %}
+    <section id="tab-savings" class="tab-panel {{ 'active' if active_section == 'savings' else 'hidden' }}">
+      <div class="page-heading"><div><h1>Savings</h1><p>Build a buffer for unexpected costs and track other savings goals.</p></div></div>
+      {% include "partials/savings.html" %}
+    </section>
     {% include "partials/settings.html" %}
+    {% include "partials/help.html" %}
   </section>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="walkthroughOverlay" class="walkthrough-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="walkthroughTitle" aria-describedby="walkthroughCopy" aria-hidden="true">
   <div class="walkthrough-dialog">
-    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 3</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
+    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 5</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
     <h2 id="walkthroughTitle">Quick guide</h2>
-    <p id="walkthroughCopy">Three screens for managing debt and savings.</p>
+    <p id="walkthroughCopy">Five sections for managing debt and savings.</p>
     <div class="walkthrough-actions"><button type="button" class="secondary" id="walkthroughBackBtn" disabled>Back</button><button type="button" class="primary" id="walkthroughNextBtn">Next</button></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="/storage-config.js"></script>
-<script src="/static/storage.js?v=20261018simple"></script>
-<script src="/static/app.js?v=20261018simple"></script>
+<script src="/static/storage.js?v=20261018simple2"></script>
+<script src="/static/app.js?v=20261018simple2"></script>
 {% endblock %}

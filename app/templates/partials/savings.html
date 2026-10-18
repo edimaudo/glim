@@ -1,14 +1,26 @@
-<div id="tab-savings" class="savings-goals-content" data-optional-module="savingsGoals">
-  <p class="muted module-description">Set another savings target and track how close you are to reaching it.</p>
-  <div class="buffer-progress" role="group" aria-label="Savings buffer progress">
-    <div class="progressbar"><span id="bufferFill" style="width:0%"></span></div>
-    <div class="buffer-progress-meta"><strong id="savingsBufferSummary">Your savings buffer starts here.</strong><span id="savingsBufferProgress" class="muted"></span></div>
-  </div>
-  <form id="savingsGoalForm" class="goal-form">
-    <label>Goal name<input id="savingsGoalName" maxlength="60" placeholder="e.g. Emergency savings" required/></label>
-    <label>Target amount (CAD)<input id="savingsGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label>
-    <button class="primary" type="submit">Add goal</button>
-  </form>
-  <div id="savingsGoals" class="stash-goals"></div>
+<div class="savings-goals-content">
+  <p class="muted module-description">Track the cash buffer that protects your day-to-day budget, then add other savings targets if you need them.</p>
+  <section class="savings-buffer-card" aria-labelledby="savingsBufferTitle">
+    <h2 id="savingsBufferTitle">Savings buffer</h2>
+    <div class="buffer-progress" role="group" aria-label="Savings buffer progress">
+      <div class="progressbar"><span id="bufferFill" style="width:0%"></span></div>
+      <div class="buffer-progress-meta"><strong id="savingsBufferSummary">Your savings buffer starts here.</strong><span id="savingsBufferProgress" class="muted"></span></div>
+    </div>
+    <form id="savingsBalanceForm" class="savings-balance-form">
+      <label>Current savings balance (CAD)<input id="savingsCurrentBalance" type="number" min="0" step="0.01" value="0" required/></label>
+      <button type="submit" class="secondary">Update savings balance</button>
+    </form>
+    <p class="muted savings-balance-note">This updates the balance used for planning. It does not move money.</p>
+    <p id="savingsBalanceStatus" class="muted" aria-live="polite"></p>
+  </section>
+  <section class="savings-goals-section" aria-labelledby="savingsGoalsTitle">
+    <div class="section-title-row"><div><h2 id="savingsGoalsTitle">Other savings goals</h2><p class="muted">Set a target for an upcoming expense or another priority.</p></div></div>
+    <form id="savingsGoalForm" class="goal-form">
+      <label>Goal name<input id="savingsGoalName" maxlength="60" placeholder="e.g. Car repairs" required/></label>
+      <label>Target amount (CAD)<input id="savingsGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label>
+      <button class="primary" type="submit">Add savings goal</button>
+    </form>
+    <div id="savingsGoals" class="stash-goals"></div>
+  </section>
   <span id="savingsBufferStatus" class="visually-hidden">Getting started</span>
 </div>

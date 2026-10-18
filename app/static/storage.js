@@ -143,6 +143,22 @@
     orderDebts(debts, strategy) {
       return [...debts].sort((a, b) => strategy === 'snowball' ? a.balance - b.balance || b.apr - a.apr : strategy === 'hybrid' ? (-(a.apr * .6) + a.balance * .0004) - (-(b.apr * .6) + b.balance * .0004) : b.apr - a.apr || a.balance - b.balance);
     }
+    chooseSmartStrategy(debts, monthlyExtra) {
+      const scenarios = Object.fromEntries(['avalanche', 'snowball', 'hybrid'].map(name => [name, this.projection(debts, monthlyExtra, name)]));
+      const lowestCost = Object.keys(scenarios).sort((a, b) => scenarios[a].interest_paid - scenarios[b].interest_paid || scenarios[a].months - scenarios[b].months)[0];
+      const baseline = scenarios[lowestCost];
+      const snowball = scenarios.snowball;
+      const hybrid = scenarios.hybrid;
+      let chosen = lowestCost;
+      if (snowball.months <= baseline.months + 1 && snowball.interest_paid <= Math.max(1, baseline.interest_paid * 1.05)) chosen = 'snowball';
+      else if (hybrid.months <= baseline.months + 1 && hybrid.interest_paid <= Math.max(1, baseline.interest_paid * 1.03)) chosen = 'hybrid';
+      const rationale = {
+        avalanche: 'it produces the lowest modeled interest cost among the approaches compared.',
+        snowball: 'it clears a smaller balance sooner while keeping modeled interest close to the lowest-cost option.',
+        hybrid: 'it offers a close balance between modeled payoff time and interest cost.'
+      }[chosen];
+      return { strategy: chosen, scenarios, rationale };
+    }
     payoff(debt, monthlyExtra) {
       let balance = Number(debt.balance), interestTotal = 0, months = 0;
       const minimum = Number(debt.minimum), apr = Number(debt.apr) / 100 / 12, payment = minimum + Math.max(0, monthlyExtra);
@@ -179,11 +195,14 @@
       const debts = s.debts.filter(d => d.status === 'active');
       if (!debts.length) throw new Error('Add a debt before building the plan.');
       const daily = this.dailyDrip(s.profile), extra = daily * 30 * (1 - stashPct / 100);
-      const proj = this.projection(debts, extra, strategy);
+      const smart = strategy === 'smart' ? this.chooseSmartStrategy(debts, extra) : null;
+      const resolved = smart?.strategy || strategy;
+      const proj = this.projection(debts, extra, resolved);
       const minimumInterest = debts.reduce((sum, d) => sum + this.payoff(d, 0).interest_paid, 0);
-      const reasons = { avalanche: 'Highest APR first to reduce interest fastest.', snowball: 'Smallest balance first for faster visible wins.', hybrid: 'Balances interest reduction with milestone wins.' };
-      s.plan = { strategy, stash_pct: Number(stashPct), boss_pct: 100 - Number(stashPct), daily_drip: daily, reason: reasons[strategy] || reasons.avalanche, projection: { months: proj.months, interest_paid: proj.interest_paid, interest_saved: round2(Math.max(0, minimumInterest - proj.interest_paid)) }, safe_to_move_daily: this.safeToMove(s.profile), attack_order: this.orderDebts(debts, strategy).map(d => d.name) };
-      this.addAudit(s, 'Tactician', 'build_plan', 'Payoff math calculated locally from the profile and debt entries.', 'Deterministic code calculation', s.plan);
+      const reasons = { avalanche: 'Highest interest rate first to reduce interest cost.', snowball: 'Smallest balance first to clear a smaller debt sooner.', hybrid: 'Balances interest cost and payoff milestones.' };
+      const smartSummary = smart ? `Smart Strategy compared repayment approaches using your balances, interest rates, and minimum payments. It recommends ${resolved[0].toUpperCase() + resolved.slice(1)} because ${smart.rationale}` : null;
+      s.plan = { strategy, resolved_strategy: resolved, smart_summary: smartSummary, stash_pct: Number(stashPct), boss_pct: 100 - Number(stashPct), daily_drip: daily, reason: smartSummary || reasons[resolved] || reasons.avalanche, projection: { months: proj.months, interest_paid: proj.interest_paid, interest_saved: round2(Math.max(0, minimumInterest - proj.interest_paid)) }, safe_to_move_daily: this.safeToMove(s.profile), attack_order: this.orderDebts(debts, resolved).map(d => d.name) };
+      this.addAudit(s, 'Glim', 'build_plan', 'Calculated payoff estimates using the entered balances, interest rates and strategy.', 'Calculated from entered debt information', s.plan);
       return s.plan;
     }
     safeToMove(p) {
@@ -251,6 +270,16 @@
         this.save(accountState);
         return clone({ status: 'local_profile_opened', email, storage_mode: 'localStorage', secure_authentication: false });
       }
+      if (route === '/api/auth/guest' && method === 'POST') {
+        const email = 'guest@glim.local';
+        localStorage.setItem(ACTIVE_EMAIL_KEY, email);
+        this.key = accountKey(email);
+        const guestState = this.read();
+        guestState.user = { email, display_name: String(guestState.profile?.name || '') };
+        guestState.authenticated = true;
+        this.save(guestState);
+        return clone({ status: 'planning_session_opened', storage_mode: 'localStorage' });
+      }
       let s = this.read();
       const mustBeSignedIn = () => { if (!s.authenticated || !s.user?.email) throw new Error('Sign in to open your Glim plan.'); };
       const makeScout = () => ({ income_pattern: `Profile estimate: ${money(s.profile.monthly_income || 0)}/month`, safe_to_move_daily: this.safeToMove(s.profile), subscriptions: [], suggested_debts: [], debt_suggestions: [], source: 'No account activity is available to review yet. No recurring charges or debts have been assumed.' });
@@ -298,15 +327,15 @@
         if(!weekly&&!needs_clarification){needs_clarification=true;label='Add an amount and period (for example, “save $25 per week”) so I do not assume a figure.';}
         weekly=round2(Math.max(0,weekly));
         const debts=s.debts.filter(d=>d.status==='active');const extraDaily=round2(this.dailyDrip(s.profile)+weekly/7);
-        const projected=debts.length&&!needs_clarification?this.projection(debts,extraDaily*30*(1-Number(s.plan.stash_pct??65)/100),s.plan.strategy):null;
+        const projected=debts.length&&!needs_clarification?this.projection(debts,extraDaily*30*(1-Number(s.plan.stash_pct??65)/100),s.plan.resolved_strategy||s.plan.strategy):null;
         result={parsed:{input:text,weekly_extra:weekly,label,assumptions,needs_clarification},baseline:s.plan?.projection||null,what_if:projected?{months:projected.months,interest_paid:projected.interest_paid,interest_saved_vs_baseline:round2(Number(s.plan.projection?.interest_paid||0)-Number(projected.interest_paid||0)),months_saved_vs_baseline:Number(s.plan.projection?.months||projected.months)-Number(projected.months)}:null,daily_drip:extraDaily};
         this.addAudit(s,'Tactician','what_if','Parse the phrase with explicit amount/period assumptions and compare deterministic projections.','Financial figures calculated by code; unknown amounts request clarification',result);this.save(s);
       }
       else if (route === '/api/drip/approve' && method === 'POST') {
         mustBeSignedIn();
-        throw new Error('A daily contribution can only be approved after a PayPal connection is active in server mode. Browser-only mode can calculate a plan but cannot record a payment.');
+        throw new Error('This version can calculate a plan but cannot record or move a payment. No money was moved.');
       }
-      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Real payments are disabled in browser-only mode. No payment was sent. A secure server payment integration is required.');
+      else if (route === '/api/drip/settle' && method === 'POST') throw new Error('Payments are not available in this version. No money was moved.');
       else if (route === '/api/debt/redirect' && method === 'POST') {
         mustBeSignedIn(); if (!s.pending_redirect) throw new Error('No paid-off debt is awaiting a payment redirect decision.');
         s.pending_redirect.destination = body.destination; s.pending_redirect = null; this.addAudit(s, 'Tactician', 'freed_payment_redirect', 'Save the user-selected destination for the freed payment.', 'User choice', { destination: body.destination }); this.save(s); result = { status: 'redirected' };
@@ -383,6 +412,13 @@
         this.save(s); result = { points: s.game.points, items: COSMETICS.map(c => ({ ...c, owned: s.owned_cosmetics.includes(c.id) })) };
       }
       else if (route === '/api/stash/goals' && method === 'GET') result = { stash_balance: s.stash.balance, goals: s.stash.goals };
+      else if (route === '/api/stash/balance' && method === 'POST') {
+        mustBeSignedIn(); const balance = Number(body.balance);
+        if (!Number.isFinite(balance) || balance < 0 || balance > 1000000000) throw new Error('Enter a savings balance of zero or more.');
+        s.stash.balance = round2(balance);
+        this.addAudit(s, 'Glim', 'savings_balance_updated', 'Update the manually entered current savings balance.', 'User-entered balance', { balance: s.stash.balance });
+        this.save(s); result = { stash_balance: s.stash.balance, goals: s.stash.goals };
+      }
       else if (route === '/api/stash/goals' && method === 'POST') {
         mustBeSignedIn(); if (s.stash.goals.filter(g => g.status === 'active').length >= 6) throw new Error('You can keep up to six active savings goals.');
         if (!String(body.name || '').trim() || !(Number(body.target_amount) > 0)) throw new Error('Enter a goal name and a target amount greater than zero.');
@@ -395,7 +431,7 @@
         s.monthly_deposit = { enabled: Boolean(body.enabled), amount: round2(body.amount || 0), due_day: Math.max(1, Math.min(28, Number(body.due_day || 1))), consent: Boolean(body.consent), status: body.enabled ? 'local_settings_only' : 'disabled', note: 'Saved locally only. No schedule, collection, or payout runs in localStorage mode.' };
         this.addAudit(s, 'Banker', 'monthly_deposit_preference', 'Save this monthly target as a reminder only; no transfer is scheduled.', 'User confirmed local preference', { ...s.monthly_deposit }); this.save(s); result = s.monthly_deposit;
       }
-      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Monthly savings targets cannot initiate transfers in browser-only mode. A server-side payment integration is required.');
+      else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Automatic savings transfers are not available in this version.');
       else if (route === '/api/monthly-recap' && method === 'GET') {
         mustBeSignedIn(); const month = url.searchParams.get('month') || new Date().toISOString().slice(0,7); if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Month must use YYYY-MM format.');
         const rows = s.ledger.filter(x => x.kind === 'drip' && x.created_at.slice(0,7) === month); const amount = rows.reduce((a,x)=>a+Number(x.amount||0),0); const stash = rows.reduce((a,x)=>a+Number(x.stash_share||0),0); const debt = rows.reduce((a,x)=>a+Number(x.debt_share||0),0);
@@ -415,7 +451,7 @@
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
       else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'External payment calls are disabled in browser-only mode.' };
-      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('External payment connections are disabled in browser-only mode. No token was created. Configure a secure server integration before enabling payments.');
+      else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('Account connections are not available in this version. No connection was created.');
       else if (route === '/api/paypal/disconnect' && method === 'POST') { s.paypal = { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] }; this.save(s); result = s.paypal; }
       else throw new Error(`This action is not available in the localStorage adapter: ${method} ${route}`);
 

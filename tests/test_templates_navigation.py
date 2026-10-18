@@ -38,6 +38,12 @@ def test_public_landing_is_separate_from_sign_in():
         assert "Explore the tools" not in landing.text
         assert "eyebrow" not in landing.text
         assert 'href="/signin"' in landing.text
+        assert landing.text.count('href="/signin"') == 1
+        assert 'href="/app/overview?start=1"' in landing.text
+        assert 'href="#how-it-works"' in landing.text
+        assert 'id="how-it-works"' in landing.text
+        assert 'class="process-card"' in landing.text
+        assert landing.text.count('class="process-card"') == 3
         assert "PayPal" not in landing.text
         assert "Gemini" not in landing.text
 
@@ -45,12 +51,14 @@ def test_public_landing_is_separate_from_sign_in():
         assert signin.status_code == 200
         assert 'id="authForm"' in signin.text
         assert 'id="authEmail"' in signin.text
+        assert 'href="/signin"' not in signin.text
+        assert 'Enter your email to continue to Glim.' not in signin.text
         assert "In this prototype, your plan is stored in this browser" not in signin.text
 
 
-def test_navigation_has_only_three_main_destinations_and_old_sections_redirect():
+def test_navigation_has_five_main_destinations_and_only_old_game_sections_redirect():
     with TestClient(app) as client:
-        for section in ["overview", "plan", "settings"]:
+        for section in ["overview", "plan", "savings", "settings", "help"]:
             response = client.get(f"/app/{section}")
             assert response.status_code == 200, section
             assert f'href="/app/{section}"' in response.text
@@ -65,7 +73,7 @@ def test_navigation_has_only_three_main_destinations_and_old_sections_redirect()
             assert "eyebrow" not in response.text
             assert "Gemini" not in response.text
         assert client.get("/app/not-a-section").status_code == 404
-        for section in ["savings", "coach", "game", "squad", "learn"]:
+        for section in ["coach", "game", "squad", "learn"]:
             old = client.get(f"/app/{section}", follow_redirects=False)
             assert old.status_code == 302
             assert old.headers["location"] == "/app/overview"
@@ -84,7 +92,7 @@ def test_setup_is_integrated_and_has_no_duplicate_income_range():
     with TestClient(app) as client:
         response = client.get("/app/overview")
         assert response.status_code == 200
-        assert "Create your plan" in response.text
+        assert "Create my plan" in response.text
         assert "Monthly take-home income (CAD)" in response.text
         assert "Typical monthly expenses (CAD)" in response.text
         assert "Income range" not in response.text
@@ -96,6 +104,10 @@ def test_setup_is_integrated_and_has_no_duplicate_income_range():
         assert "forest" not in response.text.lower()
         assert "Habit points" not in response.text
         assert "Planning only until PayPal" not in response.text
+        assert "Smart Strategy" in response.text
+        assert "View payment visualization" in response.text
+        assert "tab-savings" in response.text
+        assert "tab-help" in response.text
         assert "plan-preview" not in response.text
         assert response.text.count('class="summary-item"') == 2
         visible = VisibleText()
@@ -134,4 +146,7 @@ def test_main_experience_is_financial_and_gamification_free():
         copy = visible.text()
         assert "Suggested amount" in copy
         assert "Debt plan" in copy
+        assert "Savings" in copy
+        assert "Help" in copy
+        assert "Smart Strategy" in copy
         assert not re.search(r"\b(forest|stash|boss|drip|points|streak|squad|gamification|ogre)\b", copy, re.I)

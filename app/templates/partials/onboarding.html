@@ -7,6 +7,7 @@
     <form id="profileForm" class="form-card setup-form">
       <div id="setupStepOne">
         <div class="setup-form-section"><h2>Monthly budget</h2><p class="muted">Use take-home income and typical expenses.</p></div>
+        <label>Name <span class="muted optional-tag">Optional</span><input id="pName" maxlength="60" autocomplete="given-name" placeholder="Your name"/></label>
         <label>Monthly take-home income (CAD)<input id="pIncome" type="number" min="1" step="0.01" placeholder="4500" required/></label>
         <label>Typical monthly expenses (CAD)<input id="pExpenses" type="number" min="0" step="0.01" placeholder="3200" required/></label>
         <label>Savings target <output id="pctOut">5%</output><input id="pPct" type="range" min="0" max="20" step="1" value="5"/></label>
@@ -27,7 +28,7 @@
           <label>Minimum monthly payment (CAD)<input id="setupDebtMinimum" type="number" min="0.01" step="0.01" placeholder="100"/></label>
         </div>
         <input type="hidden" id="pPersona" value="custom"/>
-        <div class="setup-submit-row"><button class="secondary" id="setupBackBtn" type="button">Back</button><button class="primary" type="submit">Save and open plan</button></div>
+        <div class="setup-submit-row"><button class="secondary" id="setupBackBtn" type="button">Back</button><button class="primary" type="submit">Create my plan</button></div>
       </div>
     </form>
   </div>

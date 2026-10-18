@@ -19,7 +19,7 @@ if __package__:
         ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
         LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
         RedirectRequest, SquadCreateRequest, SquadJoinRequest, WhatIfRequest,
-        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm,
+        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm, SavingsBalanceRequest,
     )
     from .services import *  # noqa: F401,F403
 else:  # pragma: no cover - used by Vercel's flat module loader
@@ -27,7 +27,7 @@ else:  # pragma: no cover - used by Vercel's flat module loader
         ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
         LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
         RedirectRequest, SquadCreateRequest, SquadJoinRequest, WhatIfRequest,
-        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm,
+        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm, SavingsBalanceRequest,
     )
     from services import *  # noqa: F401,F403
 
@@ -204,9 +204,9 @@ def app_home():
 
 @app.get("/app/{active_section}", include_in_schema=False)
 def app_section(request: Request, active_section: str):
-    if active_section in {"savings", "coach", "game", "squad", "learn"}:
+    if active_section in {"coach", "game", "squad", "learn"}:
         return RedirectResponse(url="/app/overview", status_code=302)
-    allowed = {"overview", "plan", "settings"}
+    allowed = {"overview", "plan", "savings", "settings", "help"}
     if active_section not in allowed:
         raise HTTPException(404, "Glim section not found.")
     if DATABASE_ENABLED and not get_session_user(db, request.cookies.get("glim_session")):
@@ -716,6 +716,16 @@ def cosmetic_buy(cosmetic_id: int, user=Depends(current_user)):
 @app.get("/api/stash/goals")
 def stash_goals(user=Depends(current_user)):
     return get_stash_goals(user_data_db(user))
+
+
+@app.post("/api/stash/balance")
+def stash_balance_update(req: SavingsBalanceRequest, user=Depends(current_user)):
+    data_db = user_data_db(user)
+    state = get_state(data_db)
+    state.setdefault("stash", {})["balance"] = round(float(req.balance), 2)
+    write_state(data_db, state)
+    log_action(data_db, "Glim", "savings_balance_updated", {"balance": state["stash"]["balance"]}, "Update the manually entered current savings balance.", "User-entered balance", {"balance": state["stash"]["balance"]})
+    return get_stash_goals(data_db)
 
 
 @app.post("/api/stash/goals")

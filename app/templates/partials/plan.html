@@ -1,6 +1,6 @@
 <section id="tab-plan" class="tab-panel {{ 'active' if active_section == 'plan' else 'hidden' }}">
   <div class="page-heading">
-    <div><h1>Debt plan</h1><p>Add your debts and compare estimated payoff time and interest.</p></div>
+    <div><h1>Debt plan</h1><p>Add your debts, choose a repayment approach, and review estimated payoff time and interest.</p></div>
   </div>
 
   <section class="content-section plan-section">
@@ -17,27 +17,34 @@
   </section>
 
   <section class="content-section plan-section">
-    <div class="section-title-row"><div><h2>Repayment strategy</h2><p class="muted">Choose which debt receives extra payments first.</p></div><button class="secondary" id="planBtn" type="button">Update estimate</button></div>
+    <div class="section-title-row"><div><h2>Repayment strategy</h2><p class="muted">Choose a method or let Smart Strategy recommend an approach using your debt details.</p></div><button class="secondary" id="planBtn" type="button">Recalculate plan</button></div>
     <div class="strategy-row" role="group" aria-label="Repayment strategy">
-      <button data-strategy="avalanche" class="strategy active" type="button">Highest interest first<span>Usually costs less in interest.</span></button>
+      <button data-strategy="smart" class="strategy active" type="button">Smart Strategy<span>Reviews balances, rates, and minimum payments to recommend an order.</span></button>
+      <button data-strategy="avalanche" class="strategy" type="button">Highest interest first<span>Usually costs less in interest.</span></button>
       <button data-strategy="snowball" class="strategy" type="button">Smallest balance first<span>Clears smaller debts first.</span></button>
-      <button data-strategy="hybrid" class="strategy" type="button">Balanced<span>Combines interest rate and balance.</span></button>
+      <button data-strategy="hybrid" class="strategy" type="button">Balanced<span>Balances interest cost and earlier milestones.</span></button>
+    </div>
+    <div id="smartRecommendation" class="smart-recommendation hidden" aria-live="polite">
+      <h3>Smart Strategy recommendation</h3>
+      <p id="smartRecommendationCopy"></p>
+      <p class="muted" id="smartResolvedStrategy"></p>
     </div>
     <div class="projection" id="projection"></div>
     <p id="attackOrder" class="muted repayment-order"></p>
-    <div class="chart-section">
-      <h3>Estimated debt over time</h3>
-      <p class="muted">The second line shows the estimate if you only make minimum payments.</p>
-      <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Estimated debt balance compared with minimum payments"></svg></div>
+    <div class="payment-visualization-controls">
+      <button type="button" class="secondary" id="togglePaymentVisualization" aria-expanded="false" aria-controls="paymentVisualizationPanel">View payment visualization</button>
+    </div>
+    <div id="paymentVisualizationPanel" class="payment-visualization hidden">
+      <div class="chart-section">
+        <h3>Estimated debt balance over time</h3>
+        <p class="muted">Solid line: selected strategy. Dashed line: minimum payments only.</p>
+        <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Estimated debt balance compared with minimum payments"></svg></div>
+      </div>
+      <div class="payment-split" aria-label="Suggested daily allocation">
+        <div><span>To savings</span><strong id="visualSavingsAllocation">—</strong></div>
+        <div><span>Toward debt</span><strong id="visualDebtAllocation">—</strong></div>
+      </div>
     </div>
   </section>
-
-  <details class="plain-details what-if-details">
-    <summary>Compare a budget change</summary>
-    <div class="scenario-grid">
-      <div><label for="whatIfInput">Describe a change and its frequency</label><div class="input-row"><input id="whatIfInput" placeholder="e.g. spend $25 less each week"/><button class="secondary" id="whatIfBtn" type="button">Compare</button></div><div id="whatIfResult" class="muted" aria-live="polite"></div></div>
-      <div class="comparison-card"><h3>Estimated impact</h3><div id="scenarioComparison">Enter one specific change to compare it with your current plan.</div></div>
-    </div>
-  </details>
   <div id="planError" class="muted" aria-live="polite"></div>
 </section>

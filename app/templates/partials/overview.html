@@ -1,8 +1,8 @@
 <section id="tab-overview" class="tab-panel {{ 'active' if active_section == 'overview' else 'hidden' }}">
   <div class="page-heading">
     <div>
-      <h1>Overview</h1>
-      <p>Your debt, savings, and recommended amount in one place.</p>
+      <h1 id="welcomeTitle">Welcome to your plan</h1>
+      <p id="welcomeCopy">Your debt and savings at a glance, with a suggested next step.</p>
     </div>
   </div>
 
@@ -11,12 +11,14 @@
       <span class="data-label">Debt remaining</span>
       <strong id="debtBalance" class="summary-amount">$0.00</strong>
       <small id="debtInfo">Add a debt to see your repayment estimate.</small>
+      <a class="text-link summary-link" href="/app/plan" data-tab="plan">View debt plan</a>
     </article>
     <article class="summary-item">
       <span class="data-label">Savings balance</span>
       <strong id="savingsBalance" class="summary-amount">$0.00</strong>
       <div class="progressbar" aria-label="Savings buffer progress"><span id="savingsFill"></span></div>
       <small id="shieldInfo">Target: $0.00</small>
+      <a class="text-link summary-link" href="/app/savings" data-tab="savings">View savings</a>
     </article>
   </section>
 
@@ -42,9 +44,5 @@
     </details>
   </section>
 
-  <details class="plain-details savings-details" id="savingsGoalsDetails">
-    <summary>Savings goals</summary>
-    {% include "partials/savings.html" %}
-  </details>
   <div id="debtPaidOffNotice" class="callout hidden" aria-live="polite"></div>
 </section>

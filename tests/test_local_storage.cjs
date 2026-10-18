@@ -41,6 +41,9 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
     show_consistency: true, show_learning_tips: true, show_friend_support: false, show_plan_help: true,
   }) });
   await adapter.request('/api/debts', { method: 'POST', body: JSON.stringify({ name: 'Credit card', type: 'credit_card', balance: 1200, apr: 22.9, minimum: 45, due_day: 15 }) });
+  await adapter.request('/api/stash/balance', { method: 'POST', body: JSON.stringify({ balance: 250 }) });
+  assert.equal((await adapter.request('/api/state')).stash.balance, 250, 'manually entered savings balance should be saved for planning');
+  await assert.rejects(() => adapter.request('/api/stash/balance', { method: 'POST', body: JSON.stringify({ balance: -1 }) }), /savings balance of zero or more/i);
 
   const safetyAnswer = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'What is my safety floor?' }) });
   assert.match(safetyAnswer.message, /safety floor is/i);
@@ -51,6 +54,10 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
 
   const plan = await adapter.request('/api/plan', { method: 'POST', body: JSON.stringify({ strategy: 'avalanche', stash_pct: 65 }) });
   assert.ok(plan.projection.months > 0);
+  const smartPlan = await adapter.request('/api/plan', { method: 'POST', body: JSON.stringify({ strategy: 'smart', stash_pct: 65 }) });
+  assert.equal(smartPlan.strategy, 'smart');
+  assert.ok(['avalanche', 'snowball', 'hybrid'].includes(smartPlan.resolved_strategy));
+  assert.match(smartPlan.smart_summary, /Smart Strategy compared repayment approaches/i);
   const whatIf = await adapter.request('/api/what-if', { method: 'POST', body: JSON.stringify({ text: 'save $25 per week' }) });
   assert.equal(whatIf.parsed.weekly_extra, 25);
   assert.equal(whatIf.parsed.needs_clarification, false);
@@ -64,7 +71,7 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.doesNotMatch(scout.source, /PayPal|Gemini|sandbox/i);
 
   const before = await adapter.request('/api/state');
-  await assert.rejects(() => adapter.request('/api/drip/approve', { method: 'POST', body: JSON.stringify({ approve: true }) }), /only be approved after a PayPal connection is active/);
+  await assert.rejects(() => adapter.request('/api/drip/approve', { method: 'POST', body: JSON.stringify({ approve: true }) }), /cannot record or move a payment/);
   const after = await adapter.request('/api/state');
   assert.equal(after.game.streak, before.game.streak, 'a failed local-only payment must not increment a streak');
   assert.equal(after.game.points, before.game.points, 'a failed local-only payment must not award points');
@@ -86,11 +93,17 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.equal(completedLesson.status, 'complete');
   const shop = await adapter.request('/api/cosmetics');
   assert.ok(shop.items.length >= 3);
-  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /server-side payment integration is required/);
-  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /No token was created/);
+  await assert.rejects(() => adapter.request('/api/stash/auto-deposit/run', { method: 'POST' }), /Automatic savings transfers are not available in this version/);
+  await assert.rejects(() => adapter.request('/api/paypal/connect', { method: 'POST' }), /No connection was created/);
   const exported = await adapter.request('/api/data/export');
   assert.equal(exported.product, 'Glim');
   assert.equal(exported.storage_mode, 'localStorage');
+
+  // Starting from the landing CTA opens a separate planning session without visiting sign-in first.
+  await adapter.request('/api/auth/guest', { method: 'POST' });
+  const guest = await adapter.request('/api/state');
+  assert.equal(guest.profile.monthly_income, undefined);
+  assert.equal(guest.debts.length, 0);
 
   // Switching the selected email must open a separate local namespace, not the first profile.
   await adapter.request('/api/auth/request', { method: 'POST', body: JSON.stringify({ email: 'other@example.test' }) });
