@@ -1,0 +1,13 @@
+<section id="tab-squad" class="integrated-subsection" data-optional-module="friendSupport">
+  <div class="module-heading"><h3>Friends and encouragement</h3><p class="muted">Share progress with people you trust. Balances, income and debt details are never shown to other members.</p></div>
+  <div class="friend-layout">
+    <div>
+      <div id="squadInfo" class="friend-status"></div>
+      <form id="createSquadForm" class="form-inline"><label class="fill-label">Group name<input id="squadName" placeholder="e.g. Weekend check-ins" maxlength="50" required/></label><button class="primary" id="createSquadBtn" type="submit">Create group</button></form>
+      <form id="joinSquadForm" class="form-inline"><label class="fill-label">Invite code<input id="squadInviteCode" placeholder="Enter invite code" maxlength="20" autocomplete="off" required/></label><button class="secondary" id="joinSquadBtn" type="submit">Join group</button></form>
+      <div id="squadActionNote" class="muted" aria-live="polite"></div>
+    </div>
+    <div><h4>Recent encouragement</h4><div id="leaderboard" class="leaderboard"></div><div class="button-row"><button class="secondary danger hidden" id="leaveSquadBtn" type="button">Leave group</button></div><div id="cheerFeed" class="cheer-feed"></div></div>
+  </div>
+  <div id="squadGoals" class="hidden" aria-hidden="true"></div><div id="squadRewards" class="hidden" aria-hidden="true"></div>
+</section>

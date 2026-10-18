@@ -1,0 +1,43 @@
+<section id="tab-plan" class="tab-panel {{ 'active' if active_section == 'plan' else 'hidden' }}">
+  <div class="page-heading">
+    <div><h1>Debt plan</h1><p>Add your debts and compare estimated payoff time and interest.</p></div>
+  </div>
+
+  <section class="content-section plan-section">
+    <div class="section-title-row"><div><h2>Add a debt</h2><p class="muted">Use your latest statement for the balance, interest rate, and minimum payment.</p></div></div>
+    <form id="debtForm" class="compact-form debt-entry-form">
+      <label>Debt name<input id="dName" placeholder="e.g. Credit card" autocomplete="off" required/></label>
+      <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan or line of credit</option></select></label>
+      <label>Current balance (CAD)<input id="dBalance" type="number" min="0.01" step="0.01" placeholder="3500" required/></label>
+      <label>Annual interest rate (%)<input id="dApr" type="number" min="0" max="100" step="0.01" placeholder="19.99" required/></label>
+      <label>Minimum monthly payment (CAD)<input id="dMin" type="number" min="0.01" step="0.01" placeholder="100" required/></label>
+      <button class="primary" type="submit">Add debt</button>
+    </form>
+    <div id="debtList" class="debt-list" aria-live="polite"></div>
+  </section>
+
+  <section class="content-section plan-section">
+    <div class="section-title-row"><div><h2>Repayment strategy</h2><p class="muted">Choose which debt receives extra payments first.</p></div><button class="secondary" id="planBtn" type="button">Update estimate</button></div>
+    <div class="strategy-row" role="group" aria-label="Repayment strategy">
+      <button data-strategy="avalanche" class="strategy active" type="button">Highest interest first<span>Usually costs less in interest.</span></button>
+      <button data-strategy="snowball" class="strategy" type="button">Smallest balance first<span>Clears smaller debts first.</span></button>
+      <button data-strategy="hybrid" class="strategy" type="button">Balanced<span>Combines interest rate and balance.</span></button>
+    </div>
+    <div class="projection" id="projection"></div>
+    <p id="attackOrder" class="muted repayment-order"></p>
+    <div class="chart-section">
+      <h3>Estimated debt over time</h3>
+      <p class="muted">The second line shows the estimate if you only make minimum payments.</p>
+      <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Estimated debt balance compared with minimum payments"></svg></div>
+    </div>
+  </section>
+
+  <details class="plain-details what-if-details">
+    <summary>Compare a budget change</summary>
+    <div class="scenario-grid">
+      <div><label for="whatIfInput">Describe a change and its frequency</label><div class="input-row"><input id="whatIfInput" placeholder="e.g. spend $25 less each week"/><button class="secondary" id="whatIfBtn" type="button">Compare</button></div><div id="whatIfResult" class="muted" aria-live="polite"></div></div>
+      <div class="comparison-card"><h3>Estimated impact</h3><div id="scenarioComparison">Enter one specific change to compare it with your current plan.</div></div>
+    </div>
+  </details>
+  <div id="planError" class="muted" aria-live="polite"></div>
+</section>
