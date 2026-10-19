@@ -1,0 +1,47 @@
+<section id="tab-insights" class="tab-panel {{ 'active' if active_section == 'insights' else 'hidden' }}">
+  <div class="page-heading">
+    <div><h1>Smart Strategy</h1><p>Get a repayment recommendation, understand why it was chosen, and review available payment activity.</p></div>
+  </div>
+
+  <section class="insights-section" aria-labelledby="smartStrategyTitle">
+    <div class="section-title-row">
+      <div><h2 id="smartStrategyTitle">Your repayment recommendation</h2><p class="muted">Compares repayment approaches using your debt balances, interest rates, minimum payments, and the amount your budget may support.</p></div>
+      <button class="primary" type="button" id="runSmartAnalysisBtn">Run Smart Strategy</button>
+    </div>
+    <div class="insight-summary" aria-live="polite">
+      <div class="insight-summary-main"><strong id="insightStrategyStatus">Waiting for debt details</strong><p id="insightStrategyCopy">Add at least one debt in Debt plan to see a recommendation. The calculated estimate is reviewed before any payment action.</p></div>
+      <a class="secondary insight-action-link" href="/app/plan" data-tab="plan">Open debt plan</a>
+    </div>
+    <p id="smartAgentExplanation" class="agent-explanation hidden" aria-live="polite"></p>
+    <p id="smartAnalysisActivity" class="form-help hidden" aria-live="polite"></p>
+    <div class="agent-method-grid" aria-label="How Glim analyzes your information">
+      <article class="agent-method-card"><h3>Debt analysis</h3><p>Compares highest-interest-first, smallest-balance-first, and balanced repayment approaches. The calculator supplies the payoff and interest estimates.</p></article>
+      <article class="agent-method-card"><h3>Plan guidance</h3><p>Answers questions using your current plan and explains the assumptions behind a recommendation.</p></article>
+      <article class="agent-method-card"><h3>Payment activity review</h3><p>When a supported account connection is configured, reviews available transaction history for recurring charges and possible debt payments. You confirm details before adding a debt.</p></article>
+    </div>
+  </section>
+
+  <section class="insights-section" aria-labelledby="planGuideTitle">
+    <div class="section-title-row"><div><h2 id="planGuideTitle">Ask about your plan</h2><p class="muted">Use the guidance assistant to understand a recommendation or your savings and debt estimates.</p></div></div>
+    <div class="question-suggestions" aria-label="Suggested questions">
+      <button type="button" class="question-suggestion" data-question="Why does Smart Strategy recommend this repayment order?">Explain my repayment order</button>
+      <button type="button" class="question-suggestion" data-question="How much should I keep in my savings buffer?">Review my savings buffer</button>
+      <button type="button" class="question-suggestion" data-question="What payment activity can you review?">What payment activity is available?</button>
+    </div>
+    <form id="chatForm" class="chat-form">
+      <div id="chatWindow" class="chat-window" aria-live="polite"><div class="bubble"><strong>Plan guidance</strong><br>Ask a question about the numbers or recommendations in your current plan.</div></div>
+      <div class="input-row"><input id="chatInput" aria-label="Ask a question about your plan" placeholder="Ask about your debt, savings or recommendation" required/><button class="primary" id="chatBtn" type="submit">Ask</button></div>
+    </form>
+    <p id="assistantAvailabilityNote" class="form-help">Guidance uses the information available to this Glim session. If connected account activity is unavailable, it will say so rather than infer transactions.</p>
+  </section>
+
+  <section class="insights-section payment-review-section" aria-labelledby="paymentReviewTitle">
+    <div class="section-title-row"><div><h2 id="paymentReviewTitle">Payment activity</h2><p class="muted">Review recurring payments from a connected account. Account connection and transaction access depend on the deployment configuration.</p></div></div>
+    <div class="activity-connection-card">
+      <div class="activity-connection-copy"><strong id="insightsConnectionStatus">Checking account connection…</strong><p id="insightsConnectionNote" class="muted">Your debt plan can still be calculated without payment activity.</p></div>
+      <div class="button-row activity-connection-actions"><button class="primary" type="button" id="connectActivityBtn">Connect account</button><button class="secondary hidden" type="button" id="disconnectActivityBtn">Disconnect</button><button class="secondary" type="button" id="insightsActivityRefreshBtn">Review activity</button></div>
+    </div>
+    <div class="activity-results-section"><h3>Recurring payments and findings</h3><div id="scoutResults" class="activity-results" aria-live="polite"><p class="muted">Choose Review activity to check the transactions available to this session.</p></div><div id="scoutDebtSuggestions" class="activity-findings" aria-live="polite"></div></div>
+    <p class="form-help">This version’s connected transaction workflow uses test-mode data, not live personal account history or real-money transfers. Live activity review requires a separate production connection.</p>
+  </section>
+</section>

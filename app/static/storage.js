@@ -345,7 +345,18 @@
       else if (route === '/api/resume' && method === 'POST') { s.paused = false; this.addAudit(s, 'Banker', 'resume', 'Allow practice steps to be recorded again.', 'User control', { paused: false }); this.save(s); result = { paused: false }; }
       else if (route === '/api/chat' && method === 'POST') {
         mustBeSignedIn(); const text = String(body.message || ''), low = text.toLowerCase(); let agent = 'Glim', message;
-        if (/safety floor|minimum balance|floor/.test(low)) { message = `Your safety floor is ${money(s.profile.floor_balance)}. Glim's plan is designed to leave at least this amount available rather than allocating it to savings or debt.`; }
+        if (/smart strategy|repayment strateg|compare strateg|repayment order/.test(low) && s.debts.some(d => d.status === 'active')) {
+          const plan = s.plan?.resolved_strategy ? s.plan : this.buildPlan(s, 'smart', Number(s.plan?.stash_pct ?? 65));
+          agent = 'Debt strategy analysis';
+          message = plan.smart_summary || `Smart Strategy compared repayment approaches and recommends ${plan.resolved_strategy || 'a balanced approach'} based on your entered debt balances, interest rates and minimum payments. The payoff figures are estimates.`;
+          this.addAudit(s, agent, 'smart_strategy_explanation', 'Explain the computed repayment comparison and recommendation.', 'User requested explanation', { message, strategy: plan.resolved_strategy });
+          this.save(s);
+        }
+        else if (/payment activity|connected account|transaction history|recurring payment/.test(low)) {
+          agent = 'Payment activity review';
+          message = 'No external transaction history is available in this browser-based session. A server-backed deployment with a configured payment-account connection is required before recurring charges can be reviewed.';
+        }
+        else if (/safety floor|minimum balance|floor/.test(low)) { message = `Your safety floor is ${money(s.profile.floor_balance)}. Glim's plan is designed to leave at least this amount available rather than allocating it to savings or debt.`; }
         else if (/how.*avalanche|avalanche.*work/.test(low)) { agent = 'Tactician'; message = 'Avalanche prioritizes the active debt with the highest APR first. It can reduce interest cost, though the first balance may take longer to clear.'; }
         else if (/how.*snowball|snowball.*work/.test(low)) { agent = 'Tactician'; message = 'Snowball prioritizes the smallest active balance first. It can create earlier payoff milestones, though total interest may be higher.'; }
         else if (/daily step|suggest.*step|why.*step/.test(low)) { message = `The suggested daily amount is calculated from your income, expenses, savings target and minimum balance.`; }

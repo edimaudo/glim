@@ -60,6 +60,17 @@ function render(){
   $$('.strategy').forEach(button=>{button.disabled=!activeDebts.length;const active=button.dataset.strategy===selectedStrategy;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
   const smartRecommendation=$('#smartRecommendation');
   if(smartRecommendation){smartRecommendation.classList.toggle('hidden',selectedStrategy!=='smart');setText('#smartRecommendationCopy',s.plan?.smart_summary||'Add your debts, then select Smart Strategy to compare the available repayment approaches.');setText('#smartResolvedStrategy',s.plan?.resolved_strategy?`Recommended repayment order: ${({avalanche:'highest interest rate first',snowball:'smallest balance first',hybrid:'balanced approach'})[s.plan.resolved_strategy]||s.plan.resolved_strategy}.`: '');}
+  const insightStatus=$('#insightStrategyStatus'),insightCopy=$('#insightStrategyCopy');
+  if(insightStatus){
+    if(!activeDebts.length) insightStatus.textContent='Add debt details to run Smart Strategy';
+    else if(s.plan?.resolved_strategy) insightStatus.textContent=`Recommended approach: ${{avalanche:'highest interest first',snowball:'smallest balance first',hybrid:'balanced approach'}[s.plan.resolved_strategy]||s.plan.resolved_strategy}`;
+    else insightStatus.textContent='Ready to compare repayment approaches';
+  }
+  if(insightCopy){
+    if(!activeDebts.length) insightCopy.textContent='Add at least one debt in Debt plan. Smart Strategy needs a balance, interest rate and minimum payment to compare realistic options.';
+    else insightCopy.textContent=s.plan?.smart_summary||'Run Smart Strategy to compare the available repayment approaches and review the calculated payoff estimate.';
+  }
+  const runSmartButton=$('#runSmartAnalysisBtn');if(runSmartButton)runSmartButton.disabled=!activeDebts.length;
   const visualizationButton=$('#togglePaymentVisualization');if(visualizationButton)visualizationButton.disabled=!Boolean(s.plan?.projection);
   if(s.plan?.projection){
     const savingsShare=Number(s.daily_drip||0)*Number(s.plan.stash_pct||0)/100;
@@ -239,11 +250,46 @@ async function runScout(showToast=true){
   }catch(e){$('#scoutResults').innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;await renderScoutDebtSuggestions([])}
 }
 async function buildPlan(){if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt in Debt plan before building a payoff plan.');return}try{STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})});render();toast('Plan recalculated.')}catch(e){toast(e.message)}}
+async function runSmartAnalysis(){
+  if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt in Debt plan before running Smart Strategy.');activateSection('plan',{push:true});return;}
+  const button=$('#runSmartAnalysisBtn');if(button){button.disabled=true;button.textContent='Analyzing…';}
+  try{
+    selectedStrategy='smart';
+    STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:'smart',stash_pct:Number(STATE?.plan?.stash_pct??65)})});
+    render();
+    const chat=await api('/api/chat',{method:'POST',body:JSON.stringify({message:'Compare the repayment strategies for my current debts and explain why Smart Strategy recommends this approach.'})}).catch(()=>null);
+    const explanation=$('#smartAgentExplanation');
+    if(chat?.message&&explanation){explanation.textContent=`${assistantRoleLabel(chat.agent)}: ${cleanCopy(chat.message)}`;explanation.classList.remove('hidden');}
+    else if(explanation){explanation.textContent='The repayment comparison was updated. The explanation service did not respond, so the recommendation is based on the repayment calculator.';explanation.classList.remove('hidden');}
+    const activity=$('#smartAnalysisActivity');
+    if(activity){
+      const names={compare_payoff_strategies:'Compared repayment approaches',evaluate_what_if:'Calculated a repayment scenario',inspect_scout_activity:'Reviewed available connected activity',get_banker_status:'Checked payment status'};
+      const used=Array.isArray(chat?.tools_used)?chat.tools_used:(chat?.tool?[chat.tool]:[]);
+      const readable=[...new Set(used.map(item=>names[item]).filter(Boolean))];
+      const assistantConfigured=!!STATE?.connections?.gemini_configured;
+      activity.textContent=readable.length?`Analysis completed: repayment calculator plus ${readable.join('; ').toLowerCase()}.`:assistantConfigured?'Analysis completed: repayment calculator and configured plan guidance.':'Analysis completed: repayment calculator. The optional explanation service is not configured in this deployment.';
+      activity.classList.remove('hidden');
+    }
+    toast('Smart Strategy analysis updated.');
+  }catch(error){toast(cleanCopy(error.message||'Unable to analyze the current debt plan.'));}
+  finally{if(button){button.disabled=!(STATE?.debts||[]).some(d=>d.status==='active');button.textContent='Run Smart Strategy';}}
+}
+function assistantRoleLabel(agent){
+  const value=String(agent||'').toLowerCase();
+  if(value.includes('debt strategy'))return 'Debt strategy analysis';
+  if(value.includes('payment activity'))return 'Payment activity review';
+  if(value.includes('scout'))return 'Payment activity review';
+  if(value.includes('banker'))return 'Payment status review';
+  if(value.includes('tactician'))return 'Debt strategy analysis';
+  if(value.includes('sage'))return 'Financial explanation';
+  return 'Plan guidance';
+}
+
 
 $('#pPct')?.addEventListener('input',e=>$('#pctOut').value=e.target.value+'%');
 $('#pApprovalMode')?.addEventListener('change',e=>$('#weeklyCapRow')?.classList.toggle('hidden',!['weekly_cap','standing_rule'].includes(e.target.value)));
-$('#setupContinueBtn')?.addEventListener('click',()=>{const first=$('#setupStepOne');const form=$('#profileForm');if(!form?.reportValidity())return;first?.classList.add('hidden');$('#setupStepTwo')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Step 2 of 2 · Preferences and first debt';$('#setupStepTwo')?.scrollIntoView({behavior:'smooth',block:'start'});$('#setupBackBtn')?.focus();});
-$('#setupBackBtn')?.addEventListener('click',()=>{const second=$('#setupStepTwo');second?.classList.add('hidden');$('#setupStepOne')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Step 1 of 2 · Monthly budget';$('#setupContinueBtn')?.focus();});
+$('#setupContinueBtn')?.addEventListener('click',()=>{const first=$('#setupStepOne');const form=$('#profileForm');if(!form?.reportValidity())return;first?.classList.add('hidden');$('#setupStepTwo')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Onboarding · Step 2 of 2 · Preferences and first debt';if($('#setupProgressFill'))$('#setupProgressFill').style.width='100%';if($('#setupProgressBar'))$('#setupProgressBar').setAttribute('aria-valuenow','2');$('#setupStepTwo')?.scrollIntoView({behavior:'smooth',block:'start'});$('#setupBackBtn')?.focus();});
+$('#setupBackBtn')?.addEventListener('click',()=>{const second=$('#setupStepTwo');second?.classList.add('hidden');$('#setupStepOne')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Onboarding · Step 1 of 2 · Monthly budget';if($('#setupProgressFill'))$('#setupProgressFill').style.width='50%';if($('#setupProgressBar'))$('#setupProgressBar').setAttribute('aria-valuenow','1');$('#setupContinueBtn')?.focus();});
 $('#weeklyCapRow')?.classList.toggle('hidden',!['weekly_cap','standing_rule'].includes($('#pApprovalMode')?.value));
 $('#profileForm')?.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -264,6 +310,8 @@ $('#profileForm')?.addEventListener('submit',async e=>{
 });
 $('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:15})});$('#debtForm').reset();await load();toast('Debt added.')}catch(e){toast(e.message)}});
 $('#scanBtn')?.addEventListener('click',()=>runScout(true));
+$('#runSmartAnalysisBtn')?.addEventListener('click',runSmartAnalysis);
+$('#insightsActivityRefreshBtn')?.addEventListener('click',()=>runScout(true));
 $$('.strategy').forEach(b=>b.addEventListener('click',()=>{selectedStrategy=b.dataset.strategy;$$('.strategy').forEach(x=>{const active=x===b;x.classList.toggle('active',active);x.setAttribute('aria-pressed',String(active));});buildPlan()}));
 $('#togglePaymentVisualization')?.addEventListener('click',()=>{const panel=$('#paymentVisualizationPanel'),button=$('#togglePaymentVisualization');if(!panel||!button)return;const open=panel.classList.contains('hidden');panel.classList.toggle('hidden',!open);button.textContent=open?'Hide payment visualization':'View payment visualization';button.setAttribute('aria-expanded',String(open));if(open)panel.scrollIntoView({behavior:'smooth',block:'nearest'});});
 $('#planBtn')?.addEventListener('click',buildPlan);
@@ -271,7 +319,7 @@ $('#approveDrip')?.addEventListener('click',async()=>{const connected=STATE?.pay
 $('#freezeBtn')?.addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Missed-day safeguard used.')}catch(e){toast(e.message)}});
 $('#pauseBtn')?.addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
 $$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
-$('#chatForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>Glim</strong><br>${escapeHtml(cleanCopy(r.message))}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast(e.message)}});
+$('#chatForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput'),button=$('#chatBtn');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';if(button){button.disabled=true;button.textContent='Reviewing…'}try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});const role=assistantRoleLabel(r.agent);$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><span class="assistant-role">${escapeHtml(role)}</span><br>${escapeHtml(cleanCopy(r.message))}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><strong>Unable to respond</strong><br>${escapeHtml(cleanCopy(e.message||'Try again after checking your plan setup.'))}</div>`)}finally{if(button){button.disabled=false;button.textContent='Ask'}}});
 $('#nudgeBtn')?.addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=cleanCopy(lastNudge.message);$('#nudgeWhy').textContent=cleanCopy(lastNudge.why||'This check-in was selected from your reminder preferences.');await renderNotifications()}catch(e){toast(e.message)}});
 $$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
 $('#saveNotifBtn')?.addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Notification settings saved.')}catch(e){toast(e.message)}});
@@ -314,7 +362,7 @@ $('#createSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();tr
 $('#loadLessonBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">A quick check helps apply this to your own plan.</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Completed.</strong><p>Keep the useful idea in mind when reviewing your plan.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn')?.addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
 $('#deleteBtn')?.addEventListener('click',async()=>{if(!confirm('Delete all your Glim data? This cannot be undone.'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
-const APP_SECTIONS=['overview','plan','savings','settings','help'];
+const APP_SECTIONS=['overview','plan','savings','insights','settings','help'];
 function activeSectionFromPath(){const part=window.location.pathname.split('/').filter(Boolean).pop();return APP_SECTIONS.includes(part)?part:'overview'}
 function activateSection(section,{push=false,replace=false}={}){
   if(!APP_SECTIONS.includes(section))section='overview';
@@ -329,6 +377,12 @@ activateSection(activeSectionFromPath());
 $('#logoutBtn')?.addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
 $('#paypalConnectBtn')?.addEventListener('click',async()=>{const b=$('#paypalConnectBtn');b.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){$('#paypalApprovalLink').innerHTML=`<a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure connection</a>`;window.location.assign(r.approval_url);return;}await load();}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
 $('#paypalDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this funding source? Pending contributions must be checked first.'))return;const b=$('#paypalDisconnectBtn');b.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Funding source disconnected.')}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
+$('#connectActivityBtn')?.addEventListener('click',async()=>{
+  const button=$('#connectActivityBtn');if(window.GlimStorage?.mode==='localStorage'){toast('Account activity needs a server-backed deployment with a configured connection. No account was connected.');return;}
+  button.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){window.location.assign(r.approval_url);return;}await load();}catch(e){toast(cleanCopy(e.message));}finally{button.disabled=false;await setIntegrationStatus();}
+});
+$('#disconnectActivityBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this account?'))return;const button=$('#disconnectActivityBtn');button.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Account disconnected.')}catch(e){toast(cleanCopy(e.message));}finally{button.disabled=false;await setIntegrationStatus();}});
+
 $('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBtn');b.disabled=true;const out=$('#settlementActionResult');try{const r=await api('/api/drip/settle',{method:'POST'});out.textContent=`Transfer status: ${settlementLabel(r.status||'submitted')}${r.amount==null?'':' · '+money(r.amount)+' CAD'}.`;if(r.approval_url)out.innerHTML+=` <a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure approval</a>`;await load()}catch(e){out.textContent=cleanCopy(e.message);await setIntegrationStatus()}finally{b.disabled=false}});
 $('#reconcileBtn')?.addEventListener('click',async()=>{const b=$('#reconcileBtn'),out=$('#settlementActionResult');b.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});out.textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){out.textContent=cleanCopy(e.message)}finally{b.disabled=false}});
 $('#joinSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/join',{method:'POST',body:JSON.stringify({invite_code:$('#squadInviteCode').value.trim()})});$('#squadActionNote').textContent='Joined group.';$('#squadInviteCode').value='';await load()}catch(error){$('#squadActionNote').textContent=error.message}});
@@ -343,6 +397,14 @@ async function setIntegrationStatus(){
  const connect=$('#paypalConnectBtn'),disconnect=$('#paypalDisconnectBtn'),scopeHost=$('#paypalScopes'),approvalHost=$('#paypalApprovalLink'),pushBtn=$('#pushEnableBtn'),external=$('#externalNotificationStatus'),privacy=$('#privacyStorageStatus');
  if(localMode){
    $('#accountTransferDetails')?.classList.add('hidden');
+   const insightStatus=$('#insightsConnectionStatus'),insightNote=$('#insightsConnectionNote'),insightConnect=$('#connectActivityBtn'),insightDisconnect=$('#disconnectActivityBtn');
+   if(insightStatus)insightStatus.textContent='Account activity is not connected';
+   if(insightNote)insightNote.textContent='This session saves your plan in the browser and cannot connect to payment accounts or retrieve external transactions. A server-backed deployment with a configured connection is required.';
+   if(insightConnect){insightConnect.disabled=true;insightConnect.textContent='Connection unavailable here';}
+   if(insightDisconnect)insightDisconnect.classList.add('hidden');
+   const activityRefresh=$('#insightsActivityRefreshBtn');if(activityRefresh){activityRefresh.disabled=false;activityRefresh.textContent='Check available activity';}
+   const strategyExpl=$('#smartAgentExplanation');if(strategyExpl)strategyExpl.classList.add('hidden');
+   const assistantNote=$('#assistantAvailabilityNote');if(assistantNote)assistantNote.textContent='In this browser-only session, Smart Strategy uses the local repayment calculator and guidance uses built-in rules. The specialist assistant and connected transaction tools require a configured server-backed deployment.';
    if(mode)mode.textContent='Your plan remains available without an account connection.';
    if(funding)funding.textContent='Account transfers are not available here.';
    if(connect)connect.classList.add('hidden');
@@ -365,6 +427,14 @@ async function setIntegrationStatus(){
  const settleBtn=$('#settleWeekBtn'),reconcileBtn=$('#reconcileBtn');if(settleBtn)settleBtn.classList.remove('hidden');if(reconcileBtn)reconcileBtn.classList.remove('hidden');const activity=$('#contributionActivitySection');if(activity)activity.classList.remove('hidden');
  const [health,cfg]=await Promise.all([api('/api/paypal/health').catch(()=>({configured:false,authenticated:false,error:true,status:STATE?.paypal?.status||'disconnected'})),api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}))]);
  const status=STATE?.paypal?.status||health.status||'disconnected';
+ const assistantNote=$('#assistantAvailabilityNote');
+ if(assistantNote)assistantNote.textContent=STATE?.connections?.gemini_configured?'Smart Strategy can compare repayment options and explain the results. If account activity is connected, it can also inspect available transactions. Payment actions remain separate and require explicit approval.':'The repayment calculator is available. The explanation service is not configured in this deployment; connected transaction review also requires an account connection.';
+ const insightStatus=$('#insightsConnectionStatus'),insightNote=$('#insightsConnectionNote'),insightConnect=$('#connectActivityBtn'),insightDisconnect=$('#disconnectActivityBtn');
+ if(insightStatus)insightStatus.textContent=status==='connected'?(health.settlement_ready?'Connected and ready':'Connected; review required'):status==='awaiting_approval'?'Waiting for approval':health.error?'Connection status unavailable':health.configured?'No account connected':'Connection is not configured';
+ if(insightNote)insightNote.textContent=status==='connected'?'Review available transaction activity for recurring charges and possible debt payments. Findings are suggestions; verify them before adding a debt.':health.configured?'Connect an account to check transaction activity. The plan calculator still works without a connection.':'This deployment needs account connection credentials before transaction activity can be retrieved.';
+ if(insightConnect){insightConnect.classList.toggle('hidden',status==='connected');insightConnect.disabled=!health.configured||status==='awaiting_approval';insightConnect.textContent=status==='awaiting_approval'?'Waiting for approval':health.configured?'Connect account':'Connection not configured';}
+ if(insightDisconnect)insightDisconnect.classList.toggle('hidden',status!=='connected');
+ const activityRefresh=$('#insightsActivityRefreshBtn');if(activityRefresh)activityRefresh.disabled=status!=='connected';
  if(funding){
    funding.textContent=status==='connected'?(health.settlement_ready?'Connected and ready':'Connected, but needs attention'):status==='awaiting_approval'?'Waiting for your approval':health.error?'Connection status unavailable':health.configured?'Ready to connect':'No funding source connected';
  }
@@ -393,7 +463,8 @@ const WALKTHROUGH_KEY='glim.guide.completed.v5';
 const WALKTHROUGH_STEPS=[
   {section:'overview',title:'Overview',copy:'See your total debt, savings balance, and suggested allocation in one place.'},
   {section:'plan',title:'Debt plan',copy:'Enter each debt and use Smart Strategy or choose a repayment method yourself. Review the payoff estimate before making changes.'},
-  {section:'savings',title:'Savings',copy:'Track your cash buffer and add other savings targets.'},
+  {section:'savings',title:'Savings',copy:'Track your cash buffer, update your current savings balance, and add other goals.'},
+  {section:'insights',title:'Insights',copy:'Run Smart Strategy, ask for an explanation of your debt plan, and review available connected payment activity. Account activity requires a supported connection.'},
   {section:'settings',title:'Settings',copy:'Update the monthly budget, savings target, safety balance, and reminders.'},
   {section:'help',title:'Help',copy:'Find answers to common questions and reopen this walkthrough whenever you need it.'}
 ];

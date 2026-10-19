@@ -206,7 +206,7 @@ def app_home():
 def app_section(request: Request, active_section: str):
     if active_section in {"coach", "game", "squad", "learn"}:
         return RedirectResponse(url="/app/overview", status_code=302)
-    allowed = {"overview", "plan", "savings", "settings", "help"}
+    allowed = {"overview", "plan", "savings", "insights", "settings", "help"}
     if active_section not in allowed:
         raise HTTPException(404, "Glim section not found.")
     if DATABASE_ENABLED and not get_session_user(db, request.cookies.get("glim_session")):

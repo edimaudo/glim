@@ -56,9 +56,9 @@ def test_public_landing_is_separate_from_sign_in():
         assert "In this prototype, your plan is stored in this browser" not in signin.text
 
 
-def test_navigation_has_five_main_destinations_and_only_old_game_sections_redirect():
+def test_navigation_has_six_main_destinations_and_only_old_game_sections_redirect():
     with TestClient(app) as client:
-        for section in ["overview", "plan", "savings", "settings", "help"]:
+        for section in ["overview", "plan", "savings", "insights", "settings", "help"]:
             response = client.get(f"/app/{section}")
             assert response.status_code == 200, section
             assert f'href="/app/{section}"' in response.text
@@ -107,6 +107,11 @@ def test_setup_is_integrated_and_has_no_duplicate_income_range():
         assert "Smart Strategy" in response.text
         assert "View payment visualization" in response.text
         assert "tab-savings" in response.text
+        assert "tab-insights" in response.text
+        assert "Run Smart Strategy" in response.text
+        assert 'id="smartAnalysisActivity"' in response.text
+        assert "Payment activity" in response.text
+        assert 'id="chatForm"' in response.text
         assert "tab-help" in response.text
         assert "plan-preview" not in response.text
         assert response.text.count('class="summary-item"') == 2
@@ -149,4 +154,8 @@ def test_main_experience_is_financial_and_gamification_free():
         assert "Savings" in copy
         assert "Help" in copy
         assert "Smart Strategy" in copy
+        assert "Smart Strategy" in copy
+        assert "Payment activity" in copy
+        assert "Onboarding" in copy
+        assert "Agentic AI" not in copy
         assert not re.search(r"\b(forest|stash|boss|drip|points|streak|squad|gamification|ogre)\b", copy, re.I)

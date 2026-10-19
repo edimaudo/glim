@@ -58,6 +58,11 @@ vm.runInContext(fs.readFileSync('app/static/storage.js', 'utf8'), context, { fil
   assert.equal(smartPlan.strategy, 'smart');
   assert.ok(['avalanche', 'snowball', 'hybrid'].includes(smartPlan.resolved_strategy));
   assert.match(smartPlan.smart_summary, /Smart Strategy compared repayment approaches/i);
+  const smartExplanation = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'Compare the repayment strategies and explain the Smart Strategy recommendation.' }) });
+  assert.match(smartExplanation.message, /Smart Strategy compared repayment approaches/i);
+  assert.match(smartExplanation.agent, /Debt strategy analysis/i);
+  const activityExplanation = await adapter.request('/api/chat', { method: 'POST', body: JSON.stringify({ message: 'What payment activity is available?' }) });
+  assert.match(activityExplanation.message, /server-backed deployment/i);
   const whatIf = await adapter.request('/api/what-if', { method: 'POST', body: JSON.stringify({ text: 'save $25 per week' }) });
   assert.equal(whatIf.parsed.weekly_extra, 25);
   assert.equal(whatIf.parsed.needs_clarification, false);

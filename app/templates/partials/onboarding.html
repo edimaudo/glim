@@ -1,25 +1,35 @@
-<section id="onboardingView" class="view hidden">
-  <div class="page-heading setup-page-head">
-    <div><h1>Create your plan</h1><p>Enter a few numbers to get started. You can update them at any time.</p></div>
-    <span class="setup-step-label" id="setupStepLabel">Step 1 of 2 · Monthly budget</span>
+<section id="onboardingView" class="view hidden" aria-labelledby="onboardingTitle">
+  <div class="onboarding-header">
+    <div class="onboarding-label">Onboarding</div>
+    <h1 id="onboardingTitle">Set up your money plan</h1>
+    <p>Start with your monthly budget, then add debt details and choose how you want to review payment actions. You can change these details later.</p>
+    <div class="onboarding-step-row">
+      <span id="setupStepLabel" aria-live="polite">Onboarding · Step 1 of 2 · Monthly budget</span>
+      <div class="onboarding-progress" role="progressbar" aria-label="Onboarding progress" aria-valuemin="1" aria-valuemax="2" aria-valuenow="1" id="setupProgressBar"><span id="setupProgressFill" style="width:50%"></span></div>
+    </div>
   </div>
   <div class="setup-layout">
     <form id="profileForm" class="form-card setup-form">
       <div id="setupStepOne">
-        <div class="setup-form-section"><h2>Monthly budget</h2><p class="muted">Use take-home income and typical expenses.</p></div>
-        <label>Name <span class="muted optional-tag">Optional</span><input id="pName" maxlength="60" autocomplete="given-name" placeholder="Your name"/></label>
-        <label>Monthly take-home income (CAD)<input id="pIncome" type="number" min="1" step="0.01" placeholder="4500" required/></label>
-        <label>Typical monthly expenses (CAD)<input id="pExpenses" type="number" min="0" step="0.01" placeholder="3200" required/></label>
-        <label>Savings target <output id="pctOut">5%</output><input id="pPct" type="range" min="0" max="20" step="1" value="5"/></label>
-        <label>Minimum balance to keep (CAD)<input id="pFloor" type="number" min="0" step="0.01" placeholder="500" value="500" required/></label>
+        <div class="setup-form-section"><h2>Monthly budget</h2><p class="muted">Use take-home income and typical expenses after tax.</p></div>
+        <div class="setup-fields-grid">
+          <label class="full-width">Name <span class="muted optional-tag">Optional</span><input id="pName" maxlength="60" autocomplete="given-name" placeholder="Your name"/></label>
+          <label>Monthly take-home income (CAD)<input id="pIncome" type="number" min="1" step="0.01" placeholder="4500" required/></label>
+          <label>Typical monthly expenses (CAD)<input id="pExpenses" type="number" min="0" step="0.01" placeholder="3200" required/></label>
+          <label>Savings target <output id="pctOut">5%</output><input id="pPct" type="range" min="0" max="20" step="1" value="5"/></label>
+          <label>Minimum balance to keep (CAD)<input id="pFloor" type="number" min="0" step="0.01" placeholder="500" value="500" required/></label>
+        </div>
+        <p class="form-help">Glim uses these figures to estimate what may be available for savings and debt payments. It does not know your live bank balance.</p>
         <div class="setup-submit-row"><button class="primary" id="setupContinueBtn" type="button">Continue</button></div>
       </div>
 
       <div id="setupStepTwo" class="hidden">
-        <div class="setup-form-section"><h2>Payment preferences</h2><p class="muted">Choose how suggested contributions are approved.</p></div>
-        <label>Approval preference<select id="pApprovalMode"><option value="each">Ask before each transfer</option><option value="weekly_cap">Allow transfers up to a weekly limit</option><option value="standing_rule">Automatically approve within the weekly limit</option></select></label>
-        <label id="weeklyCapRow" class="hidden">Weekly transfer limit (CAD)<input id="pWeeklyCap" type="number" min="1" step="0.01" value="60"/></label>
-        <div class="setup-form-section"><h2>Add your first debt <span class="optional-tag">Optional</span></h2><p class="muted">You can add debts later from Debt plan.</p></div>
+        <div class="setup-form-section"><h2>Payment preferences and debt</h2><p class="muted">You can start with one debt or skip this part and add debt details later.</p></div>
+        <div class="setup-fields-grid">
+          <label class="full-width">Approval preference<select id="pApprovalMode"><option value="each">Ask before each transfer</option><option value="weekly_cap">Allow transfers up to a weekly limit</option><option value="standing_rule">Automatically approve within the weekly limit</option></select></label>
+          <label id="weeklyCapRow" class="full-width hidden">Weekly transfer limit (CAD)<input id="pWeeklyCap" type="number" min="1" step="0.01" value="60"/></label>
+        </div>
+        <div class="setup-form-section setup-secondary-section"><h2>First debt <span class="optional-tag">Optional</span></h2><p class="muted">Enter the balance, interest rate and minimum payment from your latest statement.</p></div>
         <div class="setup-debt-grid">
           <label>Debt name<input id="setupDebtName" placeholder="Credit card" autocomplete="off"/></label>
           <label>Debt type<select id="setupDebtType"><option value="credit_card">Credit card</option><option value="loan">Loan or line of credit</option></select></label>
@@ -28,6 +38,7 @@
           <label>Minimum monthly payment (CAD)<input id="setupDebtMinimum" type="number" min="0.01" step="0.01" placeholder="100"/></label>
         </div>
         <input type="hidden" id="pPersona" value="custom"/>
+        <p class="form-help">After setup, Smart Strategy can compare repayment approaches using the debt details you provide. Payment-activity review requires a configured account connection.</p>
         <div class="setup-submit-row"><button class="secondary" id="setupBackBtn" type="button">Back</button><button class="primary" type="submit">Create my plan</button></div>
       </div>
     </form>
