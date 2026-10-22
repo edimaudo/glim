@@ -7,13 +7,42 @@
     <div class="section-title-row"><div><h2>Add a debt</h2><p class="muted">Use your latest statement for the balance, interest rate, and minimum payment.</p></div></div>
     <form id="debtForm" class="compact-form debt-entry-form">
       <label>Debt name<input id="dName" placeholder="e.g. Credit card" autocomplete="off" required/></label>
-      <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="loan">Loan or line of credit</option></select></label>
+      <label>Debt type<select id="dType">
+        <option value="credit_card">Credit card</option><option value="line_of_credit">Line of credit</option>
+        <option value="personal_loan">Personal loan</option><option value="student_loan">Student loan</option>
+        <option value="auto_loan">Auto loan</option><option value="mortgage">Mortgage</option>
+        <option value="buy_now_pay_later">Buy now, pay later</option><option value="medical_bill">Medical bill</option>
+        <option value="tax_debt">Tax debt</option><option value="payday_loan">Payday loan</option><option value="other">Other obligation</option>
+      </select></label>
       <label>Current balance (CAD)<input id="dBalance" type="number" min="0.01" step="0.01" placeholder="3500" required/></label>
       <label>Annual interest rate (%)<input id="dApr" type="number" min="0" max="100" step="0.01" placeholder="19.99" required/></label>
       <label>Minimum monthly payment (CAD)<input id="dMin" type="number" min="0.01" step="0.01" placeholder="100" required/></label>
+      <label>Payment due day<input id="dDueDay" type="number" min="1" max="31" value="15" required/></label>
       <button class="primary" type="submit">Add debt</button>
+      <p class="form-help full-width">Use your latest statement for the balance, rate, minimum payment and due day. Do not enter a full card number. A card number alone cannot retrieve your issuer’s balance, APR or minimum payment in this version.</p>
     </form>
     <div id="debtList" class="debt-list" aria-live="polite"></div>
+    <section class="otter-progress-card" aria-labelledby="otterHeading">
+      <div class="otter-visual" aria-hidden="true">
+        <svg viewBox="0 0 120 112" role="img" focusable="false">
+          <ellipse cx="58" cy="69" rx="36" ry="29" class="otter-body"/><ellipse cx="60" cy="47" rx="29" ry="27" class="otter-head"/>
+          <circle cx="39" cy="28" r="10" class="otter-ear"/><circle cx="80" cy="28" r="10" class="otter-ear"/>
+          <ellipse cx="60" cy="57" rx="19" ry="13" class="otter-muzzle"/>
+          <circle cx="49" cy="45" r="3.5" class="otter-eye"/><circle cx="71" cy="45" r="3.5" class="otter-eye"/>
+          <ellipse cx="60" cy="53" rx="4" ry="3" class="otter-nose"/><path d="M60 56v4m0 0q-5 5-9 0m9 0q5 5 9 0" class="otter-mouth"/>
+          <path d="M33 72q-9 10-4 20q12 4 21-6m34-14q11 10 6 20q-12 4-21-6" class="otter-paws"/>
+          <path d="M38 65q22 12 44 0" class="otter-belly-line"/>
+        </svg>
+        <span id="otterAccessory" class="otter-accessory" aria-hidden="true"></span>
+      </div>
+      <div class="otter-content">
+        <div class="section-title-row"><div><h2 id="otterHeading">On-time payment streak</h2><p class="muted">Record payments to track consistency. Glim does not verify payments with your lender.</p></div></div>
+        <div class="otter-stats"><div><strong id="otterStageLabel">Otter pup</strong><span>Otter growth</span></div><div><strong id="otterStreakValue">0 months</strong><span>On-time streak</span></div><div><strong id="otterCurrency">0 shells</strong><span>Customization balance</span></div></div>
+        <p id="otterInterestNote" class="muted"></p>
+      </div>
+      <div id="debtPaymentProgressList" class="debt-payment-progress" aria-live="polite"></div>
+      <div class="otter-shop"><div><h3>Customize your otter</h3><p class="muted">Earn shells by meeting the entered minimum payments on time.</p></div><div id="otterItems" class="otter-items"></div></div>
+    </section>
   </section>
 
   <section class="content-section plan-section">

@@ -44,9 +44,16 @@
         <label>Daily reminder limit<input id="notifCap" type="number" min="0" max="10" step="1"/></label>
         <label>Time zone<select id="notifTimezone"><option value="America/Toronto">Eastern</option><option value="America/Vancouver">Pacific</option><option value="America/Winnipeg">Central</option><option value="America/Edmonton">Mountain</option><option value="America/Halifax">Atlantic</option><option value="UTC">UTC</option><option value="Europe/London">London</option></select></label>
         <label>Reminder method<select id="notifChannel"><option value="in_app">In-app</option><option value="email" disabled>Email</option><option value="web_push" disabled>Browser alerts</option></select></label>
+        <label>Debt reminder tone<select id="debtReminderTone"><option value="zen">Zen · gentle and supportive</option><option value="direct">Direct · show estimated interest</option><option value="adaptive">Adaptive · adjust to your responses</option></select></label>
       </div>
       <div class="button-row settings-save-row"><button class="primary" id="saveNotifBtn" type="button">Save reminders</button><button class="secondary hidden" id="pushEnableBtn" type="button" disabled>Enable browser alerts</button></div>
-      <p id="externalNotificationStatus" class="muted" aria-live="polite">In-app reminders are available.</p><div id="inbox" class="inbox-list"></div>
+      <p id="externalNotificationStatus" class="muted" aria-live="polite">In-app reminders are available.</p>
+      <div class="reminder-preview">
+        <div><h3>Preview a debt reminder</h3><p class="muted">Try the wording before saving your preference.</p></div>
+        <button class="secondary" id="nudgeBtn" type="button">Preview reminder</button>
+        <div id="nudgePreview" class="hidden" aria-live="polite"><strong id="nudgeText"></strong><p id="nudgeWhy" class="muted"></p><div class="button-row"><button class="secondary nudge-action" data-response="acted" type="button">Took a step</button><button class="secondary nudge-action" data-response="opened" type="button">Helpful</button><button class="secondary nudge-action" data-response="snoozed" type="button">Later</button><button class="secondary nudge-action" data-response="dismissed" type="button">Not helpful</button></div></div>
+      </div>
+      <div id="inbox" class="inbox-list"></div>
       <span id="aiIntegrationStatus" hidden aria-hidden="true"></span>
     </div>
   </details>

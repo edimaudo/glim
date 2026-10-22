@@ -88,20 +88,45 @@ function render(){
   renderDebtPaidOffNotice();
   renderAudit();
   renderChart();
-  renderStash();
   const pauseTitle=$('#pauseTitle');if(pauseTitle)pauseTitle.textContent=s.paused?'Transfers are paused':'Transfers are active';
   const pauseHelp=$('#pauseHelp');if(pauseHelp)pauseHelp.textContent=s.paused?'Resume when you are ready.':'Pause to stop new transfer approvals.';
   const pauseButton=$('#pauseBtn');if(pauseButton)pauseButton.textContent=s.paused?'Resume transfers':'Pause transfers';
 }
 
+const DEBT_LABELS={credit_card:'Credit card',line_of_credit:'Line of credit',personal_loan:'Personal loan',student_loan:'Student loan',auto_loan:'Auto loan',mortgage:'Mortgage',buy_now_pay_later:'Buy now, pay later',medical_bill:'Medical bill',tax_debt:'Tax debt',payday_loan:'Payday loan',other:'Other obligation',loan:'Loan or line of credit'};
 function renderDebtList(debts){
   const host=$('#debtList');if(!host)return;
-  if(!debts.length){host.innerHTML='<p class="muted">No debts added yet.</p>';return;}
+  if(!debts.length){host.innerHTML='<p class="muted">No debts added yet. Add the figures from your latest statement to get started.</p>';return;}
   host.innerHTML=debts.map(debt=>{
     const active=debt.status==='active';
-    const kind=debt.type==='credit_card'?'Credit card':debt.type==='loan'?'Loan or line of credit':String(debt.type||'Debt');
-    return `<article class="debt-row"><div><h3>${escapeHtml(debt.name||'Debt')}</h3><p>${kind}${active?'':' · Paid off'}</p></div><div class="debt-metric">${money(debt.balance)}<span>Balance</span></div><div class="debt-metric">${Number(debt.apr||0).toFixed(2)}%<span>Annual interest</span></div><div class="debt-metric">${money(debt.minimum)}<span>Minimum payment / month</span></div></article>`;
+    const kind=DEBT_LABELS[debt.type]||String(debt.type||'Debt');
+    return `<article class="debt-row"><div class="debt-main"><h3>${escapeHtml(debt.name||'Debt')}</h3><p>${escapeHtml(kind)}${active?'':' · Paid off'}</p><p class="muted">Payment due day: ${Number(debt.due_day||15)}</p></div><div class="debt-metric">${money(debt.balance)}<span>Balance</span></div><div class="debt-metric">${Number(debt.apr||0).toFixed(2)}%<span>Annual interest</span></div><div class="debt-metric">${money(debt.minimum)}<span>Minimum / month</span></div><div class="debt-action">${active?`<button class="secondary" type="button" data-record-payment="${Number(debt.id)}">Record payment</button>`:'<span class="badge">Paid off</span>'}</div></article>`;
   }).join('');
+  host.querySelectorAll('[data-record-payment]').forEach(button=>button.addEventListener('click',()=>{
+    const debt=debts.find(d=>Number(d.id)===Number(button.dataset.recordPayment));if(!debt)return;
+    const dialog=$('#debtPaymentDialog');$('#debtPaymentDebtId').value=debt.id;$('#debtPaymentAmount').value=Number(debt.minimum||0).toFixed(2);$('#debtPaymentDate').value=new Date().toISOString().slice(0,10);$('#debtPaymentResult').textContent='';
+    if(dialog?.showModal)dialog.showModal();else if(dialog)dialog.setAttribute('open','open');
+  }));
+}
+
+async function renderDebtProgress(){
+  try{
+    const p=await api('/api/debt-progress');
+    const stage=$('#otterStageLabel'),streak=$('#otterStreakValue'),currency=$('#otterCurrency'),interest=$('#otterInterestNote');
+    if(stage)stage.textContent=p.stage_label||'Otter pup';
+    if(streak)streak.textContent=`${Number(p.on_time_streak||0)} month${Number(p.on_time_streak||0)===1?'':'s'}`;
+    if(currency)currency.textContent=`${Number(p.currency||0)} shells`;
+    if(interest)interest.textContent=`Estimated interest from entered balances and rates: ${money(p.estimated_monthly_interest)} per month. This is a calculation, not a statement balance.`;
+    const accessory=$('#otterAccessory');if(accessory){const equipped=p.items?.find(i=>i.equipped);const artwork={
+      101:'<svg viewBox="0 0 120 112" aria-hidden="true"><path d="M35 62 Q60 76 85 62 L82 73 Q60 84 38 73 Z" fill="#b4544b" stroke="#773d37" stroke-width="2"/><path d="M72 71 L81 89 L69 86 L61 75 Z" fill="#d16b5c" stroke="#773d37" stroke-width="1.5"/><path d="M42 65 l4 4 m6-1 l4 4 m6-1 l4 4 m6-4 l4 3" stroke="#f4d8c9" stroke-width="2" stroke-linecap="round"/></svg>',
+      102:'<svg viewBox="0 0 120 112" aria-hidden="true"><path d="M39 31 Q40 10 60 10 Q81 10 82 31 Z" fill="#5c81a7" stroke="#355675" stroke-width="2"/><path d="M31 31 Q60 23 89 31 Q89 38 60 39 Q31 38 31 31 Z" fill="#7399be" stroke="#355675" stroke-width="2"/></svg>',
+      103:'<svg viewBox="0 0 120 112" aria-hidden="true"><circle cx="48" cy="45" r="9" fill="none" stroke="#7c6944" stroke-width="3.5"/><circle cx="72" cy="45" r="9" fill="none" stroke="#7c6944" stroke-width="3.5"/><path d="M57 44 Q60 40 63 44 M39 43 L32 40 M81 43 L88 40" fill="none" stroke="#7c6944" stroke-width="3" stroke-linecap="round"/></svg>',
+      104:'<svg viewBox="0 0 120 112" aria-hidden="true"><ellipse cx="60" cy="74" rx="45" ry="23" fill="none" stroke="#38889a" stroke-width="11"/><ellipse cx="60" cy="74" rx="35" ry="14" fill="none" stroke="#9cdae0" stroke-width="3"/></svg>'
+    };accessory.innerHTML=artwork[Number(equipped?.id)]||'';accessory.className=`otter-accessory accessory-${Number(equipped?.id)||0}`;}
+    const progress=$('#debtPaymentProgressList');if(progress)progress.innerHTML=(p.debts||[]).length?p.debts.map(d=>`<article class="debt-payment-status"><div><strong>${escapeHtml(d.name)}</strong><span>${d.payment_status==='paid'?'Minimum recorded on time':d.payment_status==='due'?'Payment due; minimum not recorded':'Due day '+d.due_day}</span></div><div class="debt-mini-amount">${money(d.paid_this_month)}<small>recorded this month</small></div></article>`).join(''):'<p class="muted">Add a debt to start tracking payment consistency.</p>';
+    const items=$('#otterItems');if(items)items.innerHTML=(p.items||[]).map(item=>`<article class="otter-item"><strong>${escapeHtml(item.name)}</strong><span class="muted">${escapeHtml(item.description)}</span><span class="otter-item-price">${item.owned?'Unlocked':`${Number(item.cost)} shells`}</span><button class="secondary" type="button" data-otter-action="${item.owned?'equip':'buy'}" data-otter-id="${Number(item.id)}">${item.equipped?'Equipped':item.owned?'Equip':'Unlock'}</button></article>`).join('');
+    items?.querySelectorAll('[data-otter-action]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const action=button.dataset.otterAction,itemId=button.dataset.otterId;const route=action==='buy'?`/api/otter/items/${itemId}/buy`:`/api/otter/items/${itemId}/equip`;await api(route,{method:'POST'});await renderDebtProgress();toast(action==='buy'?'Otter item unlocked.':'Otter appearance updated.')}catch(e){toast(cleanCopy(e.message));button.disabled=false}}));
+  }catch(e){console.error(e)}
 }
 
 async function renderNotifications(){
@@ -111,6 +136,7 @@ async function renderNotifications(){
   if(end)end.value=settings.quiet_end||STATE?.profile?.quiet_end||'08:00';
   if(cap)cap.value=Number(settings.daily_cap??STATE?.profile?.notification_cap??3);
   if(zone)zone.value=STATE?.profile?.timezone||'America/Toronto';
+  const tone=$('#debtReminderTone');if(tone)tone.value=settings.debt_reminder_tone||STATE?.profile?.debt_reminder_tone||'zen';
   if(channel){const config=localMode?{enabled:false,email_enabled:false}:await api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}));const email=channel.querySelector('option[value="email"]'),push=channel.querySelector('option[value="web_push"]');if(email){email.hidden=!config.email_enabled;email.disabled=!config.email_enabled}if(push){push.hidden=!config.enabled;push.disabled=!config.enabled}channel.value=settings.channel==='in_app'?'in_app':(settings.channel||'in_app');if(channel.selectedOptions[0]?.disabled)channel.value='in_app';}
   const inbox=$('#inbox');if(inbox){const items=Array.isArray(data.items)?data.items:[];inbox.innerHTML=items.length?items.map(item=>`<article class="inbox-item"><strong>${escapeHtml(cleanCopy(item.message||'Glim check-in'))}</strong><p>${escapeHtml(cleanCopy(item.why||'A check-in was selected from your reminder settings.'))}</p><span>${new Date(item.created_at).toLocaleString()}${item.response?` · Response: ${escapeHtml(({acted:'I took a step',opened:'I read this',snoozed:'Remind me later',dismissed:'Dismissed',muted:'Fewer check-ins'}[item.response]||item.response))}`:''}</span></article>`).join(''):'<p class="muted">No check-ins yet. Your reminders appear here when you request one.</p>';}
   const stress=$('#stressCopy'),detail=$('#stressDetail');if(stress)stress.textContent=data.stress_mode?'Supportive check-ins':'Calm check-ins';if(detail)detail.textContent=data.stress_mode?'Check-ins remain supportive when activity slows down.':'Check-ins follow your saved preferences and daily limit.';
@@ -121,7 +147,7 @@ function visualIcon(key){const paths={leaf:'<path d="M19 3C10 3 5 7 5 13c0 4 3 6
 
 function renderProjection(p){$('#projection').innerHTML=`<div><span class="data-label">Estimated debt-free time</span><strong>${p.months} mo</strong><span class="muted">based on this plan</span></div><div><span class="data-label">Estimated interest</span><strong>${money(p.interest_paid)}</strong><span class="muted">over the payoff period</span></div><div><span class="data-label">Potential interest avoided</span><strong>${money(p.interest_saved)}</strong><span class="muted">compared with minimum payments</span></div>`}
 function renderDebtPaidOffNotice(){const b=$('#debtPaidOffNotice');if(!b)return;const p=STATE?.pending_redirect;if(!p){b.classList.add('hidden');return}b.classList.remove('hidden');const others=(STATE.debts||[]).filter(d=>d.status==='active');b.innerHTML=`<strong>Debt paid off: ${escapeHtml(p.debt_name)}.</strong> The freed payment is ${money(p.freed_payment)}. Choose where it goes next. <div class="button-row" style="margin-top:10px"><button class="secondary" data-redirect="stash">Move to savings</button>${others.map(d=>`<button class="secondary" data-redirect="${d.id}">Next: ${escapeHtml(d.name)}</button>`).join('')}</div>`;b.querySelectorAll('[data-redirect]').forEach(btn=>btn.onclick=async()=>{try{await api('/api/debt/redirect',{method:'POST',body:JSON.stringify({destination:btn.dataset.redirect==='stash'?'stash':Number(btn.dataset.redirect)})});await load();toast('Freed payment redirected.')}catch(e){toast(e.message)}})}
-async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a debt to see an estimated payoff path.</text>';return}const W=640,H=220,P=30,max=Math.max(...r.minimum_only,1);const pts=a=>a.map((v,i)=>`${P+(W-2*P)*i/(a.length-1||1)},${H-P-(H-2*P)*v/max}`).join(' ');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-P}"/><line class="chart-grid" x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}"/><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P}" y="15">Chosen strategy</text><text class="chart-label" x="${W-155}" y="15">Minimum payment</text>`}catch{}}
+async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a debt to see an estimated payoff path.</text>';return}const W=640,H=220,P=42,B=28,max=Math.max(...r.minimum_only,...r.balances,1);const pts=a=>a.map((v,i)=>`${P+(W-P-18)*i/(a.length-1||1)},${H-B-(H-B-P)*v/max}`).join(' ');const xAt=i=>P+(W-P-18)*i/24;const ticks=[0,6,12,18,24].map(i=>`<text class="chart-label" text-anchor="middle" x="${xAt(i)}" y="${H-6}">${i===0?'Now':`${i} mo`}</text>`).join('');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-B}"/><line class="chart-grid" x1="${P}" y1="${H-B}" x2="${W-18}" y2="${H-B}"/><text class="chart-label" x="${P}" y="12">${money(max)}</text><text class="chart-label" x="${P}" y="${H-B+12}">$0</text><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P+70}" y="12">Selected strategy</text><text class="chart-label" x="${W-150}" y="12">Minimum payments</text>${ticks}`}catch{}}
 async function renderAudit(){
   try{
     const rows=await api('/api/audit');
@@ -168,17 +194,36 @@ async function renderSquad(){
 
 async function renderStash(){
   try{
-    const x=await api('/api/stash/goals');
+    const [x,progress,schedule,donations]=await Promise.all([
+      api('/api/stash/goals'),api('/api/savings/progress').catch(()=>({goals:[],savings_streak:0})),
+      api('/api/stash/auto-deposit').catch(()=>({})),api('/api/savings/donations').catch(()=>[])
+    ]);
     const balance=Number(x.stash_balance||0);
     const balanceInput=$('#savingsCurrentBalance');if(balanceInput&&document.activeElement!==balanceInput)balanceInput.value=balance.toFixed(2);
     const target=Math.max(1,Number(STATE?.stash?.shield_threshold||500));
     const pct=Math.max(0,Math.min(100,balance/target*100));
-    const level=$('#savingsBufferStatus'); if(level) level.textContent=pct>=100?'Target reached':pct>=50?'Halfway there':balance>0?'In progress':'Not started';
-    const summary=$('#savingsBufferSummary'); if(summary) summary.textContent=`${money(balance)} saved toward your buffer`;
-    const progress=$('#savingsBufferProgress'); if(progress) progress.textContent=`${pct.toFixed(0)}% of ${money(target)}`;
-    const fill=$('#bufferFill'); if(fill) fill.style.width=pct+'%';
-    const goals=$('#savingsGoals'); if(!goals) return;
-    goals.innerHTML=x.goals.length?x.goals.map(g=>{const goalPct=Math.min(100,Number(g.saved_amount)/Math.max(1,Number(g.target_amount))*100);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.name)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(g.saved_amount)}</strong><span class="muted">of ${money(g.target_amount)}</span></div><div class="progressbar"><span style="width:${goalPct}%"></span></div><div class="goal-foot"><span>${goalPct.toFixed(0)}% saved</span><span>${Number(g.monthly_target)>0?money(g.monthly_target)+'/month target':'No monthly target'}</span></div></article>`}).join(''):'<p class="muted">No savings goals yet. Add one to track another target.</p>';
+    const level=$('#savingsBufferStatus');if(level)level.textContent=pct>=100?'Target reached':pct>=50?'Halfway there':balance>0?'In progress':'Not started';
+    const summary=$('#savingsBufferSummary');if(summary)summary.textContent=`${money(balance)} saved toward your buffer`;
+    const progressText=$('#savingsBufferProgress');if(progressText)progressText.textContent=`${pct.toFixed(0)}% of ${money(target)}`;
+    const fill=$('#bufferFill');if(fill)fill.style.width=pct+'%';
+    const enriched=new Map((progress.goals||[]).map(g=>[Number(g.id),g]));
+    const goals=$('#savingsGoals');
+    if(goals)goals.innerHTML=x.goals.length?x.goals.map(g=>{const extra=enriched.get(Number(g.id))||g;const goalPct=Math.max(0,Math.min(100,Number(g.saved_amount)/Math.max(1,Number(g.target_amount))*100));const monthStreak=Number(extra.monthly_streak||0),current=Number(extra.current_month_contribution||0);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.name)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(g.saved_amount)}</strong><span class="muted">of ${money(g.target_amount)}</span></div><div class="progressbar"><span style="width:${goalPct}%"></span></div><div class="goal-foot"><span>${goalPct.toFixed(0)}% saved</span><span>${Number(g.monthly_target)>0?`${money(g.monthly_target)}/month target · ${monthStreak} month streak`:'No monthly target'}</span></div>${Number(g.monthly_target)>0?`<p class="muted goal-month-note">${money(current)} recorded toward this month’s target.</p>`:''}</article>`}).join(''):'<p class="muted">No savings goals yet. Add one to track another target.</p>';
+    const activeGoals=(x.goals||[]).filter(g=>g.status==='active');
+    const options=activeGoals.map(g=>`<option value="${Number(g.id)}">${escapeHtml(g.name)}</option>`).join('');
+    for(const id of ['monthlyDepositGoalId','savingsContributionGoal']){const select=$('#'+id);if(select){const old=select.value;if(id==='monthlyDepositGoalId')select.innerHTML='<option value="">General savings</option>'+options;else select.innerHTML='<option value="">General savings</option>'+options;if(old&&[...select.options].some(o=>o.value===old))select.value=old;}}
+    const percent=$('#monthlyDepositPct');if(percent&&document.activeElement!==percent)percent.value=Number(schedule.income_pct??5);
+    const months=$('#monthlyDepositMonths');if(months&&document.activeElement!==months)months.value=Number(schedule.duration_months||6);
+    const day=$('#monthlyDepositDay');if(day&&document.activeElement!==day)day.value=Number(schedule.due_day||1);
+    const enabled=$('#monthlyDepositEnabled');if(enabled&&document.activeElement!==enabled)enabled.checked=!!schedule.enabled;
+    const consent=$('#monthlyDepositConsent');if(consent&&document.activeElement!==consent)consent.checked=false;
+    const goalSel=$('#monthlyDepositGoalId');if(goalSel&&schedule.goal_id!=null&&document.activeElement!==goalSel)goalSel.value=String(schedule.goal_id);
+    const estimate=$('#monthlyDepositEstimate');const amount=Number(STATE?.profile?.monthly_income||0)*Number(percent?.value||0)/100;if(estimate)estimate.textContent=money(amount);
+    const detail=$('#monthlyDepositEstimateDetail');if(detail)detail.textContent=`${Number(percent?.value||0)}% of ${money(STATE?.profile?.monthly_income||0)} monthly income · ${Number(months?.value||6)} months · ${money(amount*Number(months?.value||6))} planned in total`;
+    const scheduleStatus=$('#monthlyDepositStatus');if(scheduleStatus){const status=schedule.status||'disabled';scheduleStatus.textContent=status==='scheduled'?`Enabled for ${schedule.months_remaining??schedule.duration_months??6} more month(s). Test transactions only.`:status==='local_settings_only'?'Saved as a reminder only. No transfers run in this browser.':status==='duration_complete'?'The selected savings period has ended.':'Not enabled.';}
+    const streakSummary=$('#savingsStreakSummary');if(streakSummary)streakSummary.innerHTML=`<strong>${Number(progress.savings_streak||0)} month savings streak</strong><p class="muted">A streak is counted when a goal’s monthly target is met. Contributions in this browser are self-reported and do not move money.</p>`;
+    const date=$('#savingsContributionDate');if(date&&!date.value)date.value=new Date().toISOString().slice(0,10);
+    const history=$('#donationHistory');if(history){const rows=Array.isArray(donations)?donations:donations?.donations||[];history.innerHTML=rows.length?rows.map(d=>`<article class="donation-row"><div><strong>${escapeHtml(d.charity_name)}</strong><span class="muted">${money(d.amount)} · ${escapeHtml(String(d.status||'planned').replaceAll('_',' '))}</span></div><time>${d.created_at?new Date(d.created_at).toLocaleDateString():'Saved'}</time><p class="muted">${escapeHtml(d.note||d.message||d.last_error||'Test status may need refresh.')}</p></article>`).join(''):'<p class="muted">No donations recorded.</p>';}
   }catch(e){console.error(e)}
 }
 
@@ -227,6 +272,7 @@ async function load(){
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
     await Promise.all([renderNotifications(), renderSettlements(), setIntegrationStatus()]);
     render();
+    await Promise.all([renderDebtProgress(), renderStash()]);
     maybeStartWalkthrough();
   }catch(e){console.error(e);toast(e.message||'Unable to load your Glim plan.');}
 }
@@ -304,11 +350,11 @@ $('#profileForm')?.addEventListener('submit',async e=>{
   if(!(income>0)||expenses<0||floor<0){toast('Check your monthly income, expenses and minimum balance.');return}
   try{
     await api('/api/profile',{method:'POST',body:JSON.stringify({name:$('#pName')?.value.trim()||'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:$('#pApprovalMode')?.value||'each',weekly_cap:Number($('#pWeeklyCap')?.value||60),floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',show_consistency:true,show_learning_tips:true,show_friend_support:false,show_plan_help:true})});
-    if(debtStarted) await api('/api/debts',{method:'POST',body:JSON.stringify({name:debtName,type:$('#setupDebtType').value,balance:Number(debtBalance),apr:Number(debtApr),minimum:Number(debtMinimum),due_day:15})});
+    if(debtStarted) await api('/api/debts',{method:'POST',body:JSON.stringify({name:debtName,type:$('#setupDebtType').value,balance:Number(debtBalance),apr:Number(debtApr),minimum:Number(debtMinimum),due_day:Number($('#setupDebtDueDay')?.value||15)})});
     window.location.assign('/app/overview');
   }catch(error){toast(error.message||'Unable to save your plan.');}
 });
-$('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:15})});$('#debtForm').reset();await load();toast('Debt added.')}catch(e){toast(e.message)}});
+$('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:+($('#dDueDay')?.value||15)})});$('#debtForm').reset();if($('#dDueDay'))$('#dDueDay').value=15;await load();toast('Debt added.')}catch(e){toast(cleanCopy(e.message))}});
 $('#scanBtn')?.addEventListener('click',()=>runScout(true));
 $('#runSmartAnalysisBtn')?.addEventListener('click',runSmartAnalysis);
 $('#insightsActivityRefreshBtn')?.addEventListener('click',()=>runScout(true));
@@ -320,9 +366,9 @@ $('#freezeBtn')?.addEventListener('click',async()=>{try{await api('/api/game/fre
 $('#pauseBtn')?.addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
 $$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
 $('#chatForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput'),button=$('#chatBtn');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';if(button){button.disabled=true;button.textContent='Reviewing…'}try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});const role=assistantRoleLabel(r.agent);$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><span class="assistant-role">${escapeHtml(role)}</span><br>${escapeHtml(cleanCopy(r.message))}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><strong>Unable to respond</strong><br>${escapeHtml(cleanCopy(e.message||'Try again after checking your plan setup.'))}</div>`)}finally{if(button){button.disabled=false;button.textContent='Ask'}}});
-$('#nudgeBtn')?.addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=cleanCopy(lastNudge.message);$('#nudgeWhy').textContent=cleanCopy(lastNudge.why||'This check-in was selected from your reminder preferences.');await renderNotifications()}catch(e){toast(e.message)}});
+$('#nudgeBtn')?.addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=cleanCopy(lastNudge.message);$('#nudgeWhy').textContent=cleanCopy(lastNudge.why||'This reminder uses your saved preference and entered due dates.');$('#nudgePreview')?.classList.remove('hidden');await renderNotifications()}catch(e){toast(cleanCopy(e.message))}});
 $$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
-$('#saveNotifBtn')?.addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Notification settings saved.')}catch(e){toast(e.message)}});
+$('#saveNotifBtn')?.addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,debt_reminder_tone:$('#debtReminderTone')?.value||'zen',timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Reminder settings saved.')}catch(e){toast(cleanCopy(e.message))}});
 
 
 $('#settingsSavingsPct')?.addEventListener('input',e=>{if($('#settingsSavingsPctValue'))$('#settingsSavingsPctValue').textContent=`${e.target.value}%`});
@@ -353,8 +399,14 @@ $('#saveModulePreferencesBtn')?.addEventListener('click',async()=>{
 });
 
 $('#savingsBalanceForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#savingsBalanceStatus');try{const balance=Number($('#savingsCurrentBalance').value);if(!Number.isFinite(balance)||balance<0)throw new Error('Enter a savings balance of zero or more.');await api('/api/stash/balance',{method:'POST',body:JSON.stringify({balance})});if(status)status.textContent='Savings balance updated.';await load();toast('Savings balance updated.')}catch(error){if(status)status.textContent=cleanCopy(error.message);else toast(cleanCopy(error.message))}});
-$('#savingsGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#savingsGoalName').value.trim(),target_amount:+$('#savingsGoalTarget').value,monthly_target:0})});$('#savingsGoalForm').reset();await renderStash();toast('Savings goal added.')}catch(e){toast(cleanCopy(e.message))}});
-$('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,amount:+$('#monthlyDepositAmount').value,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const r=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});await renderStash();$('#monthlyDepositConsent').checked=false;toast(enabled?'Monthly savings target saved.':'Monthly savings target updated.')}catch(e){toast(e.message)}});
+$('#savingsGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#savingsGoalName').value.trim(),target_amount:+$('#savingsGoalTarget').value,monthly_target:+($('#savingsGoalMonthlyTarget').value||0)})});$('#savingsGoalForm').reset();await renderStash();toast('Savings goal added.')}catch(e){toast(cleanCopy(e.message))}});
+$('#monthlyDepositPct')?.addEventListener('input',()=>{const amount=Number(STATE?.profile?.monthly_income||0)*Number($('#monthlyDepositPct').value||0)/100,months=Number($('#monthlyDepositMonths')?.value||6);if($('#monthlyDepositEstimate'))$('#monthlyDepositEstimate').textContent=money(amount);if($('#monthlyDepositEstimateDetail'))$('#monthlyDepositEstimateDetail').textContent=`${Number($('#monthlyDepositPct').value||0)}% of ${money(STATE?.profile?.monthly_income||0)} monthly income · ${months} months · ${money(amount*months)} planned in total`;});
+$('#monthlyDepositMonths')?.addEventListener('input',()=>$('#monthlyDepositPct')?.dispatchEvent(new Event('input')));
+$('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#monthlyDepositStatus');try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,income_pct:+$('#monthlyDepositPct').value,duration_months:+$('#monthlyDepositMonths').value,goal_id:$('#monthlyDepositGoalId').value?+$('#monthlyDepositGoalId').value:null,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const result=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});if(status)status.textContent=result.note||result.status;await renderStash();$('#monthlyDepositConsent').checked=false;toast(enabled?'Savings schedule saved.':'Savings schedule disabled.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#savingsContributionForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const result=await api('/api/savings/contributions',{method:'POST',body:JSON.stringify({amount:+$('#savingsContributionAmount').value,contribution_date:$('#savingsContributionDate').value,goal_id:$('#savingsContributionGoal').value?+$('#savingsContributionGoal').value:null})});$('#savingsContributionAmount').value='';await renderStash();await load();toast(result.recorded?.points_awarded?`Savings goal met. Earned ${result.recorded.points_awarded} shells.`:'Savings contribution recorded.')}catch(e){toast(cleanCopy(e.message))}});
+$('#donationForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#donationStatus');try{const result=await api('/api/savings/donations',{method:'POST',body:JSON.stringify({charity_name:$('#donationCharityName').value.trim(),recipient_email:$('#donationRecipientEmail').value.trim(),amount:+$('#donationAmount').value})});if(status)status.textContent=result.status==='planned_not_sent'?'Saved as a donation plan. No money moved.':result.message||`Test donation status: ${result.status}.`;await renderStash();toast(result.status==='planned_not_sent'?'Donation plan saved.':'Test donation submitted.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#debtPaymentForm')?.addEventListener('submit',async e=>{e.preventDefault();const debtId=Number($('#debtPaymentDebtId').value),status=$('#debtPaymentResult');try{const result=await api(`/api/debts/${debtId}/payments`,{method:'POST',body:JSON.stringify({amount:+$('#debtPaymentAmount').value,payment_date:$('#debtPaymentDate').value})});if(status)status.textContent=result.recorded?.paid_on_time?'Minimum payment recorded as met by the due day.': 'Payment saved. It does not count toward the entered minimum for this due date.';$('#debtPaymentDialog')?.close();await load();toast(result.recorded?.currency_awarded?`On-time minimum recorded. Earned ${result.recorded.currency_awarded} shells.`:'Payment record saved.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#cancelDebtPayment')?.addEventListener('click',()=>$('#debtPaymentDialog')?.close());
 $('#loadRecapBtn')?.addEventListener('click',renderMonthlyRecap);
 $('#auditBtn')?.addEventListener('click',renderAudit);
 $('#squadGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/goals',{method:'POST',body:JSON.stringify({title:$('#squadGoalTitle').value.trim(),target_count:+$('#squadGoalTarget').value,reward_cosmetic_id:+$('#squadGoalReward').value})});await renderSquad();$('#squadGoalTitle').value='';toast('Shared goal created.')}catch(e){toast(e.message)}});

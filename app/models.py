@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Literal
+from datetime import date
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +17,7 @@ class Profile(BaseModel):
     quiet_end: str = "08:00"
     notification_cap: int = Field(default=3, ge=0, le=10)
     notification_channel: Literal["in_app", "web_push", "email"] = "in_app"
+    debt_reminder_tone: Literal["zen", "direct", "adaptive"] = "zen"
     timezone: str = "America/Toronto"
     show_consistency: bool = True
     show_learning_tips: bool = True
@@ -25,7 +27,7 @@ class Profile(BaseModel):
 
 class DebtCreate(BaseModel):
     name: str = Field(min_length=1)
-    type: Literal["credit_card", "loan"] = "credit_card"
+    type: Literal["credit_card", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other", "loan"] = "credit_card"
     balance: float = Field(gt=0)
     apr: float = Field(ge=0, le=100)
     minimum: float = Field(gt=0)
@@ -92,8 +94,22 @@ class StashGoalCreate(BaseModel):
 class MonthlyDepositSettings(BaseModel):
     enabled: bool = False
     amount: float = Field(default=0, ge=0)
+    income_pct: float = Field(default=0, ge=0, le=50)
+    duration_months: int = Field(default=12, ge=1, le=60)
+    goal_id: int | None = Field(default=None, ge=1)
     due_day: int = Field(default=1, ge=1, le=28)
     consent: bool = False
+
+
+class DebtPaymentCreate(BaseModel):
+    amount: float = Field(gt=0, le=1000000000)
+    payment_date: date
+
+
+class SavingsDonationCreate(BaseModel):
+    charity_name: str = Field(min_length=2, max_length=100)
+    recipient_email: str = Field(min_length=3, max_length=254)
+    amount: float = Field(gt=0, le=1000000000)
 
 
 class SquadGoalCreate(BaseModel):
@@ -103,8 +119,14 @@ class SquadGoalCreate(BaseModel):
 
 
 class ScoutDebtConfirm(BaseModel):
-    type: Literal["credit_card", "loan"] = "credit_card"
+    type: Literal["credit_card", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other", "loan"] = "credit_card"
     balance: float = Field(gt=0)
     apr: float = Field(ge=0, le=100)
     minimum: float = Field(gt=0)
     due_day: int = Field(default=15, ge=1, le=31)
+
+
+class SavingsContributionCreate(BaseModel):
+    amount: float = Field(gt=0, le=1000000000)
+    contribution_date: date
+    goal_id: int | None = Field(default=None, ge=1)

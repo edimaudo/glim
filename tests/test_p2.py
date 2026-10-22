@@ -111,7 +111,7 @@ def test_monthly_deposit_requires_consent_and_connected_sandbox():
             save_monthly_auto_deposit(db, True, 25, 1, True)
             assert False, "expected a sandbox recipient requirement"
         except ValueError as exc:
-            assert "PAYPAL_STASH_EMAIL" in str(exc)
+            assert "payout destination" in str(exc).lower()
 
 
 def test_monthly_deposit_webhook_updates_stash_once_only_after_success():
@@ -160,3 +160,71 @@ def test_monthly_deposit_failure_pauses_drips_and_does_not_increment_stash():
         assert state["stash"]["balance"] == before
         assert state["paused"] is True
         assert monthly_auto_deposit_settings(db)["status"] == "payout_failed"
+
+
+def test_recorded_debt_payment_reduces_tracked_balance_and_tracks_due_day():
+    from datetime import date
+    from app.services import get_debts, record_debt_payment
+    with tempfile.TemporaryDirectory() as td:
+        db = make_db(td)
+        debt = next(d for d in get_debts(db) if d["status"] == "active")
+        payment_date = date.today().replace(day=min(date.today().day, int(debt["due_day"])))
+        before_balance = float(debt["balance"])
+        payment = float(debt["minimum"])
+        result = record_debt_payment(db, debt["id"], payment, payment_date)
+        updated = next(d for d in get_debts(db) if int(d["id"]) == int(debt["id"]))
+        assert round(float(updated["balance"]), 2) == round(max(0, before_balance - payment), 2)
+        assert result["recorded"]["paid_on_time"] is True
+        assert result["recorded"]["currency_awarded"] == 20
+        assert "not independently verified" in (result.get("note") or "") or result["recorded"]["paid_on_time"] is True
+
+
+def test_savings_contribution_updates_balance_goal_and_monthly_reward():
+    from datetime import date
+    from app.services import add_stash_goal, get_savings_progress, get_state, record_savings_contribution
+    with tempfile.TemporaryDirectory() as td:
+        db = make_db(td)
+        add_stash_goal(db, "Emergency buffer", 1000, monthly_target=50)
+        with db.connect() as c:
+            goal = c.execute("SELECT id FROM stash_goals WHERE name='Emergency buffer'").fetchone()
+        before = float(get_state(db)["stash"]["balance"])
+        result = record_savings_contribution(db, 50, date.today(), int(goal["id"]))
+        progress = get_savings_progress(db)
+        tracked_goal = next(g for g in progress["goals"] if g["id"] == int(goal["id"]))
+        assert round(progress["balance"], 2) == round(before + 50, 2)
+        assert round(tracked_goal["saved_amount"], 2) == 50
+        assert result["recorded"]["points_awarded"] == 15
+
+
+def test_percentage_savings_schedule_uses_income_and_finite_term(monkeypatch):
+    from app.services import add_stash_goal
+    with tempfile.TemporaryDirectory() as td:
+        db = make_db(td)
+        connect_demo_sandbox(db)
+        monkeypatch.setenv("PAYPAL_STASH_EMAIL", "savings@example.test")
+        add_stash_goal(db, "Emergency buffer", 1000, monthly_target=100)
+        with db.connect() as c:
+            goal_id = int(c.execute("SELECT id FROM stash_goals WHERE name='Emergency buffer'").fetchone()["id"])
+        profile = get_state(db)["profile"]
+        result = save_monthly_auto_deposit(db, True, 0, 1, True, income_pct=5, duration_months=6, goal_id=goal_id)
+        assert result["enabled"] is True
+        assert result["income_pct"] == 5
+        assert result["duration_months"] == 6
+        assert result["goal_id"] == goal_id
+        assert round(result["amount"], 2) == round(float(profile["monthly_income"]) * 0.05, 2)
+
+
+def test_debt_chart_projects_combined_portfolio_for_24_months():
+    from app.services import debt_chart_data
+    with tempfile.TemporaryDirectory() as td:
+        db = make_db(td)
+        debt_chart_data(db)
+        with db.connect() as c:
+            c.execute("INSERT INTO debts(name,type,balance,apr,minimum,due_day,status) VALUES(?,?,?,?,?,?,?)",
+                      ("Installment loan", "personal_loan", 1500, 9.5, 75, 20, "active"))
+        result = debt_chart_data(db)
+        assert result["labels"][0] == "Now"
+        assert len(result["balances"]) == 25
+        assert len(result["minimum_only"]) == 25
+        assert result["starting_balance"] == round(sum(float(d["balance"]) for d in __import__("app.services", fromlist=["get_debts"]).get_debts(db) if d["status"] == "active"), 2)
+        assert result["balances"][0] == result["minimum_only"][0]

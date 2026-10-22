@@ -32,10 +32,11 @@
         <div class="setup-form-section setup-secondary-section"><h2>First debt <span class="optional-tag">Optional</span></h2><p class="muted">Enter the balance, interest rate and minimum payment from your latest statement.</p></div>
         <div class="setup-debt-grid">
           <label>Debt name<input id="setupDebtName" placeholder="Credit card" autocomplete="off"/></label>
-          <label>Debt type<select id="setupDebtType"><option value="credit_card">Credit card</option><option value="loan">Loan or line of credit</option></select></label>
+          <label>Debt type<select id="setupDebtType"><option value="credit_card">Credit card</option><option value="line_of_credit">Line of credit</option><option value="personal_loan">Personal loan</option><option value="student_loan">Student loan</option><option value="auto_loan">Auto loan</option><option value="mortgage">Mortgage</option><option value="buy_now_pay_later">Buy now, pay later</option><option value="medical_bill">Medical bill</option><option value="tax_debt">Tax debt</option><option value="payday_loan">Payday loan</option><option value="other">Other obligation</option></select></label>
           <label>Current balance (CAD)<input id="setupDebtBalance" type="number" min="0.01" step="0.01" placeholder="3500"/></label>
           <label>Annual interest rate (%)<input id="setupDebtApr" type="number" min="0" max="100" step="0.01" placeholder="19.99"/></label>
           <label>Minimum monthly payment (CAD)<input id="setupDebtMinimum" type="number" min="0.01" step="0.01" placeholder="100"/></label>
+          <label>Payment due day<input id="setupDebtDueDay" type="number" min="1" max="31" value="15"/></label>
         </div>
         <input type="hidden" id="pPersona" value="custom"/>
         <p class="form-help">After setup, Smart Strategy can compare repayment approaches using the debt details you provide. Payment-activity review requires a configured account connection.</p>

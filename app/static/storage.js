@@ -11,6 +11,10 @@
     { id: 1, name: 'Leaf trail', description: 'A subtle visual accent.', cost: 80, icon: 'leaf' },
     { id: 2, name: 'Acorn crown', description: 'A tiny crown for a consistent week.', cost: 120, icon: 'acorn' },
     { id: 3, name: 'Evening theme', description: 'A softer low-light appearance.', cost: 180, icon: 'moon' },
+    { id: 101, name: 'Striped scarf', description: 'A soft scarf for your otter.', cost: 40, icon: 'scarf' },
+    { id: 102, name: 'Rain hat', description: 'A small hat for rainy days.', cost: 70, icon: 'hat' },
+    { id: 103, name: 'Shell glasses', description: 'Round shell-inspired glasses.', cost: 100, icon: 'glasses' },
+    { id: 104, name: 'Blue float', description: 'A bright float for the river.', cost: 140, icon: 'float' },
   ];
   const LESSONS = [
     { id: 1, title: 'Protect your minimum balance', description: 'Keep your chosen safety amount available for essentials.', prompt: 'What should happen if a contribution would take your available balance below your minimum?', points: 15, accepted: ['pause', 'skip', 'not move', 'not breach', 'keep the floor'] },
@@ -30,12 +34,12 @@
     profile: {},
     paypal: { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] },
     stash: { balance: 0, shield_threshold: 1000, goals: [] },
-    game: { streak: 0, freezes: 1, points: 0, level: 1, evolution_stage: 'Revolver' },
+    game: { streak: 0, freezes: 1, points: 0, level: 1, evolution_stage: 'Revolver', otter_equipped_id: null },
     plan: {}, paused: false, pending_redirect: null,
     debts: [], seeded_transactions: [], ledger: [], audit: [], points_events: [],
-    notifications: { quiet_start: '22:00', quiet_end: '08:00', daily_cap: 3, channel: 'in_app', consecutive_ignores: 0 },
-    inbox: [], nudge_history: [],
-    monthly_deposit: { enabled: false, amount: 0, due_day: 1, consent: false, status: 'local_settings_only' },
+    notifications: { quiet_start: '22:00', quiet_end: '08:00', daily_cap: 3, channel: 'in_app', consecutive_ignores: 0, debt_reminder_tone: 'zen' },
+    inbox: [], nudge_history: [], debt_payment_events: [], savings_goal_events: [], donations: [],
+    monthly_deposit: { enabled: false, amount: 0, income_pct: 0, duration_months: 6, goal_id: null, due_day: 1, consent: false, status: 'local_settings_only' },
     squad: null, squad_members: [], cheers: [], squad_goals: [], squad_goal_events: [], unlocked_group_cosmetics: [],
     owned_cosmetics: [], completed_lessons: [], last_drip_date: null,
   });
@@ -89,7 +93,12 @@
           value.legacy_sample_cleared = true;
           migratedSample = true;
         }
-        const state = { ...newState(), ...value };
+        const defaults = newState();
+        const state = { ...defaults, ...value };
+        state.notifications = { ...defaults.notifications, ...(value.notifications || {}) };
+        state.game = { ...defaults.game, ...(value.game || {}) };
+        state.monthly_deposit = { ...defaults.monthly_deposit, ...(value.monthly_deposit || {}) };
+        for (const key of ['debt_payment_events','savings_goal_events','donations']) if (!Array.isArray(state[key])) state[key] = [];
         if (migratedSample) this.save(state);
         return state;
       } catch (error) {
@@ -251,6 +260,56 @@
       const members = s.squad_members.map(m => ({ ...m }));
       return { squad: s.squad, members, cheers: s.cheers.slice(-30).reverse(), goals: s.squad_goals, unlocked_cosmetics: s.unlocked_group_cosmetics };
     }
+    debtProgress(s) {
+      const today = new Date();
+      const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+      const days = (date) => date.getDate();
+      const rows = s.debts.filter(d => d.status === 'active').map(debt => {
+        const dueDay = Math.min(31, Number(debt.due_day || 15));
+        const events = s.debt_payment_events.filter(p => Number(p.debt_id) === Number(debt.id));
+        const byMonth = {};
+        for (const p of events) {
+          const key = String(p.payment_date || '').slice(0,7);
+          if (!byMonth[key]) byMonth[key] = { total: 0, onTime: 0 };
+          const amount = Number(p.amount || 0);
+          byMonth[key].total += amount;
+          const day = Number(String(p.payment_date || '').slice(8,10));
+          if (day > 0 && day <= dueDay) byMonth[key].onTime += amount;
+        }
+        const current = byMonth[monthKey(today)] || { total: 0, onTime: 0 };
+        const paid = current.onTime + .001 >= Number(debt.minimum || 0);
+        let start = new Date(today.getFullYear(), today.getMonth(), 1);
+        if (!paid && today.getDate() < dueDay) start.setMonth(start.getMonth()-1);
+        let streak = 0;
+        for (let i=0;i<120;i++) {
+          const key = monthKey(start);
+          if (Number(byMonth[key]?.onTime || 0) + .001 < Number(debt.minimum || 0)) break;
+          streak++;
+          start.setMonth(start.getMonth()-1);
+        }
+        return { id: Number(debt.id), name: debt.name, type: debt.type, due_day: dueDay, minimum: Number(debt.minimum), paid_this_month: round2(current.total), paid_on_time_this_month: paid, payment_status: paid ? 'paid' : (today.getDate() >= dueDay ? 'due' : 'upcoming'), streak };
+      });
+      const streak = rows.length ? Math.min(...rows.map(d => d.streak)) : 0;
+      const stage = streak >= 12 ? ['grown','Grown otter'] : streak >= 6 ? ['confident','Confident otter'] : streak >= 3 ? ['young','Growing otter'] : ['pup','Otter pup'];
+      const owned = new Set((s.owned_cosmetics || []).map(Number));
+      const items = COSMETICS.filter(item => item.id >= 101).map(item => ({...item, owned: owned.has(item.id), equipped: Number(s.game.otter_equipped_id) === item.id}));
+      const nextDue = rows.map(d => { const due = new Date(today.getFullYear(), today.getMonth(), Math.min(d.due_day,28)); if (due < new Date(today.getFullYear(),today.getMonth(),today.getDate())) due.setMonth(due.getMonth()+1); return due; }).sort((a,b)=>a-b)[0];
+      return { on_time_streak: streak, stage: stage[0], stage_label: stage[1], currency: Number(s.game.points || 0), equipped_id: s.game.otter_equipped_id ?? null, debts: rows, items, next_due_date: nextDue ? nextDue.toISOString().slice(0,10) : null, estimated_monthly_interest: round2(s.debts.filter(d=>d.status==='active').reduce((sum,d)=>sum+Number(d.balance||0)*Number(d.apr||0)/1200,0)) };
+    }
+    savingsProgress(s) {
+      const today = new Date(), currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+      const monthAt = offset => { const d = new Date(today.getFullYear(), today.getMonth()-offset, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+      const sum = {};
+      (s.savings_goal_events || []).forEach(e => { const key=`${e.goal_id ?? 'none'}:${String(e.contribution_date).slice(0,7)}`; sum[key]=(sum[key]||0)+Number(e.amount||0); });
+      const goals = (s.stash.goals || []).map(g => {
+        const monthlyTarget=Number(g.monthly_target||0), key=String(g.id);
+        let streak=0;
+        if(monthlyTarget>0){ let start=0; if((sum[`${key}:${currentMonth}`]||0)+.001<monthlyTarget && today.getDate()<28)start=1; for(let i=start;i<120;i++){if((sum[`${key}:${monthAt(i)}`]||0)+.001<monthlyTarget)break;streak++;}}
+        return {...g,monthly_streak:streak,current_month_contribution:round2(sum[`${key}:${currentMonth}`]||0)};
+      });
+      const best=goals.reduce((m,g)=>Math.max(m,Number(g.monthly_streak||0)),0);
+      return {balance:Number(s.stash.balance||0),currency:Number(s.game.points||0),savings_streak:best,goals,contributions:(s.savings_goal_events||[]).slice(-12).reverse(),note:'Recorded savings contributions are self-reported unless a confirmed test-mode contribution is shown.'};
+    }
     async request(path, opts = {}) {
       const method = (opts.method || 'GET').toUpperCase();
       const url = new URL(path, window.location.origin);
@@ -297,7 +356,7 @@
         if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('External reminders are not available in localStorage-only mode. Select In-app or enable the server adapter with channel credentials.');
         s.profile = { ...s.profile, ...body, setup_completed: true, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
         s.stash.shield_threshold = s.debts.find(d => d.status === 'active')?.minimum || s.stash.shield_threshold || 1000;
-        s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app' };
+        s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app', debt_reminder_tone: s.profile.debt_reminder_tone || 'zen' };
         s.user.display_name = s.profile.name || s.user.display_name; this.save(s); result = this.state(s);
       }
       else if (route === '/api/debts' && method === 'POST') {
@@ -307,6 +366,29 @@
         s.debts.push(debt); s.plan = {}; if (!s.stash.shield_threshold) s.stash.shield_threshold = debt.minimum;
         this.addAudit(s, 'Glim', 'debt_created', 'Add the debt details you entered to your plan.', 'User entered debt details', debt); this.save(s); result = this.state(s);
       }
+      else if ((route === '/api/debt-progress' || route === '/api/otter') && method === 'GET') { mustBeSignedIn(); result = this.debtProgress(s); }
+      else if (/^\/api\/debts\/\d+\/payments$/.test(route) && method === 'POST') {
+        mustBeSignedIn(); const debtId=Number(route.split('/')[3]), debt=s.debts.find(d=>Number(d.id)===debtId && d.status==='active');
+        const amount=round2(body.amount), paymentDate=String(body.payment_date||'').slice(0,10);
+        if(!debt)throw new Error('That active debt could not be found.');
+        if(!(amount>0)||!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)||Number.isNaN(new Date(`${paymentDate}T12:00:00`).getTime()))throw new Error('Enter a payment amount and valid payment date.');
+        const due=Number(debt.due_day||15),month=paymentDate.slice(0,7),prior=s.debt_payment_events.filter(p=>Number(p.debt_id)===debtId&&String(p.payment_date).slice(0,7)===month&&Number(String(p.payment_date).slice(8,10))<=due).reduce((sum,p)=>sum+Number(p.amount||0),0);
+        const day=Number(paymentDate.slice(8,10)),onTimeTotal=prior+(day<=due?amount:0),crossed=prior+0.001<Number(debt.minimum)&&onTimeTotal+0.001>=Number(debt.minimum),paidOnTime=onTimeTotal+0.001>=Number(debt.minimum);
+        s.debt_payment_events.push({debt_id:debtId,payment_date:paymentDate,amount,created_at:now()});
+        debt.balance=round2(Math.max(0,Number(debt.balance||0)-amount));if(debt.balance<=0.01){debt.balance=0;debt.status='defeated';s.pending_redirect={debt_name:debt.name||'Debt',freed_payment:Number(debt.minimum||0),debt_id:debtId,user_reported:true};}
+        let awarded=0;if(crossed&&paidOnTime){awarded=20;s.game.points=Number(s.game.points||0)+awarded;s.points_events.push({created_at:now(),points:awarded,reason:`debt-minimum:${debtId}:${month}`});}
+        this.addAudit(s,'Glim','debt_payment_recorded','Record a payment the user says they have made.','User-reported payment; not independently verified',{debt_id:debtId,amount,payment_date:paymentDate,paid_on_time:paidOnTime,currency_awarded:awarded});this.save(s);
+        result=this.debtProgress(s);result.recorded={debt_id:debtId,amount,payment_date:paymentDate,paid_on_time:paidOnTime,currency_awarded:awarded};
+      }
+      else if (/^\/api\/otter\/items\/\d+\/buy$/.test(route) && method === 'POST') {
+        mustBeSignedIn();const itemId=Number(route.split('/')[4]),item=COSMETICS.find(c=>c.id===itemId&&c.id>=101);if(!item)throw new Error('Otter item not found.');
+        if(!(s.owned_cosmetics||[]).includes(itemId)){if(Number(s.game.points||0)<item.cost)throw new Error(`You need ${item.cost} shells for this item.`);s.game.points-=item.cost;s.owned_cosmetics.push(itemId);}
+        this.addAudit(s,'Glim','otter_customization_purchased','Use earned in-app currency to customize the otter.','User confirmed purchase',{item_id:itemId});this.save(s);result=this.debtProgress(s);
+      }
+      else if (/^\/api\/otter\/items\/\d+\/equip$/.test(route) && method === 'POST') {
+        mustBeSignedIn();const itemId=Number(route.split('/')[4]);if(!(s.owned_cosmetics||[]).includes(itemId))throw new Error('Unlock this item before equipping it.');s.game.otter_equipped_id=itemId;this.save(s);result=this.debtProgress(s);
+      }
+      else if (route === '/api/otter/items/none/equip' && method === 'POST') { mustBeSignedIn();s.game.otter_equipped_id=null;this.save(s);result=this.debtProgress(s); }
       else if (route === '/api/scout' && method === 'POST') { mustBeSignedIn(); result = makeScout(); this.addAudit(s, 'Scout', 'seeded_activity_review', 'Review available connected-account activity.', 'Activity refreshed', result); this.save(s); }
       else if (route === '/api/plan' && method === 'POST') { mustBeSignedIn(); result = this.buildPlan(s, body.strategy || 'avalanche', Number(body.stash_pct ?? 65)); this.save(s); }
       else if (route === '/api/what-if' && method === 'POST') {
@@ -370,8 +452,25 @@
         mustBeSignedIn();
         const day = new Date().toISOString().slice(0, 10); const today = s.nudge_history.filter(n => n.created_at.slice(0,10) === day).length;
         if (today >= Number(s.notifications.daily_cap ?? 3)) throw new Error('Daily check-in cap reached. You can change this in notification settings.');
-        const messages = this.stressMode(s) ? ['A pause is allowed. Pick this up when you are ready.', 'Small steps count; there is no need to catch up today.'] : ['Your next small step counts more than a perfect week.', 'Your savings and debt goals work together. Keep the plan manageable.', 'Consistency matters more than the amount.'];
-        const item = { id: id(), created_at: now(), message: messages[today % messages.length], arm_key: this.stressMode(s) ? 'supportive-local' : 'calm-local', why: this.stressMode(s) ? 'Supportive mode is active because activity is paused or check-ins have been ignored.' : 'A calm check-in was selected within your local notification cap.' };
+        const responses = s.nudge_history.slice().reverse().map(n=>n.response).filter(Boolean).slice(0,3);
+        const tone = s.notifications.debt_reminder_tone || s.profile.debt_reminder_tone || 'zen';
+        const effectiveTone = tone === 'adaptive' ? (responses.length && ['snoozed','dismissed','muted'].includes(responses[0]) ? 'zen' : 'direct') : tone;
+        const activeDebts = s.debts.filter(d=>d.status==='active');
+        let message, why;
+        if(activeDebts.length && effectiveTone==='direct'){
+          const interest=round2(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0)*Number(d.apr||0)/1200,0));
+          message=`You really should be paying this back. You racked up ${money(interest)} in estimated interest over the past month.`;
+          why='This estimate uses the balances and annual rates you entered divided by 12. Check the actual interest on your latest statement.';
+        }else if(activeDebts.length){
+          const d=activeDebts.slice().sort((a,b)=>{const calc=x=>{const due=Math.min(Number(x.due_day||15),28);const date=new Date();let result=new Date(date.getFullYear(),date.getMonth(),due);if(result<new Date(date.getFullYear(),date.getMonth(),date.getDate()))result=new Date(date.getFullYear(),date.getMonth()+1,due);return result};return calc(a)-calc(b)})[0];
+          const dueDay=Math.min(Number(d.due_day||15),28),date=new Date();let due=new Date(date.getFullYear(),date.getMonth(),dueDay);if(due<new Date(date.getFullYear(),date.getMonth(),date.getDate()))due=new Date(date.getFullYear(),date.getMonth()+1,dueDay);
+          const labels={credit_card:'credit card',line_of_credit:'line of credit',personal_loan:'personal loan',student_loan:'student loan',auto_loan:'auto loan',mortgage:'mortgage',buy_now_pay_later:'payment',medical_bill:'medical bill payment',tax_debt:'tax payment',payday_loan:'loan payment',other:'debt payment'};
+          message=`Try to get in your next ${labels[d.type]||'debt'} payment! It's due ${due.toLocaleString('en-CA',{month:'long'})} ${due.getDate()}!`;
+          why=`Reminder based on the due day you entered for ${d.name}. Confirm the date with your latest statement.`;
+        }else{
+          message='A small step still counts. Review your plan and choose one manageable action.';why='No active debts were found, so this is a general planning reminder.';
+        }
+        const item = { id: id(), created_at: now(), message, arm_key: `debt-${effectiveTone}`, why, tone:effectiveTone };
         s.nudge_history.push(item); s.inbox.unshift(item); s.inbox = s.inbox.slice(0, 50); this.save(s); result = item;
       }
       else if (route === '/api/nudge/response' && method === 'POST') {
@@ -416,13 +515,31 @@
         if (!s.completed_lessons.includes(lesson.id)) { s.completed_lessons.push(lesson.id); s.game.points += lesson.points; s.points_events.push({ created_at: now(), points: lesson.points, reason: `lesson ${lesson.id}` }); }
         this.addAudit(s, 'Sage', 'lesson_complete', 'Check your answer against the lesson objective.', 'Answer matched lesson rubric', { lesson_id: lesson.id, points: lesson.points }); this.save(s); result = { status: 'complete', points: lesson.points, game: s.game };
       }
-      else if (route === '/api/cosmetics' && method === 'GET') result = { points: s.game.points, items: COSMETICS.map(c => ({ ...c, owned: s.owned_cosmetics.includes(c.id) || s.unlocked_group_cosmetics.some(g => g.cosmetic_id === c.id) })) };
+      else if (route === '/api/cosmetics' && method === 'GET') result = { points: s.game.points, items: COSMETICS.filter(c => c.id < 101).map(c => ({ ...c, owned: s.owned_cosmetics.includes(c.id) || s.unlocked_group_cosmetics.some(g => g.cosmetic_id === c.id) })) };
       else if (/^\/api\/cosmetics\/\d+\/buy$/.test(route) && method === 'POST') {
         mustBeSignedIn(); const cosmeticId = Number(route.split('/')[3]); const item = COSMETICS.find(c => c.id === cosmeticId); if (!item) throw new Error('Cosmetic not found.');
         if (!s.owned_cosmetics.includes(cosmeticId)) { if (s.game.points < item.cost) throw new Error('Not enough points. Points come from behavior, not dollar amounts.'); s.game.points -= item.cost; s.owned_cosmetics.push(cosmeticId); }
-        this.save(s); result = { points: s.game.points, items: COSMETICS.map(c => ({ ...c, owned: s.owned_cosmetics.includes(c.id) })) };
+        this.save(s); result = { points: s.game.points, items: COSMETICS.filter(c => c.id < 101).map(c => ({ ...c, owned: s.owned_cosmetics.includes(c.id) })) };
       }
       else if (route === '/api/stash/goals' && method === 'GET') result = { stash_balance: s.stash.balance, goals: s.stash.goals };
+      else if (route === '/api/savings/progress' && method === 'GET') result = this.savingsProgress(s);
+      else if (route === '/api/savings/contributions' && method === 'POST') {
+        mustBeSignedIn();const amount=round2(body.amount),contributionDate=String(body.contribution_date||'').slice(0,10),goalId=body.goal_id==null||body.goal_id===''?null:Number(body.goal_id);
+        if(!(amount>0)||!/^\d{4}-\d{2}-\d{2}$/.test(contributionDate)||Number.isNaN(new Date(`${contributionDate}T12:00:00`).getTime()))throw new Error('Enter a positive amount and valid savings date.');
+        const goal=goalId==null?null:s.stash.goals.find(g=>Number(g.id)===goalId&&g.status==='active');if(goalId!=null&&!goal)throw new Error('Choose an active savings goal.');
+        s.stash.balance=round2(Number(s.stash.balance||0)+amount);let awarded=0;
+        if(goal){goal.saved_amount=round2(Number(goal.saved_amount||0)+amount);goal.status=goal.saved_amount+.001>=Number(goal.target_amount)?'completed':'active';if(goal.status==='completed')goal.completed_at=now();}
+        s.savings_goal_events.push({goal_id:goalId,contribution_date:contributionDate,amount,source:'self_reported',created_at:now()});
+        if(goal&&Number(goal.monthly_target)>0){const month=contributionDate.slice(0,7),sum=s.savings_goal_events.filter(e=>Number(e.goal_id)===goalId&&String(e.contribution_date).slice(0,7)===month).reduce((a,e)=>a+Number(e.amount||0),0),reason=`savings-goal-target:${goalId}:${month}`,has=s.points_events.some(e=>e.reason===reason);if(sum+.001>=Number(goal.monthly_target)&&!has){awarded=15;s.game.points=Number(s.game.points||0)+awarded;s.points_events.push({created_at:now(),points:awarded,reason});}}
+        this.addAudit(s,'Glim','savings_contribution_recorded','Record a self-reported contribution already added to savings.','User-reported; no payment moved',{amount,goal_id:goalId,contribution_date:contributionDate,points_awarded:awarded});this.save(s);result=this.savingsProgress(s);result.recorded={amount,goal_id:goalId,contribution_date:contributionDate,points_awarded:awarded};
+      }
+      else if (route === '/api/savings/donations' && method === 'GET') result = (s.donations || []).slice().reverse();
+      else if (route === '/api/savings/donations' && method === 'POST') {
+        mustBeSignedIn();const charity=String(body.charity_name||'').trim(),email=String(body.recipient_email||'').trim(),amount=round2(body.amount);
+        if(charity.length<2||!/^\S+@\S+\.\S+$/.test(email)||!(amount>0))throw new Error('Enter a charity name, a test recipient email and a positive amount.');
+        if(amount>Number(s.stash.balance||0))throw new Error('The donation cannot exceed your recorded savings balance.');
+        const donation={id:id(),charity_name:charity,recipient_email:email,amount,status:'planned_not_sent',created_at:now(),note:'Saved as a plan only. This browser-only version does not send money.'};s.donations.push(donation);this.save(s);result={...donation};
+      }
       else if (route === '/api/stash/balance' && method === 'POST') {
         mustBeSignedIn(); const balance = Number(body.balance);
         if (!Number.isFinite(balance) || balance < 0 || balance > 1000000000) throw new Error('Enter a savings balance of zero or more.');
@@ -438,9 +555,11 @@
       }
       else if (route === '/api/stash/auto-deposit' && method === 'GET') result = s.monthly_deposit;
       else if (route === '/api/stash/auto-deposit' && method === 'PUT') {
-        mustBeSignedIn(); if (body.enabled && !(Number(body.amount) > 0)) throw new Error('Set a monthly preference amount greater than $0.00 CAD.'); if (body.enabled && !body.consent) throw new Error('Confirm the prototype monthly-deposit preference before enabling it.');
-        s.monthly_deposit = { enabled: Boolean(body.enabled), amount: round2(body.amount || 0), due_day: Math.max(1, Math.min(28, Number(body.due_day || 1))), consent: Boolean(body.consent), status: body.enabled ? 'local_settings_only' : 'disabled', note: 'Saved locally only. No schedule, collection, or payout runs in localStorage mode.' };
-        this.addAudit(s, 'Banker', 'monthly_deposit_preference', 'Save this monthly target as a reminder only; no transfer is scheduled.', 'User confirmed local preference', { ...s.monthly_deposit }); this.save(s); result = s.monthly_deposit;
+        mustBeSignedIn();const pct=Math.max(0,Math.min(50,Number(body.income_pct||0))),duration=Math.max(1,Math.min(60,Number(body.duration_months||6))),income=Number(s.profile.monthly_income||0),amount=round2(income*pct/100),goalId=body.goal_id==null||body.goal_id===''?null:Number(body.goal_id);
+        if(body.enabled&&pct<=0)throw new Error('Choose a monthly income percentage greater than zero.');if(body.enabled&&amount<=0)throw new Error('Your entered income produces a monthly amount of $0.00.');if(body.enabled&&!body.consent)throw new Error('Confirm that scheduled savings in this version use test transactions only.');
+        if(goalId!=null&&!s.stash.goals.some(g=>Number(g.id)===goalId&&g.status==='active'))throw new Error('Choose an active savings goal or general savings.');
+        s.monthly_deposit={enabled:Boolean(body.enabled),amount,income_pct:pct,duration_months:duration,goal_id:goalId,due_day:Math.max(1,Math.min(28,Number(body.due_day||1))),consent:Boolean(body.consent),status:body.enabled?'local_settings_only':'disabled',note:'Saved locally as a plan only. No collection or transfer is scheduled in this browser version.'};
+        this.addAudit(s,'Glim','monthly_deposit_preference','Save a percentage-based monthly savings preference with a finite end date.','User consented to test-mode limitation',{...s.monthly_deposit});this.save(s);result=s.monthly_deposit;
       }
       else if (route === '/api/stash/auto-deposit/run' && method === 'POST') throw new Error('Automatic savings transfers are not available in this version.');
       else if (route === '/api/monthly-recap' && method === 'GET') {
@@ -451,13 +570,26 @@
       }
       else if (route === '/api/audit' && method === 'GET') result = s.audit.slice(0,40);
       else if (route === '/api/debt-chart' && method === 'GET') {
-        const debt = s.debts.filter(d=>d.status==='active');
-        if (!debt.length) result = { balances: [], minimum_only: [] };
+        const active=s.debts.filter(d=>d.status==='active').map(d=>({...d}));
+        if(!active.length)result={labels:[],balances:[],minimum_only:[],starting_balance:0};
         else {
-          const current = debt.reduce((a,d)=>a+d.balance,0); const dr = this.dailyDrip(s.profile); const stashPct = Number(s.plan?.stash_pct ?? 65); const withPlan = [], minimums = [];
-          let a = current, b = current;
-          for (let i=0;i<13;i++) { withPlan.push(round2(a)); minimums.push(round2(b)); const monthlyI = a * debt[0].apr / 100 / 12; a = Math.max(0, a + monthlyI - debt.reduce((x,d)=>x+d.minimum,0) - dr*30*(1-stashPct/100)); const monthlyMinI = b * debt[0].apr / 100 / 12; b = Math.max(0, b + monthlyMinI - debt.reduce((x,d)=>x+d.minimum,0)); }
-          result = { balances: withPlan, minimum_only: minimums };
+          const strat=s.plan?.resolved_strategy||s.plan?.strategy||'avalanche';
+          const order=[...active].sort((a,b)=>strat==='snowball'?Number(a.balance)-Number(b.balance):strat==='hybrid'?(-Number(a.apr)*.6+Number(a.balance)*.0004)-(-Number(b.apr)*.6+Number(b.balance)*.0004):Number(b.apr)-Number(a.apr));
+          const extra=Math.max(0,this.dailyDrip(s.profile)*30*(1-Number(s.plan?.stash_pct??65)/100));
+          const forecast=applyExtra=>{
+            const balances=Object.fromEntries(order.map(d=>[Number(d.id),Number(d.balance||0)]));let recurringFreed=0;
+            const total=()=>Object.values(balances).reduce((a,b)=>a+b,0);const out=[round2(total())];
+            for(let m=0;m<24;m++){
+              if(total()<=.01){out.push(0);continue;}
+              let reusable=recurringFreed;recurringFreed=0;
+              for(const d of order){const key=Number(d.id),bal=balances[key];if(bal<=.01)continue;const due=bal+bal*Number(d.apr||0)/100/12,min=Number(d.minimum||0),paidMin=Math.min(due,min);balances[key]=Math.max(0,due-paidMin);if(applyExtra&&balances[key]<=.01){reusable+=Math.max(0,min-paidMin);recurringFreed+=min;}}
+              let available=applyExtra?extra+reusable:0;
+              if(applyExtra)for(const d of order){const key=Number(d.id);if(available<=.001)break;const prior=balances[key];if(prior<=.01)continue;const used=Math.min(prior,available);balances[key]=Math.max(0,prior-used);available=Math.max(0,available-used);if(balances[key]<=.01)recurringFreed+=Number(d.minimum||0);}
+              out.push(round2(total()));
+            }
+            return out;
+          };
+          result={labels:['Now',...Array.from({length:24},(_,i)=>`M${i+1}`)],balances:forecast(true),minimum_only:forecast(false),starting_balance:round2(active.reduce((a,d)=>a+Number(d.balance||0),0))};
         }
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
@@ -472,6 +604,56 @@
 
   class DatabaseApiAdapter {
     constructor() { this.name = 'database-api'; }
+    debtProgress(s) {
+      const today = new Date();
+      const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+      const days = (date) => date.getDate();
+      const rows = s.debts.filter(d => d.status === 'active').map(debt => {
+        const dueDay = Math.min(31, Number(debt.due_day || 15));
+        const events = s.debt_payment_events.filter(p => Number(p.debt_id) === Number(debt.id));
+        const byMonth = {};
+        for (const p of events) {
+          const key = String(p.payment_date || '').slice(0,7);
+          if (!byMonth[key]) byMonth[key] = { total: 0, onTime: 0 };
+          const amount = Number(p.amount || 0);
+          byMonth[key].total += amount;
+          const day = Number(String(p.payment_date || '').slice(8,10));
+          if (day > 0 && day <= dueDay) byMonth[key].onTime += amount;
+        }
+        const current = byMonth[monthKey(today)] || { total: 0, onTime: 0 };
+        const paid = current.onTime + .001 >= Number(debt.minimum || 0);
+        let start = new Date(today.getFullYear(), today.getMonth(), 1);
+        if (!paid && today.getDate() < dueDay) start.setMonth(start.getMonth()-1);
+        let streak = 0;
+        for (let i=0;i<120;i++) {
+          const key = monthKey(start);
+          if (Number(byMonth[key]?.onTime || 0) + .001 < Number(debt.minimum || 0)) break;
+          streak++;
+          start.setMonth(start.getMonth()-1);
+        }
+        return { id: Number(debt.id), name: debt.name, type: debt.type, due_day: dueDay, minimum: Number(debt.minimum), paid_this_month: round2(current.total), paid_on_time_this_month: paid, payment_status: paid ? 'paid' : (today.getDate() >= dueDay ? 'due' : 'upcoming'), streak };
+      });
+      const streak = rows.length ? Math.min(...rows.map(d => d.streak)) : 0;
+      const stage = streak >= 12 ? ['grown','Grown otter'] : streak >= 6 ? ['confident','Confident otter'] : streak >= 3 ? ['young','Growing otter'] : ['pup','Otter pup'];
+      const owned = new Set((s.owned_cosmetics || []).map(Number));
+      const items = COSMETICS.filter(item => item.id >= 101).map(item => ({...item, owned: owned.has(item.id), equipped: Number(s.game.otter_equipped_id) === item.id}));
+      const nextDue = rows.map(d => { const due = new Date(today.getFullYear(), today.getMonth(), Math.min(d.due_day,28)); if (due < new Date(today.getFullYear(),today.getMonth(),today.getDate())) due.setMonth(due.getMonth()+1); return due; }).sort((a,b)=>a-b)[0];
+      return { on_time_streak: streak, stage: stage[0], stage_label: stage[1], currency: Number(s.game.points || 0), equipped_id: s.game.otter_equipped_id ?? null, debts: rows, items, next_due_date: nextDue ? nextDue.toISOString().slice(0,10) : null, estimated_monthly_interest: round2(s.debts.filter(d=>d.status==='active').reduce((sum,d)=>sum+Number(d.balance||0)*Number(d.apr||0)/1200,0)) };
+    }
+    savingsProgress(s) {
+      const today = new Date(), currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+      const monthAt = offset => { const d = new Date(today.getFullYear(), today.getMonth()-offset, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+      const sum = {};
+      (s.savings_goal_events || []).forEach(e => { const key=`${e.goal_id ?? 'none'}:${String(e.contribution_date).slice(0,7)}`; sum[key]=(sum[key]||0)+Number(e.amount||0); });
+      const goals = (s.stash.goals || []).map(g => {
+        const monthlyTarget=Number(g.monthly_target||0), key=String(g.id);
+        let streak=0;
+        if(monthlyTarget>0){ let start=0; if((sum[`${key}:${currentMonth}`]||0)+.001<monthlyTarget && today.getDate()<28)start=1; for(let i=start;i<120;i++){if((sum[`${key}:${monthAt(i)}`]||0)+.001<monthlyTarget)break;streak++;}}
+        return {...g,monthly_streak:streak,current_month_contribution:round2(sum[`${key}:${currentMonth}`]||0)};
+      });
+      const best=goals.reduce((m,g)=>Math.max(m,Number(g.monthly_streak||0)),0);
+      return {balance:Number(s.stash.balance||0),currency:Number(s.game.points||0),savings_streak:best,goals,contributions:(s.savings_goal_events||[]).slice(-12).reverse(),note:'Recorded savings contributions are self-reported unless a confirmed test-mode contribution is shown.'};
+    }
     async request(path, opts = {}) {
       const response = await fetch(path, { headers: { ...(opts.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(opts.headers || {}) }, ...opts });
       let data = {}; try { data = await response.json(); } catch {}

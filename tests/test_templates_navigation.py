@@ -158,4 +158,6 @@ def test_main_experience_is_financial_and_gamification_free():
         assert "Payment activity" in copy
         assert "Onboarding" in copy
         assert "Agentic AI" not in copy
-        assert not re.search(r"\b(forest|stash|boss|drip|points|streak|squad|gamification|ogre)\b", copy, re.I)
+        assert not re.search(r"\b(forest|stash|boss|drip|points|squad|gamification|ogre)\b", copy, re.I)
+        assert "On-time payment streak" in copy
+        assert 'id="savingsStreakSummary"' in response.text

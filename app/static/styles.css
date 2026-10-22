@@ -420,3 +420,101 @@ input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea
   .section-title-row > div { width: 100%; }
   .setup-form-section, .setup-fields-grid, .setup-debt-grid { min-width: 0; }
 }
+
+
+/* Debt payments, otter customisation, and savings schedule */
+.full-width { grid-column: 1 / -1; }
+.debt-entry-form { align-items: end; row-gap: 18px; column-gap: 16px; }
+.debt-entry-form > button { align-self: end; min-width: 150px; }
+.debt-entry-form .form-help { margin: 0; max-width: 85ch; font-weight: 400; line-height: 1.5; }
+.debt-row { grid-template-columns: minmax(150px,1.4fr) repeat(3,minmax(92px,.8fr)) minmax(130px,auto); align-items: center; }
+.debt-main { min-width: 0; overflow-wrap: anywhere; }
+.debt-action { display: flex; justify-content: flex-end; min-width: 0; }
+.debt-action .secondary { min-width: 128px; white-space: normal; }
+.otter-progress-card { display: grid; grid-template-columns: 124px minmax(0,1fr); gap: 18px 22px; padding: 20px; margin-top: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.otter-visual { position: relative; align-self: start; width: 120px; height: 112px; display: grid; place-items: center; overflow: hidden; border-radius: 14px; background: var(--page); }
+.otter-visual svg { width: 100%; height: 100%; }
+.otter-body { fill: #8aab99; }
+.otter-head { fill: #a6c5b2; }
+.otter-ear { fill: #a6c5b2; stroke: #557764; stroke-width: 1.5; }
+.otter-muzzle { fill: #ecded0; }
+.otter-eye,.otter-nose { fill: #253b2d; }
+.otter-mouth,.otter-paws,.otter-belly-line { fill: none; stroke: #557764; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.otter-accessory { position: absolute; inset: 0; display: block; pointer-events: none; }
+.otter-accessory svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.accessory-101 { color: #8e473f; }
+.accessory-102 { color: #49688e; }
+.accessory-103 { color: #6b643f; }
+.accessory-104 { color: #367b8c; }
+.otter-content { min-width: 0; }
+.otter-content .section-title-row { margin-bottom: 12px; }
+.otter-content .section-title-row h2 { margin-bottom: 5px; }
+.otter-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.otter-stats > div { min-width: 0; padding: 12px; border-radius: 8px; background: var(--page); display: grid; align-content: start; gap: 4px; }
+.otter-stats strong { overflow-wrap: anywhere; font-size: 17px; line-height: 1.3; }
+.otter-stats span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+#otterInterestNote { margin: 12px 0 0; font-size: 13px; line-height: 1.5; }
+.debt-payment-progress { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; }
+.debt-payment-status { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 8px; }
+.debt-payment-status > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.debt-payment-status strong { overflow-wrap: anywhere; }
+.debt-payment-status span,.debt-mini-amount small { color: var(--muted); font-size: 12px; }
+.debt-mini-amount { display: grid; justify-items: end; gap: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.otter-shop { grid-column: 1 / -1; min-width: 0; }
+.otter-shop h3 { margin: 0 0 5px; font-size: 16px; }
+.otter-shop > div:first-child p { margin: 0 0 14px; font-size: 13px; }
+.otter-items { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.otter-item { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.otter-item strong { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.otter-item > span.muted { font-size: 12px; line-height: 1.4; }
+.otter-item-price { font-size: 12px; font-weight: 700; }
+.otter-item button { width: 100%; margin-top: auto; min-width: 0; padding-inline: 8px; white-space: normal; }
+.app-dialog { width: min(480px, calc(100% - 28px)); max-width: 100%; max-height: min(90vh,720px); overflow-y: auto; padding: clamp(20px,4vw,28px); border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: 0 18px 50px rgba(0,0,0,.2); }
+.app-dialog::backdrop { background: rgba(20,32,28,.48); }
+.dialog-form { display: grid; gap: 16px; }
+.dialog-form h2 { margin: 0; font-size: 22px; line-height: 1.25; }
+.dialog-form > p { margin: 0; font-size: 14px; }
+.dialog-form label { display: grid; gap: 7px; font-size: 14px; font-weight: 640; }
+.dialog-form .button-row { margin-top: 4px; }
+.dialog-form .button-row button { flex: 1 1 140px; }
+.savings-schedule-form { align-items: end; gap: 18px 16px; }
+.check-label { display: flex !important; align-items: flex-start; gap: 10px !important; font-weight: 520 !important; line-height: 1.5; }
+.check-label input[type=checkbox] { flex: 0 0 18px; margin-top: 3px; }
+.savings-estimate { display: grid; gap: 4px; padding: 15px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); }
+.savings-estimate > span:first-child { color: var(--muted); font-size: 13px; }
+.savings-estimate strong { font-size: 23px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.savings-estimate > span:last-child { font-size: 13px; }
+.savings-schedule-form .button-row { align-items: center; }
+.savings-balance-note { font-size: 13px; line-height: 1.5; }
+.savings-streak-summary { display: grid; gap: 4px; margin-top: 14px; padding: 15px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.savings-streak-summary p { margin: 0; font-size: 13px; }
+.donation-history { display: grid; gap: 9px; margin-top: 14px; }
+.donation-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 5px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.donation-row > div { display: grid; gap: 3px; min-width: 0; }
+.donation-row > div span { font-size: 13px; }
+.donation-row time { color: var(--muted); font-size: 12px; }
+.donation-row p { grid-column: 1 / -1; margin: 2px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 850px) {
+  .debt-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .debt-row > .debt-main { grid-column: 1 / -1; }
+  .debt-action { justify-content: flex-start; }
+  .otter-items { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .otter-stats strong { font-size: 16px; }
+}
+@media (max-width: 600px) {
+  .debt-entry-form, .goal-form, .compact-form, .savings-schedule-form { grid-template-columns: minmax(0,1fr); }
+  .full-width { grid-column: auto; }
+  .debt-row { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 13px; gap: 12px; }
+  .debt-metric { min-width: 0; overflow-wrap: anywhere; }
+  .debt-action .secondary, .debt-entry-form > button { width: 100%; }
+  .otter-progress-card { grid-template-columns: minmax(0,1fr); gap: 14px; padding: 16px; }
+  .otter-visual { width: 108px; height: 102px; }
+  .otter-stats { grid-template-columns: 1fr; }
+  .otter-stats > div { grid-template-columns: 1fr auto; align-items: center; }
+  .otter-stats strong { text-align: right; }
+  .otter-stats span { grid-column: 1; grid-row: 1; }
+  .otter-items { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .debt-payment-status { align-items: flex-start; }
+  .debt-mini-amount { white-space: normal; text-align: right; }
+  .savings-schedule-form .button-row > button { width: 100%; }
+}
