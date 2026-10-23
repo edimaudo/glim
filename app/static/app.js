@@ -4,7 +4,7 @@ let currentLesson = null;
 let lastNudge = null;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-function cleanCopy(value){return String(value??'').replace(/PayPal(?:\s+Sandbox)?/gi,'connected payment provider').replace(/Gemini/gi,'the service').replace(/sandbox/gi,'test environment').replace(/server mode/gi,'this setup').replace(/browser-only mode/gi,'this version').replace(/GEMINI_API_KEY/gi,'the service configuration').replace(/PAYPAL_[A-Z_]+/g,'the account connection settings').replace(/agentic AI/gi,'Smart Strategy')}
+function cleanCopy(value){return String(value??'').replace(/PayPal(?:\s+Sandbox)?/gi,'connected account').replace(/Gemini/gi,'guidance service').replace(/sandbox/gi,'connected account').replace(/test[- ]mode/gi,'configured payment').replace(/server[- ]backed|server mode/gi,'connected').replace(/browser[- ]only mode/gi,'this version').replace(/GEMINI_API_KEY/gi,'guidance service').replace(/PAYPAL_[A-Z_]+/g,'account connection details').replace(/environment configuration/gi,'account connection')}
 function toast(msg){const t=$('#toast');t.textContent=cleanCopy(msg);t.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove('show'),2800)}
 async function api(path, opts={}){return window.GlimStorage.adapter.request(path, opts)}
 function money(v){return new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(Number(v||0))}
@@ -31,102 +31,75 @@ function render(){
   if(!profileIsReady(s.profile)){show('onboardingView');return}
   show('dashboardView');
   const setText=(selector,value)=>{const el=$(selector);if(el)el.textContent=value};
-  const displayName=String(s.profile?.name||s.user?.display_name||'').trim();
-  setText('#welcomeTitle',displayName?`Welcome, ${displayName}`:'Welcome to your plan');
-  setText('#welcomeCopy','Your debt and savings at a glance, with a suggested next step.');
-  if(s.plan?.strategy) selectedStrategy=s.plan.strategy;
-  setText('#suggestedAmount',money(s.daily_drip));
   setText('#debtBalance',money(activeDebts.reduce((sum,d)=>sum+Number(d.balance||0),0)));
-  setText('#debtInfo',activeDebts.length?`${activeDebts.length} active ${activeDebts.length===1?'debt':'debts'} in your plan`:'Add a debt to see a repayment estimate.');
+  setText('#debtInfo',activeDebts.length?`${activeDebts.length} active ${activeDebts.length===1?'debt':'debts'} in your plan`:'Add a debt to start your plan.');
   setText('#savingsBalance',money(s.stash?.balance));
   setText('#shieldInfo',`Target: ${money(s.stash?.shield_threshold)}`);
   const savingsFill=$('#savingsFill');
   if(savingsFill)savingsFill.style.width=Math.min(100,Number(s.stash?.balance||0)/Math.max(1,Number(s.stash?.shield_threshold||0))*100)+'%';
-
-  const localMode=window.GlimStorage?.mode==='localStorage';
-  const accountConnected=s.paypal?.status==='connected'&&!localMode&&s.payment_readiness!==false;
-  const canApprove=accountConnected&&activeDebts.length>0&&Boolean(s.plan?.projection)&&Number(s.daily_drip)>0&&!s.paused;
-  const action=$('#approveDrip');
-  if(action){
-    action.disabled=Boolean(s.paused&&accountConnected);
-    action.textContent=canApprove?'Approve suggested amount':s.paused&&accountConnected?'Transfers paused':'Review debt plan';
-  }
-  const note=$('#dripStatusNote');
-  if(note){
-    note.textContent=canApprove?'Review the amount and allocation before approving.':s.paused&&accountConnected?'Transfers are paused. Resume them in Settings when ready.':localMode?'Planning only in this version. No money moves from this app.':accountConnected?'Add a debt and review the estimate before approving a transfer.':'This is an estimate. Connect an account in Settings before approving a transfer.';
-  }
+  setText('#overviewStrategyCopy', activeDebts.length
+    ? 'Smart Strategy uses your budget, debt interest, and savings goals together to compare the next steps.'
+    : 'Set your budget and savings target, then add a debt to compare repayment and savings options together.');
   const planButton=$('#planBtn');if(planButton)planButton.disabled=!activeDebts.length;
-  const whatIfButton=$('#whatIfBtn');if(whatIfButton)whatIfButton.disabled=!s.plan?.projection;
-  $$('.strategy').forEach(button=>{button.disabled=!activeDebts.length;const active=button.dataset.strategy===selectedStrategy;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
-  const smartRecommendation=$('#smartRecommendation');
-  if(smartRecommendation){smartRecommendation.classList.toggle('hidden',selectedStrategy!=='smart');setText('#smartRecommendationCopy',s.plan?.smart_summary||'Add your debts, then select Smart Strategy to compare the available repayment approaches.');setText('#smartResolvedStrategy',s.plan?.resolved_strategy?`Recommended repayment order: ${({avalanche:'highest interest rate first',snowball:'smallest balance first',hybrid:'balanced approach'})[s.plan.resolved_strategy]||s.plan.resolved_strategy}.`: '');}
-  const insightStatus=$('#insightStrategyStatus'),insightCopy=$('#insightStrategyCopy');
-  if(insightStatus){
-    if(!activeDebts.length) insightStatus.textContent='Add debt details to run Smart Strategy';
-    else if(s.plan?.resolved_strategy) insightStatus.textContent=`Recommended approach: ${{avalanche:'highest interest first',snowball:'smallest balance first',hybrid:'balanced approach'}[s.plan.resolved_strategy]||s.plan.resolved_strategy}`;
-    else insightStatus.textContent='Ready to compare repayment approaches';
-  }
-  if(insightCopy){
-    if(!activeDebts.length) insightCopy.textContent='Add at least one debt in Debt plan. Smart Strategy needs a balance, interest rate and minimum payment to compare realistic options.';
-    else insightCopy.textContent=s.plan?.smart_summary||'Run Smart Strategy to compare the available repayment approaches and review the calculated payoff estimate.';
-  }
-  const runSmartButton=$('#runSmartAnalysisBtn');if(runSmartButton)runSmartButton.disabled=!activeDebts.length;
-  const visualizationButton=$('#togglePaymentVisualization');if(visualizationButton)visualizationButton.disabled=!Boolean(s.plan?.projection);
+  $$('.strategy').forEach(button=>{
+    const active=button.dataset.strategy===selectedStrategy;
+    button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.disabled=!activeDebts.length;
+  });
   if(s.plan?.projection){
-    const savingsShare=Number(s.daily_drip||0)*Number(s.plan.stash_pct||0)/100;
-    const debtShare=Number(s.daily_drip||0)-savingsShare;
-    setText('#savingsAllocation',money(savingsShare));setText('#debtAllocation',money(debtShare));
-    setText('#visualSavingsAllocation',money(savingsShare));setText('#visualDebtAllocation',money(debtShare));
     renderProjection(s.plan.projection);
     setText('#attackOrder',`Repayment order: ${(s.plan.attack_order||[]).join(' → ')}`);
+    const explanation=$('#smartPlanExplanation');
+    if(explanation){explanation.classList.toggle('hidden',selectedStrategy!=='smart');explanation.textContent=selectedStrategy==='smart'?(s.plan.smart_summary||s.plan.reason||'Smart Strategy compared modeled repayment approaches and selected an order based on your debt details.') : (s.plan.reason||'This strategy uses your entered balances, rates, and minimums.');}
   }else{
-    setText('#savingsAllocation','—');setText('#debtAllocation','—');setText('#visualSavingsAllocation','—');setText('#visualDebtAllocation','—');
-    const projection=$('#projection');if(projection)projection.innerHTML='<p class="muted">Add a debt to see a payoff estimate.</p>';
+    const projection=$('#projection');if(projection)projection.innerHTML='<p class="muted">Add a debt to compare payoff approaches.</p>';
     setText('#attackOrder','Your repayment order will appear here.');
+    $('#smartPlanExplanation')?.classList.add('hidden');
   }
   renderDebtList(debts);
   renderDebtPaidOffNotice();
   renderAudit();
   renderChart();
-  const pauseTitle=$('#pauseTitle');if(pauseTitle)pauseTitle.textContent=s.paused?'Transfers are paused':'Transfers are active';
-  const pauseHelp=$('#pauseHelp');if(pauseHelp)pauseHelp.textContent=s.paused?'Resume when you are ready.':'Pause to stop new transfer approvals.';
-  const pauseButton=$('#pauseBtn');if(pauseButton)pauseButton.textContent=s.paused?'Resume transfers':'Pause transfers';
+  renderStash();
+  renderDebtProgress();
 }
 
-const DEBT_LABELS={credit_card:'Credit card',line_of_credit:'Line of credit',personal_loan:'Personal loan',student_loan:'Student loan',auto_loan:'Auto loan',mortgage:'Mortgage',buy_now_pay_later:'Buy now, pay later',medical_bill:'Medical bill',tax_debt:'Tax debt',payday_loan:'Payday loan',other:'Other obligation',loan:'Loan or line of credit'};
+const DEBT_LABELS={credit_card:'Credit card',loan:'Loan',line_of_credit:'Line of credit',personal_loan:'Personal loan',student_loan:'Student loan',auto_loan:'Auto loan',mortgage:'Mortgage',buy_now_pay_later:'Buy now, pay later',medical_bill:'Medical bill',tax_debt:'Tax debt',payday_loan:'Payday loan',other:'Other obligation'};
 function renderDebtList(debts){
   const host=$('#debtList');if(!host)return;
-  if(!debts.length){host.innerHTML='<p class="muted">No debts added yet. Add the figures from your latest statement to get started.</p>';return;}
+  if(!debts.length){host.innerHTML='<p class="muted">No debts yet. Add the details from your latest statement.</p>';return;}
   host.innerHTML=debts.map(debt=>{
-    const active=debt.status==='active';
-    const kind=DEBT_LABELS[debt.type]||String(debt.type||'Debt');
-    return `<article class="debt-row"><div class="debt-main"><h3>${escapeHtml(debt.name||'Debt')}</h3><p>${escapeHtml(kind)}${active?'':' · Paid off'}</p><p class="muted">Payment due day: ${Number(debt.due_day||15)}</p></div><div class="debt-metric">${money(debt.balance)}<span>Balance</span></div><div class="debt-metric">${Number(debt.apr||0).toFixed(2)}%<span>Annual interest</span></div><div class="debt-metric">${money(debt.minimum)}<span>Minimum / month</span></div><div class="debt-action">${active?`<button class="secondary" type="button" data-record-payment="${Number(debt.id)}">Record payment</button>`:'<span class="badge">Paid off</span>'}</div></article>`;
+    const active=debt.status==='active',kind=DEBT_LABELS[debt.type]||String(debt.type||'Debt');
+    return `<article class="debt-row"><div class="debt-main"><h3>${escapeHtml(debt.name||'Debt')}</h3><p>${escapeHtml(kind)}${active?'':' · Paid off'}</p><p class="muted">Due day: ${Number(debt.due_day||15)}</p></div><div class="debt-metric">${money(debt.balance)}<span>Balance</span></div><div class="debt-metric">${Number(debt.apr||0).toFixed(2)}%<span>Annual interest</span></div><div class="debt-metric">${money(debt.minimum)}<span>Minimum / month</span></div><div class="debt-action">${active?`<button class="secondary" type="button" data-record-payment="${Number(debt.id)}">Record payment</button>`:'<span class="badge">Paid off</span>'}</div></article>`;
   }).join('');
   host.querySelectorAll('[data-record-payment]').forEach(button=>button.addEventListener('click',()=>{
     const debt=debts.find(d=>Number(d.id)===Number(button.dataset.recordPayment));if(!debt)return;
-    const dialog=$('#debtPaymentDialog');$('#debtPaymentDebtId').value=debt.id;$('#debtPaymentAmount').value=Number(debt.minimum||0).toFixed(2);$('#debtPaymentDate').value=new Date().toISOString().slice(0,10);$('#debtPaymentResult').textContent='';
-    if(dialog?.showModal)dialog.showModal();else if(dialog)dialog.setAttribute('open','open');
+    const dialog=$('#debtPaymentDialog');if(!dialog)return;
+    $('#debtPaymentDebtId').value=debt.id;$('#debtPaymentAmount').value=Number(debt.minimum||0).toFixed(2);$('#debtPaymentDate').value=new Date().toISOString().slice(0,10);$('#debtPaymentResult').textContent='';
+    if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','open');
   }));
 }
 
 async function renderDebtProgress(){
   try{
-    const p=await api('/api/debt-progress');
-    const stage=$('#otterStageLabel'),streak=$('#otterStreakValue'),currency=$('#otterCurrency'),interest=$('#otterInterestNote');
-    if(stage)stage.textContent=p.stage_label||'Otter pup';
-    if(streak)streak.textContent=`${Number(p.on_time_streak||0)} month${Number(p.on_time_streak||0)===1?'':'s'}`;
-    if(currency)currency.textContent=`${Number(p.currency||0)} shells`;
-    if(interest)interest.textContent=`Estimated interest from entered balances and rates: ${money(p.estimated_monthly_interest)} per month. This is a calculation, not a statement balance.`;
-    const accessory=$('#otterAccessory');if(accessory){const equipped=p.items?.find(i=>i.equipped);const artwork={
-      101:'<svg viewBox="0 0 120 112" aria-hidden="true"><path d="M35 62 Q60 76 85 62 L82 73 Q60 84 38 73 Z" fill="#b4544b" stroke="#773d37" stroke-width="2"/><path d="M72 71 L81 89 L69 86 L61 75 Z" fill="#d16b5c" stroke="#773d37" stroke-width="1.5"/><path d="M42 65 l4 4 m6-1 l4 4 m6-1 l4 4 m6-4 l4 3" stroke="#f4d8c9" stroke-width="2" stroke-linecap="round"/></svg>',
-      102:'<svg viewBox="0 0 120 112" aria-hidden="true"><path d="M39 31 Q40 10 60 10 Q81 10 82 31 Z" fill="#5c81a7" stroke="#355675" stroke-width="2"/><path d="M31 31 Q60 23 89 31 Q89 38 60 39 Q31 38 31 31 Z" fill="#7399be" stroke="#355675" stroke-width="2"/></svg>',
-      103:'<svg viewBox="0 0 120 112" aria-hidden="true"><circle cx="48" cy="45" r="9" fill="none" stroke="#7c6944" stroke-width="3.5"/><circle cx="72" cy="45" r="9" fill="none" stroke="#7c6944" stroke-width="3.5"/><path d="M57 44 Q60 40 63 44 M39 43 L32 40 M81 43 L88 40" fill="none" stroke="#7c6944" stroke-width="3" stroke-linecap="round"/></svg>',
-      104:'<svg viewBox="0 0 120 112" aria-hidden="true"><ellipse cx="60" cy="74" rx="45" ry="23" fill="none" stroke="#38889a" stroke-width="11"/><ellipse cx="60" cy="74" rx="35" ry="14" fill="none" stroke="#9cdae0" stroke-width="3"/></svg>'
-    };accessory.innerHTML=artwork[Number(equipped?.id)]||'';accessory.className=`otter-accessory accessory-${Number(equipped?.id)||0}`;}
-    const progress=$('#debtPaymentProgressList');if(progress)progress.innerHTML=(p.debts||[]).length?p.debts.map(d=>`<article class="debt-payment-status"><div><strong>${escapeHtml(d.name)}</strong><span>${d.payment_status==='paid'?'Minimum recorded on time':d.payment_status==='due'?'Payment due; minimum not recorded':'Due day '+d.due_day}</span></div><div class="debt-mini-amount">${money(d.paid_this_month)}<small>recorded this month</small></div></article>`).join(''):'<p class="muted">Add a debt to start tracking payment consistency.</p>';
-    const items=$('#otterItems');if(items)items.innerHTML=(p.items||[]).map(item=>`<article class="otter-item"><strong>${escapeHtml(item.name)}</strong><span class="muted">${escapeHtml(item.description)}</span><span class="otter-item-price">${item.owned?'Unlocked':`${Number(item.cost)} shells`}</span><button class="secondary" type="button" data-otter-action="${item.owned?'equip':'buy'}" data-otter-id="${Number(item.id)}">${item.equipped?'Equipped':item.owned?'Equip':'Unlock'}</button></article>`).join('');
-    items?.querySelectorAll('[data-otter-action]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const action=button.dataset.otterAction,itemId=button.dataset.otterId;const route=action==='buy'?`/api/otter/items/${itemId}/buy`:`/api/otter/items/${itemId}/equip`;await api(route,{method:'POST'});await renderDebtProgress();toast(action==='buy'?'Otter item unlocked.':'Otter appearance updated.')}catch(e){toast(cleanCopy(e.message));button.disabled=false}}));
-  }catch(e){console.error(e)}
+    const progress=await api('/api/debt-progress');
+    const setText=(selector,value)=>{const node=$(selector);if(node)node.textContent=value};
+    const streak=Number(progress.on_time_streak||0);
+    setText('#overviewStreakValue',`${streak} month${streak===1?'':'s'}`);
+    setText('#overviewStreakStage',progress.stage_label||'Getting started');
+    setText('#overviewStreakCopy',(progress.debts||[]).length
+      ? (progress.next_due_date?`Your next entered payment due date is ${new Date(`${progress.next_due_date}T12:00:00`).toLocaleDateString('en-CA',{month:'short',day:'numeric'})}. Record payments to track your streak.`:'Record payments to track your on-time streak.')
+      : 'Add a debt to start tracking your on-time payment streak.');
+    setText('#otterStageLabel',progress.stage_label||'Otter pup');
+    setText('#otterStreakValue',`${streak} month${streak===1?'':'s'}`);
+    setText('#otterCurrency',`${Number(progress.currency||0)} shells`);
+    setText('#otterInterestNote',money(progress.estimated_monthly_interest));
+    const accessory=$('#otterAccessory');if(accessory){const equipped=(progress.items||[]).find(item=>item.equipped);const labels={101:'Striped scarf',102:'Rain hat',103:'Shell glasses',104:'Blue float'};accessory.textContent=labels[Number(equipped?.id)]||'';}
+    const statuses=$('#debtPaymentProgressList');
+    if(statuses)statuses.innerHTML=(progress.debts||[]).length?progress.debts.map(debt=>`<article class="debt-payment-status"><div><strong>${escapeHtml(debt.name)}</strong><span>${debt.payment_status==='paid'?'Minimum met by due day':debt.payment_status==='due'?'Due; minimum not recorded':'Due day '+Number(debt.due_day)}</span></div><div class="debt-mini-amount">${money(debt.paid_this_month)}<small>recorded this month</small></div></article>`).join(''):'<p class="muted">Add a debt to start tracking payments.</p>';
+    const shop=$('#otterItems');
+    if(shop)shop.innerHTML=(progress.items||[]).map(item=>`<article class="otter-item"><strong>${escapeHtml(item.name)}</strong><span class="muted">${escapeHtml(item.description||'')}</span><span class="otter-item-price">${item.owned?'Unlocked':`${Number(item.cost)} shells`}</span><button type="button" class="secondary" data-otter-action="${item.owned?'equip':'buy'}" data-otter-id="${Number(item.id)}">${item.equipped?'Equipped':item.owned?'Equip':'Unlock'}</button></article>`).join('');
+    shop?.querySelectorAll('[data-otter-action]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const action=button.dataset.otterAction,id=Number(button.dataset.otterId);await api(action==='buy'?`/api/otter/items/${id}/buy`:`/api/otter/items/${id}/equip`,{method:'POST'});await load();}catch(error){toast(cleanCopy(error.message));button.disabled=false;}}));
+  }catch(error){console.error(error)}
 }
 
 async function renderNotifications(){
@@ -136,7 +109,6 @@ async function renderNotifications(){
   if(end)end.value=settings.quiet_end||STATE?.profile?.quiet_end||'08:00';
   if(cap)cap.value=Number(settings.daily_cap??STATE?.profile?.notification_cap??3);
   if(zone)zone.value=STATE?.profile?.timezone||'America/Toronto';
-  const tone=$('#debtReminderTone');if(tone)tone.value=settings.debt_reminder_tone||STATE?.profile?.debt_reminder_tone||'zen';
   if(channel){const config=localMode?{enabled:false,email_enabled:false}:await api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}));const email=channel.querySelector('option[value="email"]'),push=channel.querySelector('option[value="web_push"]');if(email){email.hidden=!config.email_enabled;email.disabled=!config.email_enabled}if(push){push.hidden=!config.enabled;push.disabled=!config.enabled}channel.value=settings.channel==='in_app'?'in_app':(settings.channel||'in_app');if(channel.selectedOptions[0]?.disabled)channel.value='in_app';}
   const inbox=$('#inbox');if(inbox){const items=Array.isArray(data.items)?data.items:[];inbox.innerHTML=items.length?items.map(item=>`<article class="inbox-item"><strong>${escapeHtml(cleanCopy(item.message||'Glim check-in'))}</strong><p>${escapeHtml(cleanCopy(item.why||'A check-in was selected from your reminder settings.'))}</p><span>${new Date(item.created_at).toLocaleString()}${item.response?` · Response: ${escapeHtml(({acted:'I took a step',opened:'I read this',snoozed:'Remind me later',dismissed:'Dismissed',muted:'Fewer check-ins'}[item.response]||item.response))}`:''}</span></article>`).join(''):'<p class="muted">No check-ins yet. Your reminders appear here when you request one.</p>';}
   const stress=$('#stressCopy'),detail=$('#stressDetail');if(stress)stress.textContent=data.stress_mode?'Supportive check-ins':'Calm check-ins';if(detail)detail.textContent=data.stress_mode?'Check-ins remain supportive when activity slows down.':'Check-ins follow your saved preferences and daily limit.';
@@ -145,9 +117,9 @@ async function renderNotifications(){
 
 function visualIcon(key){const paths={leaf:'<path d="M19 3C10 3 5 7 5 13c0 4 3 6 6 6 6 0 8-7 8-16Z"/><path d="M3 21 14 10"/>',acorn:'<path d="M8 8c-2 1-3 4-3 7 0 4 3 6 7 6s7-2 7-6c0-3-1-6-3-7"/><path d="M7 8h10l-1-3H8Z"/><path d="M12 5V2"/>',moon:'<path d="M19 15A8 8 0 0 1 9 5 8 8 0 1 0 19 15Z"/>',tree:'<path d="M12 2 5 11h4l-5 6h6v5h4v-5h6l-5-6h4Z"/>',spark:'<path d="m12 2 2.1 6.2L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-1.8Z"/>'};return `<svg class="line-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[key]||paths.spark}</svg>`}
 
-function renderProjection(p){$('#projection').innerHTML=`<div><span class="data-label">Estimated debt-free time</span><strong>${p.months} mo</strong><span class="muted">based on this plan</span></div><div><span class="data-label">Estimated interest</span><strong>${money(p.interest_paid)}</strong><span class="muted">over the payoff period</span></div><div><span class="data-label">Potential interest avoided</span><strong>${money(p.interest_saved)}</strong><span class="muted">compared with minimum payments</span></div>`}
+function renderProjection(p){const host=$('#projection');if(!host)return;host.innerHTML=`<div><span class="data-label">Estimated debt-free time</span><strong>${p.months} mo</strong><span class="muted">based on this plan</span></div><div><span class="data-label">Estimated interest</span><strong>${money(p.interest_paid)}</strong><span class="muted">over the payoff period</span></div><div><span class="data-label">Potential interest avoided</span><strong>${money(p.interest_saved)}</strong><span class="muted">compared with minimum payments</span></div>`}
 function renderDebtPaidOffNotice(){const b=$('#debtPaidOffNotice');if(!b)return;const p=STATE?.pending_redirect;if(!p){b.classList.add('hidden');return}b.classList.remove('hidden');const others=(STATE.debts||[]).filter(d=>d.status==='active');b.innerHTML=`<strong>Debt paid off: ${escapeHtml(p.debt_name)}.</strong> The freed payment is ${money(p.freed_payment)}. Choose where it goes next. <div class="button-row" style="margin-top:10px"><button class="secondary" data-redirect="stash">Move to savings</button>${others.map(d=>`<button class="secondary" data-redirect="${d.id}">Next: ${escapeHtml(d.name)}</button>`).join('')}</div>`;b.querySelectorAll('[data-redirect]').forEach(btn=>btn.onclick=async()=>{try{await api('/api/debt/redirect',{method:'POST',body:JSON.stringify({destination:btn.dataset.redirect==='stash'?'stash':Number(btn.dataset.redirect)})});await load();toast('Freed payment redirected.')}catch(e){toast(e.message)}})}
-async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a debt to see an estimated payoff path.</text>';return}const W=640,H=220,P=42,B=28,max=Math.max(...r.minimum_only,...r.balances,1);const pts=a=>a.map((v,i)=>`${P+(W-P-18)*i/(a.length-1||1)},${H-B-(H-B-P)*v/max}`).join(' ');const xAt=i=>P+(W-P-18)*i/24;const ticks=[0,6,12,18,24].map(i=>`<text class="chart-label" text-anchor="middle" x="${xAt(i)}" y="${H-6}">${i===0?'Now':`${i} mo`}</text>`).join('');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-B}"/><line class="chart-grid" x1="${P}" y1="${H-B}" x2="${W-18}" y2="${H-B}"/><text class="chart-label" x="${P}" y="12">${money(max)}</text><text class="chart-label" x="${P}" y="${H-B+12}">$0</text><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P+70}" y="12">Selected strategy</text><text class="chart-label" x="${W-150}" y="12">Minimum payments</text>${ticks}`}catch{}}
+async function renderChart(){try{const r=await api('/api/debt-chart');const svg=$('#debtChart');if(!r.balances.length){svg.innerHTML='<text x="24" y="40" class="chart-label">Add a debt to see an estimated payoff path.</text>';return}const W=640,H=220,P=30,max=Math.max(...r.minimum_only,1);const pts=a=>a.map((v,i)=>`${P+(W-2*P)*i/(a.length-1||1)},${H-P-(H-2*P)*v/max}`).join(' ');svg.innerHTML=`<line class="chart-grid" x1="${P}" y1="${P}" x2="${P}" y2="${H-P}"/><line class="chart-grid" x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}"/><polyline class="chart-line" points="${pts(r.balances)}"/><polyline class="chart-saving" points="${pts(r.minimum_only)}"/><text class="chart-label" x="${P}" y="15">Chosen strategy</text><text class="chart-label" x="${W-155}" y="15">Minimum payment</text>`}catch{}}
 async function renderAudit(){
   try{
     const rows=await api('/api/audit');
@@ -192,39 +164,89 @@ async function renderSquad(){
  }catch(e){console.error(e);const host=$('#squadInfo');if(host)host.textContent=cleanCopy(e.message);}
 }
 
+function activateDebtPanel(name){
+  $$('.debt-subtab').forEach(button=>{const active=button.dataset.debtTab===name;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
+  $$('.debt-subpanel').forEach(panel=>{const active=panel.id===`debtPanel${name[0].toUpperCase()}${name.slice(1)}`;panel.classList.toggle('hidden',!active);panel.classList.toggle('active',active);panel.hidden=!active;});
+  if(name==='strategy')renderChart();
+}
+$$('[data-debt-tab]').forEach(button=>button.addEventListener('click',()=>activateDebtPanel(button.dataset.debtTab)));
+
+function activateSavingsPanel(name){
+  const donationAllowed=!$('#savingsTabDonations')?.classList.contains('hidden');
+  if(name==='donations'&&!donationAllowed)name='goals';
+  $$('.savings-subtab').forEach(button=>{const active=button.dataset.savingsTab===name;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
+  $$('.savings-subpanel').forEach(panel=>{const active=panel.id===`savingsPanel${name[0].toUpperCase()}${name.slice(1)}`;panel.classList.toggle('hidden',!active);panel.classList.toggle('active',active);panel.hidden=!active;});
+}
+$$('[data-savings-tab]').forEach(button=>button.addEventListener('click',()=>activateSavingsPanel(button.dataset.savingsTab)));
+
 async function renderStash(){
   try{
-    const [x,progress,schedule,donations]=await Promise.all([
-      api('/api/stash/goals'),api('/api/savings/progress').catch(()=>({goals:[],savings_streak:0})),
-      api('/api/stash/auto-deposit').catch(()=>({})),api('/api/savings/donations').catch(()=>[])
+    const [goalResult,progress,recommendation,schedule,donations]=await Promise.all([
+      api('/api/stash/goals'),
+      api('/api/savings/progress').catch(()=>({goals:[],savings_streak:0,contributions:[]})),
+      api('/api/savings/recommendation').catch(()=>({recommended_pct:Number(STATE?.profile?.savings_pct||0),monthly_amount:0,monthly_surplus:0,reason:'Adjust the amount to fit your budget.'})),
+      api('/api/stash/auto-deposit').catch(()=>({})),
+      api('/api/savings/donations').catch(()=>[])
     ]);
-    const balance=Number(x.stash_balance||0);
-    const balanceInput=$('#savingsCurrentBalance');if(balanceInput&&document.activeElement!==balanceInput)balanceInput.value=balance.toFixed(2);
+    const goals=Array.isArray(goalResult.goals)?goalResult.goals:[];
+    const balance=Number(goalResult.stash_balance||0);
     const target=Math.max(1,Number(STATE?.stash?.shield_threshold||500));
     const pct=Math.max(0,Math.min(100,balance/target*100));
+    const setText=(selector,value)=>{const element=$(selector);if(element)element.textContent=value;};
     const level=$('#savingsBufferStatus');if(level)level.textContent=pct>=100?'Target reached':pct>=50?'Halfway there':balance>0?'In progress':'Not started';
-    const summary=$('#savingsBufferSummary');if(summary)summary.textContent=`${money(balance)} saved toward your buffer`;
-    const progressText=$('#savingsBufferProgress');if(progressText)progressText.textContent=`${pct.toFixed(0)}% of ${money(target)}`;
-    const fill=$('#bufferFill');if(fill)fill.style.width=pct+'%';
-    const enriched=new Map((progress.goals||[]).map(g=>[Number(g.id),g]));
-    const goals=$('#savingsGoals');
-    if(goals)goals.innerHTML=x.goals.length?x.goals.map(g=>{const extra=enriched.get(Number(g.id))||g;const goalPct=Math.max(0,Math.min(100,Number(g.saved_amount)/Math.max(1,Number(g.target_amount))*100));const monthStreak=Number(extra.monthly_streak||0),current=Number(extra.current_month_contribution||0);return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(g.name)}</strong><span class="badge">${g.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(g.saved_amount)}</strong><span class="muted">of ${money(g.target_amount)}</span></div><div class="progressbar"><span style="width:${goalPct}%"></span></div><div class="goal-foot"><span>${goalPct.toFixed(0)}% saved</span><span>${Number(g.monthly_target)>0?`${money(g.monthly_target)}/month target · ${monthStreak} month streak`:'No monthly target'}</span></div>${Number(g.monthly_target)>0?`<p class="muted goal-month-note">${money(current)} recorded toward this month’s target.</p>`:''}</article>`}).join(''):'<p class="muted">No savings goals yet. Add one to track another target.</p>';
-    const activeGoals=(x.goals||[]).filter(g=>g.status==='active');
-    const options=activeGoals.map(g=>`<option value="${Number(g.id)}">${escapeHtml(g.name)}</option>`).join('');
-    for(const id of ['monthlyDepositGoalId','savingsContributionGoal']){const select=$('#'+id);if(select){const old=select.value;if(id==='monthlyDepositGoalId')select.innerHTML='<option value="">General savings</option>'+options;else select.innerHTML='<option value="">General savings</option>'+options;if(old&&[...select.options].some(o=>o.value===old))select.value=old;}}
-    const percent=$('#monthlyDepositPct');if(percent&&document.activeElement!==percent)percent.value=Number(schedule.income_pct??5);
-    const months=$('#monthlyDepositMonths');if(months&&document.activeElement!==months)months.value=Number(schedule.duration_months||6);
-    const day=$('#monthlyDepositDay');if(day&&document.activeElement!==day)day.value=Number(schedule.due_day||1);
-    const enabled=$('#monthlyDepositEnabled');if(enabled&&document.activeElement!==enabled)enabled.checked=!!schedule.enabled;
-    const consent=$('#monthlyDepositConsent');if(consent&&document.activeElement!==consent)consent.checked=false;
-    const goalSel=$('#monthlyDepositGoalId');if(goalSel&&schedule.goal_id!=null&&document.activeElement!==goalSel)goalSel.value=String(schedule.goal_id);
-    const estimate=$('#monthlyDepositEstimate');const amount=Number(STATE?.profile?.monthly_income||0)*Number(percent?.value||0)/100;if(estimate)estimate.textContent=money(amount);
-    const detail=$('#monthlyDepositEstimateDetail');if(detail)detail.textContent=`${Number(percent?.value||0)}% of ${money(STATE?.profile?.monthly_income||0)} monthly income · ${Number(months?.value||6)} months · ${money(amount*Number(months?.value||6))} planned in total`;
-    const scheduleStatus=$('#monthlyDepositStatus');if(scheduleStatus){const status=schedule.status||'disabled';scheduleStatus.textContent=status==='scheduled'?`Enabled for ${schedule.months_remaining??schedule.duration_months??6} more month(s). Test transactions only.`:status==='local_settings_only'?'Saved as a reminder only. No transfers run in this browser.':status==='duration_complete'?'The selected savings period has ended.':'Not enabled.';}
-    const streakSummary=$('#savingsStreakSummary');if(streakSummary)streakSummary.innerHTML=`<strong>${Number(progress.savings_streak||0)} month savings streak</strong><p class="muted">A streak is counted when a goal’s monthly target is met. Contributions in this browser are self-reported and do not move money.</p>`;
-    const date=$('#savingsContributionDate');if(date&&!date.value)date.value=new Date().toISOString().slice(0,10);
-    const history=$('#donationHistory');if(history){const rows=Array.isArray(donations)?donations:donations?.donations||[];history.innerHTML=rows.length?rows.map(d=>`<article class="donation-row"><div><strong>${escapeHtml(d.charity_name)}</strong><span class="muted">${money(d.amount)} · ${escapeHtml(String(d.status||'planned').replaceAll('_',' '))}</span></div><time>${d.created_at?new Date(d.created_at).toLocaleDateString():'Saved'}</time><p class="muted">${escapeHtml(d.note||d.message||d.last_error||'Test status may need refresh.')}</p></article>`).join(''):'<p class="muted">No donations recorded.</p>';}
-  }catch(e){console.error(e)}
+    setText('#savingsBufferSummary',`${money(balance)} saved toward your buffer`);
+    setText('#savingsBufferProgress',`${pct.toFixed(0)}% of ${money(target)}`);
+    const fill=$('#bufferFill');if(fill)fill.style.width=`${pct}%`;
+    const balanceInput=$('#savingsCurrentBalance');if(balanceInput&&document.activeElement!==balanceInput)balanceInput.value=balance.toFixed(2);
+
+    const progressById=new Map((progress.goals||[]).map(goal=>[Number(goal.id),goal]));
+    const goalsHost=$('#savingsGoals');
+    if(goalsHost)goalsHost.innerHTML=goals.length?goals.map(goal=>{
+      const extra=progressById.get(Number(goal.id))||goal;
+      const goalPct=Math.max(0,Math.min(100,Number(goal.saved_amount||0)/Math.max(1,Number(goal.target_amount||0))*100));
+      const streak=Number(extra.monthly_streak||0);
+      return `<article class="stash-goal"><div class="goal-title"><strong>${escapeHtml(goal.name)}</strong><span class="badge">${goal.status==='completed'?'Complete':'In progress'}</span></div><div class="goal-amount"><strong>${money(goal.saved_amount)}</strong><span class="muted">of ${money(goal.target_amount)}</span></div><div class="progressbar"><span style="width:${goalPct}%"></span></div><div class="goal-foot"><span>${goalPct.toFixed(0)}% saved</span><span>${Number(goal.monthly_target)>0?`${money(goal.monthly_target)}/month target`:'No monthly target'}</span></div>${Number(goal.monthly_target)>0?`<p class="muted goal-month-note">${money(extra.current_month_contribution||0)} recorded this month · ${streak} month streak</p>`:''}</article>`;
+    }).join(''):'<p class="muted">No savings goals yet. Add a goal to track your progress.</p>';
+
+    const completeGoal=goals.some(goal=>goal.status==='completed');
+    const donationTab=$('#savingsTabDonations'),donationPanel=$('#savingsPanelDonations'),donationSection=$('#donationSection');
+    donationTab?.classList.toggle('hidden',!completeGoal);
+    donationPanel?.classList.toggle('hidden',!completeGoal);if(donationPanel)donationPanel.hidden=!completeGoal;
+    donationSection?.classList.toggle('hidden',!completeGoal);
+    if(!completeGoal&&document.querySelector('[data-savings-tab].active')?.dataset.savingsTab==='donations')activateSavingsPanel('goals');
+    const donationAmount=$('#donationAmount');if(donationAmount){donationAmount.max=String(balance);donationAmount.placeholder=balance>0?`Up to ${money(balance)}`:'Available after a goal is complete';}
+
+    const smartPct=Number(recommendation.recommended_pct||0),monthlyAmount=Number(recommendation.monthly_amount||0);
+    setText('#smartSavingsMonthlyAmount',money(monthlyAmount));
+    setText('#smartSavingsPctLabel',`${smartPct}% of monthly income`);
+    setText('#smartSavingsReason',`${recommendation.reason||'Based on your income and expenses.'}${recommendation.monthly_surplus!=null?` Monthly surplus entered: ${money(recommendation.monthly_surplus)}.`:''}`);
+    setText('#smartSavingsTitle','Suggested savings contribution');
+
+    const activeGoals=goals.filter(goal=>goal.status==='active');
+    const options=activeGoals.map(goal=>`<option value="${Number(goal.id)}">${escapeHtml(goal.name)}</option>`).join('');
+    for(const id of ['monthlyDepositGoalId','savingsContributionGoal']){
+      const select=$('#'+id);if(!select)continue;const old=select.value;
+      select.innerHTML='<option value="">General savings</option>'+options;
+      if(old&&[...select.options].some(option=>option.value===old))select.value=old;
+    }
+    const pctInput=$('#monthlyDepositPct');if(pctInput&&document.activeElement!==pctInput)pctInput.value=Number(schedule.income_pct??recommendation.recommended_pct??STATE?.profile?.savings_pct??5);
+    const monthsInput=$('#monthlyDepositMonths');if(monthsInput&&document.activeElement!==monthsInput)monthsInput.value=Number(schedule.duration_months||6);
+    const dayInput=$('#monthlyDepositDay');if(dayInput&&document.activeElement!==dayInput)dayInput.value=Number(schedule.due_day||1);
+    const enabledInput=$('#monthlyDepositEnabled');if(enabledInput&&document.activeElement!==enabledInput)enabledInput.checked=Boolean(schedule.enabled);
+    const consentInput=$('#monthlyDepositConsent');if(consentInput&&document.activeElement!==consentInput)consentInput.checked=false;
+    const goalInput=$('#monthlyDepositGoalId');if(goalInput&&schedule.goal_id!=null&&document.activeElement!==goalInput)goalInput.value=String(schedule.goal_id);
+    const pctValue=Number(pctInput?.value||0),monthsValue=Number(monthsInput?.value||6),estimatedMonthly=Number(STATE?.profile?.monthly_income||0)*pctValue/100;
+    setText('#monthlyDepositEstimate',money(estimatedMonthly));
+    setText('#monthlyDepositEstimateDetail',`${pctValue}% of ${money(STATE?.profile?.monthly_income||0)} monthly income · ${monthsValue} months · ${money(estimatedMonthly*monthsValue)} total planned`);
+    const scheduleStatus=$('#monthlyDepositStatus');
+    if(scheduleStatus){const status=String(schedule.status||'disabled');scheduleStatus.textContent=status==='scheduled'?'Savings schedule is active.':status==='saved'?'Savings schedule saved.':status==='duration_complete'?'Your selected savings period is complete.':status==='error'?'Savings schedule needs attention. Review the amount and payment details.':status==='disabled'?'Savings schedule is off.':'Savings schedule saved.';}
+    const streakSummary=$('#savingsStreakSummary');if(streakSummary)streakSummary.innerHTML=`<strong>${Number(progress.savings_streak||0)} month savings streak</strong><p class="muted">A goal streak grows when its monthly contribution target is met.</p>`;
+    const contributionDate=$('#savingsContributionDate');if(contributionDate&&!contributionDate.value)contributionDate.value=new Date().toISOString().slice(0,10);
+    const history=$('#savingsContributionHistory');
+    if(history){const rows=Array.isArray(progress.contributions)?progress.contributions:[];history.innerHTML=rows.length?rows.map(item=>`<article class="history-row"><strong>${money(item.amount)}</strong><span>${item.contribution_date?new Date(`${item.contribution_date}T12:00:00`).toLocaleDateString():'Recorded'}</span></article>`).join(''):'<p class="muted">No contributions recorded yet.</p>';}
+    const donationHistory=$('#donationHistory');
+    if(donationHistory){const rows=Array.isArray(donations)?donations:(donations?.donations||[]);donationHistory.innerHTML=rows.length?rows.map(item=>`<article class="donation-row"><div><strong>${escapeHtml(item.charity_name||'Charity')}</strong><span class="muted">${money(item.amount)} · ${escapeHtml(String(item.status||'saved').replaceAll('_',' '))}</span></div><time>${item.created_at?new Date(item.created_at).toLocaleDateString():'Saved'}</time><p class="muted">${escapeHtml(cleanCopy(item.message||item.note||item.last_error||'Donation status updated.'))}</p></article>`).join(''):'<p class="muted">No donations recorded yet.</p>';}
+  }catch(error){console.error(error)}
 }
 
 function applyOptionalModulePreferences(){
@@ -247,16 +269,9 @@ async function renderMonthlyRecap(){
 async function load(){
   try{
     const me=await api('/api/auth/me');
-    if(!me.authenticated){
-      const startRequested=new URLSearchParams(window.location.search).get('start')==='1';
-      if(window.GlimStorage?.mode==='localStorage' && startRequested){
-        await api('/api/auth/guest',{method:'POST'});
-        window.history.replaceState({},'', '/app/overview');
-      }else{STATE=null;window.location.replace('/signin');return}
-    }
+    if(!me.authenticated){STATE=null;window.location.replace('/signin');return}
     STATE=await api('/api/state');
     selectedStrategy=STATE.plan?.strategy||'smart';
-    const nameField=$('#pName');if(nameField&&!nameField.value)nameField.value=String(STATE.profile?.name||'');
     if(!profileIsReady(STATE.profile)){
       if(window.location.pathname==='/setup') window.history.replaceState({}, '', '/app/overview');
       else if(window.location.pathname!=='/app/overview') { window.location.replace('/app/overview'); return; }
@@ -272,8 +287,6 @@ async function load(){
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
     await Promise.all([renderNotifications(), renderSettlements(), setIntegrationStatus()]);
     render();
-    await Promise.all([renderDebtProgress(), renderStash()]);
-    maybeStartWalkthrough();
   }catch(e){console.error(e);toast(e.message||'Unable to load your Glim plan.');}
 }
 
@@ -296,46 +309,11 @@ async function runScout(showToast=true){
   }catch(e){$('#scoutResults').innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;await renderScoutDebtSuggestions([])}
 }
 async function buildPlan(){if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt in Debt plan before building a payoff plan.');return}try{STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})});render();toast('Plan recalculated.')}catch(e){toast(e.message)}}
-async function runSmartAnalysis(){
-  if(!(STATE?.debts||[]).some(d=>d.status==='active')){toast('Add a debt in Debt plan before running Smart Strategy.');activateSection('plan',{push:true});return;}
-  const button=$('#runSmartAnalysisBtn');if(button){button.disabled=true;button.textContent='Analyzing…';}
-  try{
-    selectedStrategy='smart';
-    STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:'smart',stash_pct:Number(STATE?.plan?.stash_pct??65)})});
-    render();
-    const chat=await api('/api/chat',{method:'POST',body:JSON.stringify({message:'Compare the repayment strategies for my current debts and explain why Smart Strategy recommends this approach.'})}).catch(()=>null);
-    const explanation=$('#smartAgentExplanation');
-    if(chat?.message&&explanation){explanation.textContent=`${assistantRoleLabel(chat.agent)}: ${cleanCopy(chat.message)}`;explanation.classList.remove('hidden');}
-    else if(explanation){explanation.textContent='The repayment comparison was updated. The explanation service did not respond, so the recommendation is based on the repayment calculator.';explanation.classList.remove('hidden');}
-    const activity=$('#smartAnalysisActivity');
-    if(activity){
-      const names={compare_payoff_strategies:'Compared repayment approaches',evaluate_what_if:'Calculated a repayment scenario',inspect_scout_activity:'Reviewed available connected activity',get_banker_status:'Checked payment status'};
-      const used=Array.isArray(chat?.tools_used)?chat.tools_used:(chat?.tool?[chat.tool]:[]);
-      const readable=[...new Set(used.map(item=>names[item]).filter(Boolean))];
-      const assistantConfigured=!!STATE?.connections?.gemini_configured;
-      activity.textContent=readable.length?`Analysis completed: repayment calculator plus ${readable.join('; ').toLowerCase()}.`:assistantConfigured?'Analysis completed: repayment calculator and configured plan guidance.':'Analysis completed: repayment calculator. The optional explanation service is not configured in this deployment.';
-      activity.classList.remove('hidden');
-    }
-    toast('Smart Strategy analysis updated.');
-  }catch(error){toast(cleanCopy(error.message||'Unable to analyze the current debt plan.'));}
-  finally{if(button){button.disabled=!(STATE?.debts||[]).some(d=>d.status==='active');button.textContent='Run Smart Strategy';}}
-}
-function assistantRoleLabel(agent){
-  const value=String(agent||'').toLowerCase();
-  if(value.includes('debt strategy'))return 'Debt strategy analysis';
-  if(value.includes('payment activity'))return 'Payment activity review';
-  if(value.includes('scout'))return 'Payment activity review';
-  if(value.includes('banker'))return 'Payment status review';
-  if(value.includes('tactician'))return 'Debt strategy analysis';
-  if(value.includes('sage'))return 'Financial explanation';
-  return 'Plan guidance';
-}
-
 
 $('#pPct')?.addEventListener('input',e=>$('#pctOut').value=e.target.value+'%');
 $('#pApprovalMode')?.addEventListener('change',e=>$('#weeklyCapRow')?.classList.toggle('hidden',!['weekly_cap','standing_rule'].includes(e.target.value)));
-$('#setupContinueBtn')?.addEventListener('click',()=>{const first=$('#setupStepOne');const form=$('#profileForm');if(!form?.reportValidity())return;first?.classList.add('hidden');$('#setupStepTwo')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Onboarding · Step 2 of 2 · Preferences and first debt';if($('#setupProgressFill'))$('#setupProgressFill').style.width='100%';if($('#setupProgressBar'))$('#setupProgressBar').setAttribute('aria-valuenow','2');$('#setupStepTwo')?.scrollIntoView({behavior:'smooth',block:'start'});$('#setupBackBtn')?.focus();});
-$('#setupBackBtn')?.addEventListener('click',()=>{const second=$('#setupStepTwo');second?.classList.add('hidden');$('#setupStepOne')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Onboarding · Step 1 of 2 · Monthly budget';if($('#setupProgressFill'))$('#setupProgressFill').style.width='50%';if($('#setupProgressBar'))$('#setupProgressBar').setAttribute('aria-valuenow','1');$('#setupContinueBtn')?.focus();});
+$('#setupContinueBtn')?.addEventListener('click',()=>{const first=$('#setupStepOne');const form=$('#profileForm');if(!form?.reportValidity())return;first?.classList.add('hidden');$('#setupStepTwo')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Step 2 of 2 · Preferences and first debt';$('#setupStepTwo')?.scrollIntoView({behavior:'smooth',block:'start'});$('#setupBackBtn')?.focus();});
+$('#setupBackBtn')?.addEventListener('click',()=>{const second=$('#setupStepTwo');second?.classList.add('hidden');$('#setupStepOne')?.classList.remove('hidden');if($('#setupStepLabel'))$('#setupStepLabel').textContent='Step 1 of 2 · Monthly budget';$('#setupContinueBtn')?.focus();});
 $('#weeklyCapRow')?.classList.toggle('hidden',!['weekly_cap','standing_rule'].includes($('#pApprovalMode')?.value));
 $('#profileForm')?.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -349,26 +327,24 @@ $('#profileForm')?.addEventListener('submit',async e=>{
   const income=Number($('#pIncome').value), expenses=Number($('#pExpenses').value), floor=Number($('#pFloor').value);
   if(!(income>0)||expenses<0||floor<0){toast('Check your monthly income, expenses and minimum balance.');return}
   try{
-    await api('/api/profile',{method:'POST',body:JSON.stringify({name:$('#pName')?.value.trim()||'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:$('#pApprovalMode')?.value||'each',weekly_cap:Number($('#pWeeklyCap')?.value||60),floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',show_consistency:true,show_learning_tips:true,show_friend_support:false,show_plan_help:true})});
+    await api('/api/profile',{method:'POST',body:JSON.stringify({name:'',persona:'custom',monthly_income:income,average_monthly_expenses:expenses,savings_pct:Number($('#pPct').value),approval_mode:$('#pApprovalMode')?.value||'each',weekly_cap:Number($('#pWeeklyCap')?.value||60),floor_balance:floor,quiet_start:'22:00',quiet_end:'08:00',notification_cap:3,notification_channel:'in_app',debt_reminder_tone:'zen',show_consistency:true,show_learning_tips:true,show_friend_support:false,show_plan_help:true})});
     if(debtStarted) await api('/api/debts',{method:'POST',body:JSON.stringify({name:debtName,type:$('#setupDebtType').value,balance:Number(debtBalance),apr:Number(debtApr),minimum:Number(debtMinimum),due_day:Number($('#setupDebtDueDay')?.value||15)})});
     window.location.assign('/app/overview');
   }catch(error){toast(error.message||'Unable to save your plan.');}
 });
-$('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:+($('#dDueDay')?.value||15)})});$('#debtForm').reset();if($('#dDueDay'))$('#dDueDay').value=15;await load();toast('Debt added.')}catch(e){toast(cleanCopy(e.message))}});
+$('#debtForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/debts',{method:'POST',body:JSON.stringify({name:$('#dName').value,type:$('#dType').value,balance:+$('#dBalance').value,apr:+$('#dApr').value,minimum:+$('#dMin').value,due_day:+($('#dDueDay')?.value||15)})});$('#debtForm').reset();if($('#dDueDay'))$('#dDueDay').value=15;await load();toast('Debt added.')}catch(e){toast(e.message)}});
 $('#scanBtn')?.addEventListener('click',()=>runScout(true));
-$('#runSmartAnalysisBtn')?.addEventListener('click',runSmartAnalysis);
-$('#insightsActivityRefreshBtn')?.addEventListener('click',()=>runScout(true));
 $$('.strategy').forEach(b=>b.addEventListener('click',()=>{selectedStrategy=b.dataset.strategy;$$('.strategy').forEach(x=>{const active=x===b;x.classList.toggle('active',active);x.setAttribute('aria-pressed',String(active));});buildPlan()}));
-$('#togglePaymentVisualization')?.addEventListener('click',()=>{const panel=$('#paymentVisualizationPanel'),button=$('#togglePaymentVisualization');if(!panel||!button)return;const open=panel.classList.contains('hidden');panel.classList.toggle('hidden',!open);button.textContent=open?'Hide payment visualization':'View payment visualization';button.setAttribute('aria-expanded',String(open));if(open)panel.scrollIntoView({behavior:'smooth',block:'nearest'});});
 $('#planBtn')?.addEventListener('click',buildPlan);
+$('#whatIfBtn')?.addEventListener('click',async()=>{if(!STATE?.plan?.projection){$('#whatIfResult').textContent='Add a debt in Debt plan before comparing scenarios.';return}try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Describe one specific change, such as spending less on takeout each week.';return}$('#whatIfResult').textContent=`${r.parsed.label}${r.parsed.assumptions?.length?' Assumptions: '+r.parsed.assumptions.join(' '):''}${r.parsed.needs_clarification?' Add the missing detail before Glim estimates the impact.':r.what_if?` Estimated payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} modeled interest.`:''}`;$('#scenarioComparison').innerHTML=r.what_if?`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest<br><span class="muted">${Number(r.what_if.months_saved_vs_baseline||0)} months and ${money(r.what_if.interest_saved_vs_baseline||0)} interest difference versus current plan</span></div>`:''}catch(e){$('#whatIfResult').textContent=cleanCopy(e.message)}});
 $('#approveDrip')?.addEventListener('click',async()=>{const connected=STATE?.paypal?.status==='connected'&&window.GlimStorage?.mode!=='localStorage'&&STATE?.payment_readiness!==false;if(!connected){activateSection('plan',{push:true});return}try{await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s amount has been approved.');await load()}catch(e){toast(cleanCopy(e.message))}});
 $('#freezeBtn')?.addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Missed-day safeguard used.')}catch(e){toast(e.message)}});
 $('#pauseBtn')?.addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
 $$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
-$('#chatForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput'),button=$('#chatBtn');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';if(button){button.disabled=true;button.textContent='Reviewing…'}try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});const role=assistantRoleLabel(r.agent);$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><span class="assistant-role">${escapeHtml(role)}</span><br>${escapeHtml(cleanCopy(r.message))}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble assistant-bubble"><strong>Unable to respond</strong><br>${escapeHtml(cleanCopy(e.message||'Try again after checking your plan setup.'))}</div>`)}finally{if(button){button.disabled=false;button.textContent='Ask'}}});
-$('#nudgeBtn')?.addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=cleanCopy(lastNudge.message);$('#nudgeWhy').textContent=cleanCopy(lastNudge.why||'This reminder uses your saved preference and entered due dates.');$('#nudgePreview')?.classList.remove('hidden');await renderNotifications()}catch(e){toast(cleanCopy(e.message))}});
+$('#chatForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#chatInput');const text=input.value.trim();if(!text)return;$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble user"><strong>You</strong><br>${escapeHtml(text)}</div>`);input.value='';try{const r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});$('#chatWindow').insertAdjacentHTML('beforeend',`<div class="bubble"><strong>Glim</strong><br>${escapeHtml(cleanCopy(r.message))}</div>`);$('#chatWindow').scrollTop=$('#chatWindow').scrollHeight}catch(e){toast(e.message)}});
+$('#nudgeBtn')?.addEventListener('click',async()=>{try{lastNudge=await api('/api/nudge');$('#nudgeText').textContent=cleanCopy(lastNudge.message);$('#nudgeWhy').textContent=cleanCopy(lastNudge.why||'This reminder uses your saved preferences and due dates.');$('#nudgePreview')?.classList.remove('hidden');await renderNotifications()}catch(e){toast(e.message)}});
 $$('.nudge-action').forEach(b=>b.addEventListener('click',async()=>{try{await api('/api/nudge/response',{method:'POST',body:JSON.stringify({response:b.dataset.response})});await load();toast('Check-in response saved.')}catch(e){toast(e.message)}}));
-$('#saveNotifBtn')?.addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,debt_reminder_tone:$('#debtReminderTone')?.value||'zen',timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Reminder settings saved.')}catch(e){toast(cleanCopy(e.message))}});
+$('#saveNotifBtn')?.addEventListener('click',async()=>{try{const p=STATE.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,quiet_start:$('#notifStart').value,quiet_end:$('#notifEnd').value,notification_cap:+$('#notifCap').value,notification_channel:$('#notifChannel').value,debt_reminder_tone:$('#debtReminderTone')?.value||'zen',timezone:$('#notifTimezone').value||'America/Toronto'})});await load();toast('Notification settings saved.')}catch(e){toast(e.message)}});
 
 
 $('#settingsSavingsPct')?.addEventListener('input',e=>{if($('#settingsSavingsPctValue'))$('#settingsSavingsPctValue').textContent=`${e.target.value}%`});
@@ -398,14 +374,16 @@ $('#saveModulePreferencesBtn')?.addEventListener('click',async()=>{
   }catch(e){if(status)status.textContent=cleanCopy(e.message||'Unable to save preferences.');}
 });
 
-$('#savingsBalanceForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#savingsBalanceStatus');try{const balance=Number($('#savingsCurrentBalance').value);if(!Number.isFinite(balance)||balance<0)throw new Error('Enter a savings balance of zero or more.');await api('/api/stash/balance',{method:'POST',body:JSON.stringify({balance})});if(status)status.textContent='Savings balance updated.';await load();toast('Savings balance updated.')}catch(error){if(status)status.textContent=cleanCopy(error.message);else toast(cleanCopy(error.message))}});
-$('#savingsGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#savingsGoalName').value.trim(),target_amount:+$('#savingsGoalTarget').value,monthly_target:+($('#savingsGoalMonthlyTarget').value||0)})});$('#savingsGoalForm').reset();await renderStash();toast('Savings goal added.')}catch(e){toast(cleanCopy(e.message))}});
-$('#monthlyDepositPct')?.addEventListener('input',()=>{const amount=Number(STATE?.profile?.monthly_income||0)*Number($('#monthlyDepositPct').value||0)/100,months=Number($('#monthlyDepositMonths')?.value||6);if($('#monthlyDepositEstimate'))$('#monthlyDepositEstimate').textContent=money(amount);if($('#monthlyDepositEstimateDetail'))$('#monthlyDepositEstimateDetail').textContent=`${Number($('#monthlyDepositPct').value||0)}% of ${money(STATE?.profile?.monthly_income||0)} monthly income · ${months} months · ${money(amount*months)} planned in total`;});
+$('#savingsGoalForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/stash/goals',{method:'POST',body:JSON.stringify({name:$('#savingsGoalName').value.trim(),target_amount:+$('#savingsGoalTarget').value,monthly_target:+($('#savingsGoalMonthlyTarget')?.value||0)})});$('#savingsGoalForm').reset();await renderStash();toast('Savings goal added.')}catch(e){toast(cleanCopy(e.message))}});
+$('#monthlyDepositPct')?.addEventListener('input',()=>{const pct=Number($('#monthlyDepositPct').value||0),income=Number(STATE?.profile?.monthly_income||0),months=Number($('#monthlyDepositMonths')?.value||6),amount=income*pct/100;if($('#monthlyDepositEstimate'))$('#monthlyDepositEstimate').textContent=money(amount);if($('#monthlyDepositEstimateDetail'))$('#monthlyDepositEstimateDetail').textContent=`${pct}% of ${money(income)} monthly income · ${months} months · ${money(amount*months)} planned in total`;});
 $('#monthlyDepositMonths')?.addEventListener('input',()=>$('#monthlyDepositPct')?.dispatchEvent(new Event('input')));
-$('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#monthlyDepositStatus');try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,income_pct:+$('#monthlyDepositPct').value,duration_months:+$('#monthlyDepositMonths').value,goal_id:$('#monthlyDepositGoalId').value?+$('#monthlyDepositGoalId').value:null,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const result=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});if(status)status.textContent=result.note||result.status;await renderStash();$('#monthlyDepositConsent').checked=false;toast(enabled?'Savings schedule saved.':'Savings schedule disabled.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
-$('#savingsContributionForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const result=await api('/api/savings/contributions',{method:'POST',body:JSON.stringify({amount:+$('#savingsContributionAmount').value,contribution_date:$('#savingsContributionDate').value,goal_id:$('#savingsContributionGoal').value?+$('#savingsContributionGoal').value:null})});$('#savingsContributionAmount').value='';await renderStash();await load();toast(result.recorded?.points_awarded?`Savings goal met. Earned ${result.recorded.points_awarded} shells.`:'Savings contribution recorded.')}catch(e){toast(cleanCopy(e.message))}});
-$('#donationForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#donationStatus');try{const result=await api('/api/savings/donations',{method:'POST',body:JSON.stringify({charity_name:$('#donationCharityName').value.trim(),recipient_email:$('#donationRecipientEmail').value.trim(),amount:+$('#donationAmount').value})});if(status)status.textContent=result.status==='planned_not_sent'?'Saved as a donation plan. No money moved.':result.message||`Test donation status: ${result.status}.`;await renderStash();toast(result.status==='planned_not_sent'?'Donation plan saved.':'Test donation submitted.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
-$('#debtPaymentForm')?.addEventListener('submit',async e=>{e.preventDefault();const debtId=Number($('#debtPaymentDebtId').value),status=$('#debtPaymentResult');try{const result=await api(`/api/debts/${debtId}/payments`,{method:'POST',body:JSON.stringify({amount:+$('#debtPaymentAmount').value,payment_date:$('#debtPaymentDate').value})});if(status)status.textContent=result.recorded?.paid_on_time?'Minimum payment recorded as met by the due day.': 'Payment saved. It does not count toward the entered minimum for this due date.';$('#debtPaymentDialog')?.close();await load();toast(result.recorded?.currency_awarded?`On-time minimum recorded. Earned ${result.recorded.currency_awarded} shells.`:'Payment record saved.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#monthlyDepositDay')?.addEventListener('input',()=>$('#monthlyDepositPct')?.dispatchEvent(new Event('input')));
+$('#applySmartSavingsBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/savings/recommendation');const p=STATE?.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,savings_pct:Number(r.recommended_pct||0)})});STATE=await api('/api/state');if($('#monthlyDepositPct'))$('#monthlyDepositPct').value=Number(r.recommended_pct||0)||0.1;$('#monthlyDepositPct')?.dispatchEvent(new Event('input'));await renderStash();toast('Savings recommendation applied.')}catch(e){toast(cleanCopy(e.message))}});
+$('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#monthlyDepositStatus');try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,amount:0,income_pct:+$('#monthlyDepositPct').value,duration_months:+$('#monthlyDepositMonths').value,goal_id:$('#monthlyDepositGoalId').value?+$('#monthlyDepositGoalId').value:null,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const result=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});if(status)status.textContent=result.enabled?'Savings plan saved.': 'Savings plan turned off.';await renderStash();if($('#monthlyDepositConsent'))$('#monthlyDepositConsent').checked=false;toast(enabled?'Savings schedule saved.':'Savings schedule disabled.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#savingsBalanceForm')?.addEventListener('submit',async e=>{e.preventDefault();const amount=Number($('#savingsCurrentBalance').value);try{await api('/api/stash/balance',{method:'POST',body:JSON.stringify({balance:amount})});await load();toast('Savings balance updated.')}catch(e){toast(cleanCopy(e.message))}});
+$('#savingsContributionForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('/api/savings/contributions',{method:'POST',body:JSON.stringify({amount:+$('#savingsContributionAmount').value,contribution_date:$('#savingsContributionDate').value,goal_id:$('#savingsContributionGoal').value?+$('#savingsContributionGoal').value:null})});$('#savingsContributionAmount').value='';await load();toast(r.recorded?.points_awarded?`Monthly savings target met. Earned ${r.recorded.points_awarded} shells.`:'Savings contribution recorded.')}catch(e){toast(cleanCopy(e.message))}});
+$('#donationForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#donationStatus');try{const r=await api('/api/savings/donations',{method:'POST',body:JSON.stringify({charity_name:$('#donationCharityName').value.trim(),recipient_email:$('#donationRecipientEmail').value.trim(),amount:+$('#donationAmount').value})});if(status)status.textContent=r.status==='planned'?'Donation request saved. No payment was completed.':r.message||`Donation status: ${r.status}.`;await renderStash();toast(r.status==='planned'?'Donation request saved.':'Donation submitted.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
+$('#debtPaymentForm')?.addEventListener('submit',async e=>{e.preventDefault();const id=Number($('#debtPaymentDebtId').value),status=$('#debtPaymentResult');try{const r=await api(`/api/debts/${id}/payments`,{method:'POST',body:JSON.stringify({amount:+$('#debtPaymentAmount').value,payment_date:$('#debtPaymentDate').value})});if(status)status.textContent=r.recorded?.paid_on_time?'Minimum payment recorded by the due day.':'Payment saved. It did not meet the minimum by the entered due day.';$('#debtPaymentDialog')?.close();await load();toast(r.recorded?.currency_awarded?`On-time payment recorded. Earned ${r.recorded.currency_awarded} shells.`:'Payment record saved.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
 $('#cancelDebtPayment')?.addEventListener('click',()=>$('#debtPaymentDialog')?.close());
 $('#loadRecapBtn')?.addEventListener('click',renderMonthlyRecap);
 $('#auditBtn')?.addEventListener('click',renderAudit);
@@ -414,7 +392,7 @@ $('#createSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();tr
 $('#loadLessonBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">A quick check helps apply this to your own plan.</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Completed.</strong><p>Keep the useful idea in mind when reviewing your plan.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn')?.addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
 $('#deleteBtn')?.addEventListener('click',async()=>{if(!confirm('Delete all your Glim data? This cannot be undone.'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
-const APP_SECTIONS=['overview','plan','savings','insights','settings','help'];
+const APP_SECTIONS=['overview','plan','savings','settings','help'];
 function activeSectionFromPath(){const part=window.location.pathname.split('/').filter(Boolean).pop();return APP_SECTIONS.includes(part)?part:'overview'}
 function activateSection(section,{push=false,replace=false}={}){
   if(!APP_SECTIONS.includes(section))section='overview';
@@ -426,15 +404,10 @@ function activateSection(section,{push=false,replace=false}={}){
 $$('[data-tab]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const section=link.dataset.tab;activateSection(section,{push:true});}));
 window.addEventListener('popstate',()=>activateSection(activeSectionFromPath()));
 activateSection(activeSectionFromPath());
-$('#logoutBtn')?.addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
+activateSavingsPanel('goals');
+$('#logoutBtn')?.addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});STATE=null;window.location.assign('/')}catch(e){toast(cleanCopy(e.message))}});
 $('#paypalConnectBtn')?.addEventListener('click',async()=>{const b=$('#paypalConnectBtn');b.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){$('#paypalApprovalLink').innerHTML=`<a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure connection</a>`;window.location.assign(r.approval_url);return;}await load();}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
 $('#paypalDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this funding source? Pending contributions must be checked first.'))return;const b=$('#paypalDisconnectBtn');b.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Funding source disconnected.')}catch(e){toast(cleanCopy(e.message))}finally{b.disabled=false;await setIntegrationStatus()}});
-$('#connectActivityBtn')?.addEventListener('click',async()=>{
-  const button=$('#connectActivityBtn');if(window.GlimStorage?.mode==='localStorage'){toast('Account activity needs a server-backed deployment with a configured connection. No account was connected.');return;}
-  button.disabled=true;try{const r=await api('/api/paypal/connect',{method:'POST'});if(r.approval_url){window.location.assign(r.approval_url);return;}await load();}catch(e){toast(cleanCopy(e.message));}finally{button.disabled=false;await setIntegrationStatus();}
-});
-$('#disconnectActivityBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect this account?'))return;const button=$('#disconnectActivityBtn');button.disabled=true;try{await api('/api/paypal/disconnect',{method:'POST'});await load();toast('Account disconnected.')}catch(e){toast(cleanCopy(e.message));}finally{button.disabled=false;await setIntegrationStatus();}});
-
 $('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBtn');b.disabled=true;const out=$('#settlementActionResult');try{const r=await api('/api/drip/settle',{method:'POST'});out.textContent=`Transfer status: ${settlementLabel(r.status||'submitted')}${r.amount==null?'':' · '+money(r.amount)+' CAD'}.`;if(r.approval_url)out.innerHTML+=` <a class="text-link" href="${escapeHtml(r.approval_url)}" rel="noopener">Continue secure approval</a>`;await load()}catch(e){out.textContent=cleanCopy(e.message);await setIntegrationStatus()}finally{b.disabled=false}});
 $('#reconcileBtn')?.addEventListener('click',async()=>{const b=$('#reconcileBtn'),out=$('#settlementActionResult');b.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});out.textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){out.textContent=cleanCopy(e.message)}finally{b.disabled=false}});
 $('#joinSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/join',{method:'POST',body:JSON.stringify({invite_code:$('#squadInviteCode').value.trim()})});$('#squadActionNote').textContent='Joined group.';$('#squadInviteCode').value='';await load()}catch(error){$('#squadActionNote').textContent=error.message}});
@@ -449,14 +422,6 @@ async function setIntegrationStatus(){
  const connect=$('#paypalConnectBtn'),disconnect=$('#paypalDisconnectBtn'),scopeHost=$('#paypalScopes'),approvalHost=$('#paypalApprovalLink'),pushBtn=$('#pushEnableBtn'),external=$('#externalNotificationStatus'),privacy=$('#privacyStorageStatus');
  if(localMode){
    $('#accountTransferDetails')?.classList.add('hidden');
-   const insightStatus=$('#insightsConnectionStatus'),insightNote=$('#insightsConnectionNote'),insightConnect=$('#connectActivityBtn'),insightDisconnect=$('#disconnectActivityBtn');
-   if(insightStatus)insightStatus.textContent='Account activity is not connected';
-   if(insightNote)insightNote.textContent='This session saves your plan in the browser and cannot connect to payment accounts or retrieve external transactions. A server-backed deployment with a configured connection is required.';
-   if(insightConnect){insightConnect.disabled=true;insightConnect.textContent='Connection unavailable here';}
-   if(insightDisconnect)insightDisconnect.classList.add('hidden');
-   const activityRefresh=$('#insightsActivityRefreshBtn');if(activityRefresh){activityRefresh.disabled=false;activityRefresh.textContent='Check available activity';}
-   const strategyExpl=$('#smartAgentExplanation');if(strategyExpl)strategyExpl.classList.add('hidden');
-   const assistantNote=$('#assistantAvailabilityNote');if(assistantNote)assistantNote.textContent='In this browser-only session, Smart Strategy uses the local repayment calculator and guidance uses built-in rules. The specialist assistant and connected transaction tools require a configured server-backed deployment.';
    if(mode)mode.textContent='Your plan remains available without an account connection.';
    if(funding)funding.textContent='Account transfers are not available here.';
    if(connect)connect.classList.add('hidden');
@@ -465,7 +430,7 @@ async function setIntegrationStatus(){
    if(approvalHost)approvalHost.textContent='';
    if(pushBtn){pushBtn.disabled=true;pushBtn.classList.add('hidden');}
    if(external)external.textContent='In-app check-ins are available.';
-   if(privacy)privacy.textContent='Your plan is saved on this device. Export a copy before changing devices.';
+   if(privacy)privacy.textContent='You can export a copy of your plan from this section.';
    const settle=$('#settleWeekBtn'),rec=$('#reconcileBtn');if(settle)settle.classList.add('hidden');if(rec)rec.classList.add('hidden');
    const activity=$('#contributionActivitySection');if(activity)activity.classList.add('hidden');
    const conn=$('.connection-row .button-row');if(conn)conn.classList.add('hidden');
@@ -474,19 +439,11 @@ async function setIntegrationStatus(){
  }
  $('#accountTransferDetails')?.classList.remove('hidden');
  if(mode)mode.textContent='Your plan stays available without an account connection.';
- if(privacy)privacy.textContent='Your plan is saved with your account. Export a copy or delete your data here.';
+ if(privacy)privacy.textContent='Export a copy of your plan or delete your data from this section.';
  $('#fundingConnectionSection')?.classList.remove('hidden');
  const settleBtn=$('#settleWeekBtn'),reconcileBtn=$('#reconcileBtn');if(settleBtn)settleBtn.classList.remove('hidden');if(reconcileBtn)reconcileBtn.classList.remove('hidden');const activity=$('#contributionActivitySection');if(activity)activity.classList.remove('hidden');
  const [health,cfg]=await Promise.all([api('/api/paypal/health').catch(()=>({configured:false,authenticated:false,error:true,status:STATE?.paypal?.status||'disconnected'})),api('/api/push/config').catch(()=>({enabled:false,email_enabled:false}))]);
  const status=STATE?.paypal?.status||health.status||'disconnected';
- const assistantNote=$('#assistantAvailabilityNote');
- if(assistantNote)assistantNote.textContent=STATE?.connections?.gemini_configured?'Smart Strategy can compare repayment options and explain the results. If account activity is connected, it can also inspect available transactions. Payment actions remain separate and require explicit approval.':'The repayment calculator is available. The explanation service is not configured in this deployment; connected transaction review also requires an account connection.';
- const insightStatus=$('#insightsConnectionStatus'),insightNote=$('#insightsConnectionNote'),insightConnect=$('#connectActivityBtn'),insightDisconnect=$('#disconnectActivityBtn');
- if(insightStatus)insightStatus.textContent=status==='connected'?(health.settlement_ready?'Connected and ready':'Connected; review required'):status==='awaiting_approval'?'Waiting for approval':health.error?'Connection status unavailable':health.configured?'No account connected':'Connection is not configured';
- if(insightNote)insightNote.textContent=status==='connected'?'Review available transaction activity for recurring charges and possible debt payments. Findings are suggestions; verify them before adding a debt.':health.configured?'Connect an account to check transaction activity. The plan calculator still works without a connection.':'This deployment needs account connection credentials before transaction activity can be retrieved.';
- if(insightConnect){insightConnect.classList.toggle('hidden',status==='connected');insightConnect.disabled=!health.configured||status==='awaiting_approval';insightConnect.textContent=status==='awaiting_approval'?'Waiting for approval':health.configured?'Connect account':'Connection not configured';}
- if(insightDisconnect)insightDisconnect.classList.toggle('hidden',status!=='connected');
- const activityRefresh=$('#insightsActivityRefreshBtn');if(activityRefresh)activityRefresh.disabled=status!=='connected';
  if(funding){
    funding.textContent=status==='connected'?(health.settlement_ready?'Connected and ready':'Connected, but needs attention'):status==='awaiting_approval'?'Waiting for your approval':health.error?'Connection status unavailable':health.configured?'Ready to connect':'No funding source connected';
  }
@@ -513,12 +470,11 @@ async function renderSettlements(){
 
 const WALKTHROUGH_KEY='glim.guide.completed.v5';
 const WALKTHROUGH_STEPS=[
-  {section:'overview',title:'Overview',copy:'See your total debt, savings balance, and suggested allocation in one place.'},
-  {section:'plan',title:'Debt plan',copy:'Enter each debt and use Smart Strategy or choose a repayment method yourself. Review the payoff estimate before making changes.'},
-  {section:'savings',title:'Savings',copy:'Track your cash buffer, update your current savings balance, and add other goals.'},
-  {section:'insights',title:'Insights',copy:'Run Smart Strategy, ask for an explanation of your debt plan, and review available connected payment activity. Account activity requires a supported connection.'},
-  {section:'settings',title:'Settings',copy:'Update the monthly budget, savings target, safety balance, and reminders.'},
-  {section:'help',title:'Help',copy:'Find answers to common questions and reopen this walkthrough whenever you need it.'}
+  {section:'overview',title:'Overview',copy:'Review current debt, savings, and your on-time payment streak.'},
+  {section:'plan',title:'Debt plan',copy:'Add debts, compare repayment strategies, and record payments you have made.'},
+  {section:'savings',title:'Savings',copy:'Set savings goals, apply Smart Strategy to your budget, and track contributions.'},
+  {section:'settings',title:'Settings',copy:'Choose your reminder tone, quiet hours, and budget rules.'},
+  {section:'help',title:'Help',copy:'Find answers and reopen the walkthrough whenever you need it.'}
 ];
 let walkthroughIndex=0;
 let walkthroughReturnSection='overview';

@@ -1,63 +1,58 @@
-<div class="savings-goals-content">
-  <p class="muted module-description">Track the cash buffer that protects your day-to-day budget, then add other savings targets if you need them.</p>
-  <section class="savings-buffer-card" aria-labelledby="savingsBufferTitle">
-    <h2 id="savingsBufferTitle">Savings buffer</h2>
-    <div class="buffer-progress" role="group" aria-label="Savings buffer progress">
-      <div class="progressbar"><span id="bufferFill" style="width:0%"></span></div>
-      <div class="buffer-progress-meta"><strong id="savingsBufferSummary">Your savings buffer starts here.</strong><span id="savingsBufferProgress" class="muted"></span></div>
-    </div>
-    <form id="savingsBalanceForm" class="savings-balance-form">
-      <label>Current savings balance (CAD)<input id="savingsCurrentBalance" type="number" min="0" step="0.01" value="0" required/></label>
-      <button type="submit" class="secondary">Update savings balance</button>
-    </form>
-    <p class="muted savings-balance-note">This updates the balance used for planning. It does not move money.</p>
-    <p id="savingsBalanceStatus" class="muted" aria-live="polite"></p>
-  </section>
-  <section class="savings-goals-section" aria-labelledby="savingsGoalsTitle">
-    <div class="section-title-row"><div><h2 id="savingsGoalsTitle">Other savings goals</h2><p class="muted">Set a target for an upcoming expense or another priority.</p></div></div>
-    <form id="savingsGoalForm" class="goal-form">
-      <label>Goal name<input id="savingsGoalName" maxlength="60" placeholder="e.g. Car repairs" required/></label>
-      <label>Target amount (CAD)<input id="savingsGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label>
-      <label>Monthly amount to aim for (CAD, optional)<input id="savingsGoalMonthlyTarget" type="number" min="0" step="0.01" placeholder="150"/></label>
-      <button class="primary" type="submit">Add savings goal</button>
-    </form>
-    <div id="savingsGoals" class="stash-goals"></div>
-  </section>
-  <section class="savings-goals-section" aria-labelledby="monthlySavingsTitle">
-    <div class="section-title-row"><div><h2 id="monthlySavingsTitle">Automatic monthly savings</h2><p class="muted">Choose a percentage of income and how many months to save toward a goal.</p></div></div>
-    <form id="monthlyDepositForm" class="settings-grid savings-schedule-form">
-      <label class="check-label full-width"><input id="monthlyDepositEnabled" type="checkbox"/> Enable scheduled test-mode savings</label>
-      <label>Monthly income percentage (%)<input id="monthlyDepositPct" type="number" min="0.1" max="50" step="0.1" value="5" required/></label>
-      <label>Duration (months)<input id="monthlyDepositMonths" type="number" min="1" max="60" value="6" required/></label>
-      <label>Day of month<input id="monthlyDepositDay" type="number" min="1" max="28" value="1" required/></label>
-      <label>Savings goal<select id="monthlyDepositGoalId"><option value="">Use general savings</option></select></label>
-      <div class="savings-estimate full-width"><span>Estimated monthly amount</span><strong id="monthlyDepositEstimate">$0.00</strong><span id="monthlyDepositEstimateDetail" class="muted">Based on the monthly income in your profile.</span></div>
-      <label class="check-label full-width"><input id="monthlyDepositConsent" type="checkbox"/> I understand this uses test transactions only. No real money moves.</label>
-      <div class="button-row full-width"><button class="primary" type="submit">Save savings schedule</button><span id="monthlyDepositStatus" class="muted" aria-live="polite"></span></div>
-    </form>
-    <p class="muted savings-balance-note">In this prototype, a saved schedule is only executed in a configured server-backed test environment. Browser-saved schedules are reminders, not automatic transfers.</p>
-  </section>
-  <section class="savings-goals-section" aria-labelledby="savingsContributionTitle">
-    <div class="section-title-row"><div><h2 id="savingsContributionTitle">Record a savings contribution</h2><p class="muted">Log money you have already set aside. This updates Glim’s planning figures but does not move funds.</p></div></div>
-    <form id="savingsContributionForm" class="compact-form">
-      <label>Amount saved (CAD)<input id="savingsContributionAmount" type="number" min="0.01" step="0.01" placeholder="50" required/></label>
-      <label>Date saved<input id="savingsContributionDate" type="date" required/></label>
-      <label>Apply to goal<select id="savingsContributionGoal"><option value="">General savings</option></select></label>
-      <button class="primary" type="submit">Record savings</button>
-    </form>
-    <div id="savingsStreakSummary" class="savings-streak-summary" aria-live="polite"></div>
-  </section>
-  <section class="savings-goals-section" aria-labelledby="donationTitle">
-    <div class="section-title-row"><div><h2 id="donationTitle">Give to a charity</h2><p class="muted">Record a planned donation or test the payout flow where a test connection is configured.</p></div></div>
-    <form id="donationForm" class="compact-form">
-      <label>Charity name<input id="donationCharityName" maxlength="100" placeholder="Charity or cause" required/></label>
-      <label>Test recipient email<input id="donationRecipientEmail" type="email" maxlength="254" placeholder="recipient@example.test" required/></label>
-      <label>Donation amount (CAD)<input id="donationAmount" type="number" min="0.01" step="0.01" required/></label>
-      <button class="primary" type="submit">Submit donation test</button>
-    </form>
-    <p class="muted savings-balance-note">This is not a real charity donation. In the configured test environment, it demonstrates a test charge and payout to a test recipient. Your savings balance is a planning figure, not a connected bank savings account.</p>
-    <div id="donationStatus" class="muted" aria-live="polite"></div>
-    <div id="donationHistory" class="donation-history"></div>
-  </section>
-  <span id="savingsBufferStatus" class="visually-hidden">Getting started</span>
-</div>
+<section id="tab-savings" class="tab-panel {{ 'active' if active_section == 'savings' else 'hidden' }}">
+  <div class="page-heading"><div><h1>Savings</h1><p>Use Smart Strategy to balance a savings buffer, your goals, and debt repayment.</p></div></div>
+  <nav class="savings-subtabs" role="tablist" aria-label="Savings views">
+    <button type="button" class="savings-subtab active" id="savingsTabGoals" data-savings-tab="goals" role="tab" aria-selected="true" aria-controls="savingsPanelGoals">Goals</button>
+    <button type="button" class="savings-subtab" id="savingsTabPlan" data-savings-tab="plan" role="tab" aria-selected="false" aria-controls="savingsPanelPlan">Savings plan</button>
+    <button type="button" class="savings-subtab" id="savingsTabContributions" data-savings-tab="contributions" role="tab" aria-selected="false" aria-controls="savingsPanelContributions">Contributions</button>
+    <button type="button" class="savings-subtab hidden" id="savingsTabDonations" data-savings-tab="donations" role="tab" aria-selected="false" aria-controls="savingsPanelDonations">Giving</button>
+  </nav>
+
+  <div class="savings-subpanel active" id="savingsPanelGoals" role="tabpanel" aria-labelledby="savingsTabGoals">
+    <section class="savings-panel">
+      <h2>Savings buffer</h2>
+      <div class="buffer-progress"><div class="progressbar"><span id="bufferFill" style="width:0%"></span></div><div class="buffer-progress-meta"><strong id="savingsBufferSummary">$0.00 saved toward your buffer</strong><span id="savingsBufferProgress" class="muted"></span></div></div>
+      <form id="savingsBalanceForm" class="inline-form"><label>Current savings balance (CAD)<input id="savingsCurrentBalance" type="number" min="0" step="0.01" value="0" required/></label><button type="submit" class="secondary">Update balance</button></form>
+    </section>
+    <section class="savings-panel">
+      <div class="section-title-row"><div><h2>Savings goals</h2><p class="muted">Track the balance and progress for each savings target.</p></div></div>
+      <form id="savingsGoalForm" class="compact-form goal-form"><label>Goal name<input id="savingsGoalName" maxlength="60" placeholder="e.g. Emergency buffer" required/></label><label>Target amount (CAD)<input id="savingsGoalTarget" type="number" min="1" step="0.01" placeholder="1200" required/></label><label>Monthly target (CAD)<input id="savingsGoalMonthlyTarget" type="number" min="0" step="0.01" placeholder="150"/></label><button class="primary" type="submit">Add goal</button></form>
+      <div id="savingsGoals" class="stash-goals"></div>
+      <div id="savingsStreakSummary" class="savings-streak-summary" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <div class="savings-subpanel hidden" id="savingsPanelPlan" role="tabpanel" aria-labelledby="savingsTabPlan" hidden>
+    <section class="savings-panel">
+      <div class="section-title-row"><div><h2>Smart savings plan</h2><p class="muted">Set a sustainable savings percentage alongside your debt repayment plan.</p></div></div>
+      <div class="smart-savings-card"><div><strong id="smartSavingsTitle">Recommended savings amount</strong><p id="smartSavingsReason" class="muted">Based on your entered income, expenses, current savings preference, and active debt plan.</p></div><div class="smart-savings-value"><strong id="smartSavingsMonthlyAmount">$0.00</strong><span id="smartSavingsPctLabel">0% of monthly income</span></div><button type="button" class="secondary" id="applySmartSavingsBtn">Use recommendation</button></div>
+      <form id="monthlyDepositForm" class="settings-grid savings-schedule-form">
+        <label>Monthly income percentage (%)<input id="monthlyDepositPct" type="number" min="0.1" max="50" step="0.1" value="5" required/></label>
+        <label>Duration (months)<input id="monthlyDepositMonths" type="number" min="1" max="60" value="6" required/></label>
+        <label>Day of month<input id="monthlyDepositDay" type="number" min="1" max="28" value="1" required/></label>
+        <label>Savings goal<select id="monthlyDepositGoalId"><option value="">General savings</option></select></label>
+        <div class="savings-estimate full-width"><span>Estimated monthly amount</span><strong id="monthlyDepositEstimate">$0.00</strong><span id="monthlyDepositEstimateDetail" class="muted"></span></div>
+        <label class="check-label full-width"><input id="monthlyDepositEnabled" type="checkbox"/> Enable scheduled saving</label>
+        <label class="check-label full-width"><input id="monthlyDepositConsent" type="checkbox"/> I agree to the schedule and understand that each transfer needs to be authorized where required.</label>
+        <div class="button-row full-width"><button class="primary" type="submit">Save savings plan</button><span id="monthlyDepositStatus" class="muted" aria-live="polite"></span></div>
+      </form>
+      <p class="muted form-help">Glim will show the schedule and the status of any completed transfer. You can change or turn off the schedule here.</p>
+    </section>
+  </div>
+
+  <div class="savings-subpanel hidden" id="savingsPanelContributions" role="tabpanel" aria-labelledby="savingsTabContributions" hidden>
+    <section class="savings-panel">
+      <div class="section-title-row"><div><h2>Record a savings contribution</h2><p class="muted">Log money you have already set aside and apply it to a goal.</p></div></div>
+      <form id="savingsContributionForm" class="compact-form"><label>Amount saved (CAD)<input id="savingsContributionAmount" type="number" min="0.01" step="0.01" placeholder="50" required/></label><label>Date saved<input id="savingsContributionDate" type="date" required/></label><label>Apply to goal<select id="savingsContributionGoal"><option value="">General savings</option></select></label><button class="primary" type="submit">Record contribution</button></form>
+      <div id="savingsContributionHistory" class="savings-contribution-history"></div>
+    </section>
+  </div>
+
+  <div class="savings-subpanel hidden" id="savingsPanelDonations" role="tabpanel" aria-labelledby="savingsTabDonations" hidden>
+    <section id="donationSection" class="savings-panel hidden" aria-labelledby="donationTitle">
+      <div class="section-title-row"><div><h2 id="donationTitle">Give to a charity</h2><p class="muted">Choose a cause and an amount from your recorded savings.</p></div></div>
+      <form id="donationForm" class="compact-form"><label>Charity name<input id="donationCharityName" maxlength="100" placeholder="Charity or cause" required/></label><label>Recipient email<input id="donationRecipientEmail" type="email" maxlength="254" placeholder="recipient@example.com" required/></label><label>Donation amount (CAD)<input id="donationAmount" type="number" min="0.01" step="0.01" required/></label><button class="primary" type="submit">Donate</button></form>
+      <p class="muted form-help">Giving is available once a savings goal is complete. The donation amount cannot exceed your recorded savings balance.</p>
+      <div id="donationStatus" class="muted" aria-live="polite"></div><div id="donationHistory" class="donation-history"></div>
+    </section>
+  </div>
+</section>

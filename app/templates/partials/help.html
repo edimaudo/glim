@@ -1,31 +1,10 @@
 <section id="tab-help" class="tab-panel {{ 'active' if active_section == 'help' else 'hidden' }}">
-  <div class="page-heading">
-    <div><h1>Help</h1><p>Answers to common questions about your plan and its estimates.</p></div>
-  </div>
-  <section class="help-list" aria-label="Glim help topics">
-    <details class="help-item" open>
-      <summary>How does Glim set the suggested amount?</summary>
-      <p>It uses the monthly income and expenses you entered, your savings target, and the minimum balance you want to keep. Check the figures against your real budget before using the estimate.</p>
-    </details>
-    <details class="help-item">
-      <summary>What does Smart Strategy do?</summary>
-      <p>It compares your active debt balances, interest rates, minimum payments, and modeled payoff results, then recommends a repayment order. You can switch to another strategy at any time.</p>
-    </details>
-    <details class="help-item">
-      <summary>What is the savings buffer?</summary>
-      <p>It is cash you aim to keep available for unexpected costs. Glim shows your savings balance against the target, alongside the debt you still owe.</p>
-    </details>
-    <details class="help-item">
-      <summary>What does the payment visualization show?</summary>
-      <p>It compares the estimated debt balance under your chosen strategy with a minimum-payment-only estimate. The figures are projections, not a guarantee of a lender's result.</p>
-    </details>
-    <details class="help-item">
-      <summary>Does Glim move money?</summary>
-      <p>In this browser-based version, Glim calculates your plan but does not move money. The connected workflow in this bundle is limited to test-mode transactions, not live personal account history or real-money transfers. Confirm balances, interest rates, and minimums with your statements.</p>
-    </details>
+  <div class="page-heading"><div><h1>Help</h1><p>Understand the plan and find the right place for each task.</p></div></div>
+  <section class="help-list">
+    <details class="help-item" open><summary>How does Smart Strategy work?</summary><p>Smart Strategy compares debt repayment approaches using the balances, interest rates, minimum payments, income, expenses, and savings goal you have entered. Calculations use deterministic code; the recommendation is an estimate.</p></details>
+    <details class="help-item"><summary>How are reminders chosen?</summary><p>Choose a gentler reminder, a more direct interest estimate, or adaptive wording that responds to whether recent reminders were helpful.</p></details>
+    <details class="help-item"><summary>How is payment streak measured?</summary><p>Glim compares payments you record with the minimum payment and due day you entered. It does not verify payments with your lender, and you should update balances when interest or fees post.</p></details>
+    <details class="help-item"><summary>When can I make a donation?</summary><p>The donation section appears after at least one savings goal reaches its target. Donations are limited to the available savings amount.</p></details>
   </section>
-  <section class="help-guide">
-    <div><h2>Take a quick tour</h2><p class="muted">Review where to find your balances, repayment plan, savings goals, and settings.</p></div>
-    <button type="button" class="secondary" id="startWalkthroughBtn">Start walkthrough</button>
-  </section>
+  <section class="help-guide"><div><h2>App walkthrough</h2><p class="muted">Review Overview, Debt plan, Savings, and Settings.</p></div><button type="button" class="secondary" id="startWalkthroughBtn">Open walkthrough</button></section>
 </section>

@@ -1,48 +1,18 @@
 <section id="tab-overview" class="tab-panel {{ 'active' if active_section == 'overview' else 'hidden' }}">
   <div class="page-heading">
-    <div>
-      <h1 id="welcomeTitle">Welcome to your plan</h1>
-      <p id="welcomeCopy">Your debt and savings at a glance, with a suggested next step.</p>
-    </div>
+    <div><h1 id="welcomeTitle">Welcome to your plan</h1><p id="welcomeCopy">Keep track of debt, savings, and the next milestone in one place.</p></div>
   </div>
-
   <section class="financial-summary" aria-label="Current balances">
-    <article class="summary-item">
-      <span class="data-label">Debt remaining</span>
-      <strong id="debtBalance" class="summary-amount">$0.00</strong>
-      <small id="debtInfo">Add a debt to see your repayment estimate.</small>
-      <a class="text-link summary-link" href="/app/plan" data-tab="plan">View debt plan</a>
-    </article>
-    <article class="summary-item">
-      <span class="data-label">Savings balance</span>
-      <strong id="savingsBalance" class="summary-amount">$0.00</strong>
-      <div class="progressbar" aria-label="Savings buffer progress"><span id="savingsFill"></span></div>
-      <small id="shieldInfo">Target: $0.00</small>
-      <a class="text-link summary-link" href="/app/savings" data-tab="savings">View savings</a>
-    </article>
+    <article class="summary-item"><span class="data-label">Debt remaining</span><strong id="debtBalance" class="summary-amount">$0.00</strong><small id="debtInfo">Add a debt to see your repayment estimate.</small><a class="text-link summary-link" href="/app/plan" data-tab="plan">View debt plan</a></article>
+    <article class="summary-item"><span class="data-label">Savings balance</span><strong id="savingsBalance" class="summary-amount">$0.00</strong><div class="progressbar" role="progressbar" aria-label="Savings buffer progress"><span id="savingsFill"></span></div><small id="shieldInfo">Target: $0.00</small><a class="text-link summary-link" href="/app/savings" data-tab="savings">View savings</a></article>
   </section>
-
-  <section class="next-step-section" aria-labelledby="nextStepTitle">
-    <div class="next-step-main">
-      <div>
-        <h2 id="nextStepTitle">Suggested amount</h2>
-        <p class="section-intro">Estimated from your monthly budget, savings target, and minimum balance.</p>
-      </div>
-      <strong id="suggestedAmount" class="daily-amount">$0.00</strong>
-    </div>
-    <div class="allocation-row" aria-label="Suggested allocation">
-      <div><span>To savings</span><strong id="savingsAllocation">—</strong></div>
-      <div><span>Toward debt</span><strong id="debtAllocation">—</strong></div>
-    </div>
-    <div class="next-step-actions">
-      <button class="primary" id="approveDrip" type="button">Review debt plan</button>
-      <p id="dripStatusNote" class="muted small-note">Review the estimate before deciding what to do next.</p>
-    </div>
-    <details class="plain-details calculation-details">
-      <summary>How this amount is calculated</summary>
-      <p>The estimate uses the income and expenses you entered, your minimum balance, and the savings percentage you selected. Confirm your current account balance before making any payment.</p>
-    </details>
+  <section class="streak-overview" aria-labelledby="overviewStreakTitle">
+    <div><span class="data-label">CONSISTENCY</span><h2 id="overviewStreakTitle">Your payment streak</h2><p id="overviewStreakCopy" class="muted">Record debt payments to track how consistently you meet due dates.</p></div>
+    <div class="streak-summary-metrics"><strong id="overviewStreakValue">0 months</strong><span id="overviewStreakStage">Getting started</span></div>
   </section>
-
+  <section class="overview-actions">
+    <div><h2>Your money plan</h2><p class="muted" id="overviewStrategyCopy">Smart Strategy considers your budget, debt costs, and savings goals together.</p></div>
+    <div class="button-row"><a class="primary button-link" href="/app/plan" data-tab="plan">Review debt plan</a><a class="secondary button-link" href="/app/savings" data-tab="savings">Manage savings</a></div>
+  </section>
   <div id="debtPaidOffNotice" class="callout hidden" aria-live="polite"></div>
 </section>

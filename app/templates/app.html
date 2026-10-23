@@ -9,45 +9,30 @@
       <a class="tab {{ 'active' if active_section == 'overview' else '' }}" href="/app/overview" data-tab="overview" {% if active_section == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a class="tab {{ 'active' if active_section == 'plan' else '' }}" href="/app/plan" data-tab="plan" {% if active_section == 'plan' %}aria-current="page"{% endif %}>Debt plan</a>
       <a class="tab {{ 'active' if active_section == 'savings' else '' }}" href="/app/savings" data-tab="savings" {% if active_section == 'savings' %}aria-current="page"{% endif %}>Savings</a>
-      <a class="tab {{ 'active' if active_section == 'insights' else '' }}" href="/app/insights" data-tab="insights" {% if active_section == 'insights' %}aria-current="page"{% endif %}>Smart Strategy</a>
       <a class="tab {{ 'active' if active_section == 'settings' else '' }}" href="/app/settings" data-tab="settings" {% if active_section == 'settings' %}aria-current="page"{% endif %}>Settings</a>
       <a class="tab {{ 'active' if active_section == 'help' else '' }}" href="/app/help" data-tab="help" {% if active_section == 'help' %}aria-current="page"{% endif %}>Help</a>
     </nav>
 
     {% include "partials/overview.html" %}
     {% include "partials/plan.html" %}
-    <section id="tab-savings" class="tab-panel {{ 'active' if active_section == 'savings' else 'hidden' }}">
-      <div class="page-heading"><div><h1>Savings</h1><p>Build a buffer for unexpected costs and track other savings goals.</p></div></div>
-      {% include "partials/savings.html" %}
-    </section>
-    {% include "partials/insights.html" %}
+    {% include "partials/savings.html" %}
     {% include "partials/settings.html" %}
     {% include "partials/help.html" %}
   </section>
 </main>
-<dialog id="debtPaymentDialog" class="app-dialog" aria-labelledby="debtPaymentDialogTitle">
-  <form id="debtPaymentForm" method="dialog" class="dialog-form">
-    <h2 id="debtPaymentDialogTitle">Record a debt payment</h2>
-    <p class="muted">This records a payment you have already made and reduces Glim’s tracked balance by that amount. Glim does not verify it with your lender, and interest or fees may need a later balance update.</p>
-    <input id="debtPaymentDebtId" type="hidden"/>
-    <label>Payment amount (CAD)<input id="debtPaymentAmount" type="number" min="0.01" step="0.01" required/></label>
-    <label>Date paid<input id="debtPaymentDate" type="date" required/></label>
-    <div class="button-row"><button class="primary" type="submit">Save payment record</button><button class="secondary" type="button" id="cancelDebtPayment">Cancel</button></div>
-    <p id="debtPaymentResult" class="muted" aria-live="polite"></p>
-  </form>
-</dialog>
+<dialog id="debtPaymentDialog" class="app-dialog" aria-labelledby="debtPaymentDialogTitle"><form id="debtPaymentForm" method="dialog" class="dialog-form"><h2 id="debtPaymentDialogTitle">Record a debt payment</h2><p class="muted">Enter a payment you have already made. This updates Glim’s tracked balance, but is not verified with your lender.</p><input id="debtPaymentDebtId" type="hidden"/><label>Payment amount (CAD)<input id="debtPaymentAmount" type="number" min="0.01" step="0.01" required/></label><label>Date paid<input id="debtPaymentDate" type="date" required/></label><div class="button-row"><button class="primary" type="submit">Save payment</button><button class="secondary" type="button" id="cancelDebtPayment">Cancel</button></div><p id="debtPaymentResult" class="muted" aria-live="polite"></p></form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="walkthroughOverlay" class="walkthrough-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="walkthroughTitle" aria-describedby="walkthroughCopy" aria-hidden="true">
   <div class="walkthrough-dialog">
-    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 6</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
+    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 5</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
     <h2 id="walkthroughTitle">Quick guide</h2>
-    <p id="walkthroughCopy">Six sections for managing debt, savings, strategy, and settings.</p>
+    <p id="walkthroughCopy">Five tabs for managing debt, savings, reminders, and progress.</p>
     <div class="walkthrough-actions"><button type="button" class="secondary" id="walkthroughBackBtn" disabled>Back</button><button type="button" class="primary" id="walkthroughNextBtn">Next</button></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="/storage-config.js"></script>
-<script src="/static/storage.js?v=20261019layout1"></script>
-<script src="/static/app.js?v=20261019layout1"></script>
+<script src="/static/storage.js?v=20261023sharedsmart"></script>
+<script src="/static/app.js?v=20261023sharedsmart"></script>
 {% endblock %}

@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% set app_shell = false %}
-{% set hide_header_signin = true %}
 {% block title %}Sign in to Glim{% endblock %}
 {% block main %}
 <main class="shell signin-shell">
   <section class="signin-page" aria-labelledby="signinTitle">
-    <h1 id="signinTitle">Sign in</h1>
+    <a class="back-home" href="/">← Back to Glim</a>
+    <h1 id="signinTitle">Sign in to your plan</h1>
+    <p>Enter your email to continue to Glim.</p>
     <form id="authForm" class="auth-form">
       <label for="authEmail">Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
       <button class="primary" type="submit">Continue</button>
@@ -16,6 +17,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="/storage-config.js"></script>
-<script src="/static/storage.js?v=20261018simple2"></script>
-<script src="/static/signin.js?v=20261018simple2"></script>
+<script src="/static/storage.js?v=20261014copyfix"></script>
+<script src="/static/signin.js?v=20261014copyfix"></script>
 {% endblock %}

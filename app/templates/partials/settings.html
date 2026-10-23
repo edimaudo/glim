@@ -47,12 +47,8 @@
         <label>Debt reminder tone<select id="debtReminderTone"><option value="zen">Zen · gentle and supportive</option><option value="direct">Direct · show estimated interest</option><option value="adaptive">Adaptive · adjust to your responses</option></select></label>
       </div>
       <div class="button-row settings-save-row"><button class="primary" id="saveNotifBtn" type="button">Save reminders</button><button class="secondary hidden" id="pushEnableBtn" type="button" disabled>Enable browser alerts</button></div>
-      <p id="externalNotificationStatus" class="muted" aria-live="polite">In-app reminders are available.</p>
-      <div class="reminder-preview">
-        <div><h3>Preview a debt reminder</h3><p class="muted">Try the wording before saving your preference.</p></div>
-        <button class="secondary" id="nudgeBtn" type="button">Preview reminder</button>
-        <div id="nudgePreview" class="hidden" aria-live="polite"><strong id="nudgeText"></strong><p id="nudgeWhy" class="muted"></p><div class="button-row"><button class="secondary nudge-action" data-response="acted" type="button">Took a step</button><button class="secondary nudge-action" data-response="opened" type="button">Helpful</button><button class="secondary nudge-action" data-response="snoozed" type="button">Later</button><button class="secondary nudge-action" data-response="dismissed" type="button">Not helpful</button></div></div>
-      </div>
+      <p id="externalNotificationStatus" class="muted" aria-live="polite">Choose how Glim should check in with you.</p>
+      <div class="reminder-preview"><div class="section-title-row"><div><h3>Reminder preview</h3><p class="muted">See how your selected tone will sound.</p></div><button class="secondary" id="nudgeBtn" type="button">Preview reminder</button></div><div id="nudgePreview" class="hidden" aria-live="polite"><strong id="nudgeText"></strong><p id="nudgeWhy" class="muted"></p><div class="button-row"><button class="secondary nudge-action" data-response="acted" type="button">Took a step</button><button class="secondary nudge-action" data-response="opened" type="button">Helpful</button><button class="secondary nudge-action" data-response="snoozed" type="button">Later</button><button class="secondary nudge-action" data-response="dismissed" type="button">Not helpful</button></div></div></div>
       <div id="inbox" class="inbox-list"></div>
       <span id="aiIntegrationStatus" hidden aria-hidden="true"></span>
     </div>
@@ -63,10 +59,13 @@
     <div class="settings-group-body">
       <div class="section-title-row"><div><h2>Recent changes</h2><p class="muted">Review updates made to your plan.</p></div><button class="secondary" id="auditBtn" type="button">Refresh</button></div>
       <div id="auditList" class="audit-list"></div>
-      <div class="privacy-row"><p class="muted" id="privacyStorageStatus">Your plan is saved with your account. Export or delete your data below.</p><div class="button-row"><button class="secondary" id="exportBtn" type="button">Export data</button><button class="secondary danger" id="deleteBtn" type="button">Delete data</button></div></div>
+      <div class="privacy-row"><p class="muted" id="privacyStorageStatus">Export a copy of your plan or delete your data from this section.</p><div class="button-row"><button class="secondary" id="exportBtn" type="button">Export data</button><button class="secondary danger" id="deleteBtn" type="button">Delete data</button></div></div>
       <div id="dataMsg" class="muted" aria-live="polite"></div>
     </div>
   </details>
 
-
+  <details class="settings-group">
+    <summary>Quick guide</summary>
+    <div class="settings-group-body tour-section"><p class="muted">A short explanation of Overview, Debt plan, and Settings.</p><button type="button" class="secondary" id="startWalkthroughBtn">Open guide</button></div>
+  </details>
 </section>

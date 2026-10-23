@@ -152,19 +152,19 @@ class DB:
                   amount REAL NOT NULL DEFAULT 0, due_day INTEGER NOT NULL DEFAULT 1, consent_at TEXT,
                   last_attempt_month TEXT, last_run_month TEXT, status TEXT NOT NULL DEFAULT 'disabled',
                   last_error TEXT, last_run_at TEXT, order_id TEXT, payout_batch_id TEXT,
-                  income_pct REAL NOT NULL DEFAULT 0, duration_months INTEGER NOT NULL DEFAULT 12,
+                  income_pct REAL NOT NULL DEFAULT 0, duration_months INTEGER NOT NULL DEFAULT 6,
                   goal_id INTEGER, start_month TEXT
                 );
                 CREATE TABLE IF NOT EXISTS debt_payment_events (
                   id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL,
                   payment_date TEXT NOT NULL, amount REAL NOT NULL, created_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_debt_payment_events_debt_date ON debt_payment_events(debt_id, payment_date);
+                CREATE INDEX IF NOT EXISTS idx_debt_payment_events_debt_date ON debt_payment_events(debt_id,payment_date);
                 CREATE TABLE IF NOT EXISTS savings_goal_events (
                   id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id INTEGER, contribution_date TEXT NOT NULL,
                   amount REAL NOT NULL, source TEXT NOT NULL DEFAULT 'self_reported', created_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_savings_goal_events_goal_date ON savings_goal_events(goal_id, contribution_date);
+                CREATE INDEX IF NOT EXISTS idx_savings_goal_events_date ON savings_goal_events(goal_id,contribution_date);
                 CREATE TABLE IF NOT EXISTS savings_donations (
                   id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT NOT NULL UNIQUE,
                   charity_name TEXT NOT NULL, recipient_email TEXT NOT NULL, amount REAL NOT NULL,
@@ -197,7 +197,7 @@ class DB:
             auto_cols = {row[1] for row in c.execute("PRAGMA table_info(monthly_auto_deposit)").fetchall()}
             for column, ddl in [
                 ("income_pct", "ALTER TABLE monthly_auto_deposit ADD COLUMN income_pct REAL NOT NULL DEFAULT 0"),
-                ("duration_months", "ALTER TABLE monthly_auto_deposit ADD COLUMN duration_months INTEGER NOT NULL DEFAULT 12"),
+                ("duration_months", "ALTER TABLE monthly_auto_deposit ADD COLUMN duration_months INTEGER NOT NULL DEFAULT 6"),
                 ("goal_id", "ALTER TABLE monthly_auto_deposit ADD COLUMN goal_id INTEGER"),
                 ("start_month", "ALTER TABLE monthly_auto_deposit ADD COLUMN start_month TEXT"),
             ]:
@@ -233,12 +233,12 @@ class DB:
         ]
         c.executemany("INSERT OR IGNORE INTO lessons(id,slug,title,description,points,prompt,answer_hint) VALUES(?,?,?,?,?,?,?)", lessons)
         cosmetics = [
-            (1, "Leaf trail", "A calm trail effect for your forest path.", 80, "leaf"),
-            (2, "Acorn crown", "A tiny crown for a consistent week.", 120, "acorn"),
-            (3, "Moonlit grove", "A night look for the forest.", 180, "moon"),
+            (1, "Leaf trail", "A calm trail effect for your forest path.", 80, "🍃"),
+            (2, "Acorn crown", "A tiny crown for a consistent week.", 120, "🌰"),
+            (3, "Moonlit grove", "A night look for the forest.", 180, "🌙"),
             (101, "Striped scarf", "A soft scarf for your otter.", 40, "scarf"),
             (102, "Rain hat", "A small hat for rainy days.", 70, "hat"),
-            (103, "Shell glasses", "A pair of round shell-inspired glasses.", 100, "glasses"),
+            (103, "Shell glasses", "Round shell-inspired glasses.", 100, "glasses"),
             (104, "Blue float", "A bright float for the river.", 140, "float"),
         ]
         c.executemany("INSERT OR IGNORE INTO cosmetics(id,name,description,cost,icon) VALUES(?,?,?,?,?)", cosmetics)
@@ -247,7 +247,7 @@ class DB:
         with self.connect() as c:
             for table in ["app_state", "debts", "debt_payment_events", "savings_goal_events", "savings_donations", "ledger_entries", "payment_settlements", "scout_suggestions", "agent_actions", "webhook_events", "nudges", "nudge_arm_stats", "points_events", "squads", "squad_members", "cheers", "lesson_progress", "user_cosmetics", "push_subscriptions", "stash_goals", "squad_goals", "squad_goal_events", "squad_cosmetics"]:
                 c.execute(f"DELETE FROM {table}")
-            c.execute("UPDATE monthly_auto_deposit SET enabled=0,amount=0,due_day=1,consent_at=NULL,last_attempt_month=NULL,last_run_month=NULL,status='disabled',last_error=NULL,last_run_at=NULL,order_id=NULL,payout_batch_id=NULL,income_pct=0,duration_months=12,goal_id=NULL,start_month=NULL WHERE id=1")
+            c.execute("UPDATE monthly_auto_deposit SET enabled=0,amount=0,due_day=1,consent_at=NULL,last_attempt_month=NULL,last_run_month=NULL,status='disabled',last_error=NULL,last_run_at=NULL,order_id=NULL,payout_batch_id=NULL WHERE id=1")
 
 
 def now_iso() -> str:
@@ -461,6 +461,28 @@ class PayPalSandbox:
     def get_payout_batch(self, batch_id):
         return self._request("GET", f"/v1/payments/payouts/{batch_id}").json()
 
+    def create_recipient_payout(self, amount, recipient_email, charity_name, reference, request_id=None):
+        email = str(recipient_email or "").strip()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            raise PayPalAPIError("Enter a valid recipient email address.")
+        value = round(float(amount), 2)
+        if value <= 0:
+            raise PayPalAPIError("Donation amount must be greater than zero.")
+        suffix = hashlib.sha256(str(reference).encode()).hexdigest()[:20]
+        body = {
+            "sender_batch_header": {
+                "sender_batch_id": f"glim-donation-{suffix}",
+                "email_subject": "A Glim donation payment",
+                "email_message": f"A donation payment was prepared for {str(charity_name)[:100]}.",
+            },
+            "items": [{"recipient_type":"EMAIL","amount":{"value":f"{value:.2f}","currency":"CAD"},"receiver":email,"note":f"Glim donation: {str(charity_name)[:100]}"}],
+        }
+        payload = self._request("POST", "/v1/payments/payouts", json_body=body,
+                                headers={"PayPal-Request-Id": request_id or f"glim-donation-{suffix}"}).json()
+        batch_id = (payload.get("batch_header") or {}).get("payout_batch_id")
+        self._register_correlation(batch_id, "donation_payout")
+        return payload
+
     def create_payout(self, debt_amount, stash_amount, reference, request_id=None):
         if debt_amount>0 and not self.lender_email: raise PayPalAPIError("Set PAYPAL_LENDER_EMAIL for the Sandbox debt Payouts step.")
         if stash_amount>0 and not self.stash_email: raise PayPalAPIError("Set PAYPAL_STASH_EMAIL for the Sandbox savings Payouts step.")
@@ -473,35 +495,6 @@ class PayPalSandbox:
         stable = "glim-payout-" + suffix
         payload = self._request("POST","/v1/payments/payouts",json_body=body,headers={"PayPal-Request-Id":request_id or stable}).json()
         self._register_correlation((payload.get("batch_header") or {}).get("payout_batch_id"), "payout_batch")
-        return payload
-
-    def create_recipient_payout(self, amount, recipient_email, charity_name, reference, request_id=None):
-        """Submit a test-mode payout to a configured sandbox recipient email."""
-        email = str(recipient_email or "").strip()
-        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
-            raise PayPalAPIError("Enter a valid recipient email address.")
-        value = round(float(amount), 2)
-        if value <= 0:
-            raise PayPalAPIError("Donation amount must be greater than zero.")
-        suffix = hashlib.sha256(str(reference).encode()).hexdigest()[:20]
-        batch_id = re.sub(r"[^A-Za-z0-9_-]", "-", f"glim-donation-{suffix}")[:60]
-        body = {
-            "sender_batch_header": {
-                "sender_batch_id": batch_id,
-                "email_subject": "A Glim test-mode donation",
-                "email_message": f"A test-mode donation was prepared for {str(charity_name)[:100]}. No real money is transferred in the sandbox.",
-            },
-            "items": [{
-                "recipient_type": "EMAIL",
-                "amount": {"value": f"{value:.2f}", "currency": "CAD"},
-                "receiver": email,
-                "note": f"Glim test-mode donation: {str(charity_name)[:100]}",
-            }],
-        }
-        stable = "glim-donation-payout-" + suffix
-        payload = self._request("POST", "/v1/payments/payouts", json_body=body,
-                                headers={"PayPal-Request-Id": request_id or stable}).json()
-        self._register_correlation((payload.get("batch_header") or {}).get("payout_batch_id"), "donation_payout")
         return payload
 
     def verify_webhook(self, headers, raw_body):
@@ -529,10 +522,12 @@ def get_state(db):
         state = {"profile":json.loads(row["profile_json"]), "paypal":json.loads(row["paypal_json"]), "stash":json.loads(row["stash_json"]), "game":json.loads(row["game_json"]), "plan":json.loads(row["plan_json"]), "paused":bool(row["paused"]), "notifications":json.loads(row["notifications_json"] or "{}"), "pending_redirect":json.loads(row["pending_redirect_json"] or "null")}
     state.setdefault("game", {})
     state["game"].setdefault("last_drip_date", None)
-    state["game"].setdefault("freeze_used_month", None)
-    state["game"].setdefault("freeze_applied_date", None)
     state["game"].setdefault("otter_equipped_id", None)
     state.setdefault("notifications", {}).setdefault("debt_reminder_tone", (state.get("profile") or {}).get("debt_reminder_tone", "zen"))
+    state["game"].setdefault("otter_equipped_id", None)
+    state.setdefault("notifications", {}).setdefault("debt_reminder_tone", (state.get("profile") or {}).get("debt_reminder_tone", "zen"))
+    state["game"].setdefault("freeze_used_month", None)
+    state["game"].setdefault("freeze_applied_date", None)
     # A freeze is replenished at the start of each user-local calendar month, but it
     # cannot be stockpiled. The persisted marker prevents repeated use within a month.
     zone = _profile_zone(state)
@@ -581,369 +576,197 @@ def get_debts(db):
 
 
 DEBT_TYPE_LABELS = {
-    "credit_card": "Credit card", "line_of_credit": "Line of credit", "personal_loan": "Personal loan",
-    "student_loan": "Student loan", "auto_loan": "Auto loan", "mortgage": "Mortgage",
-    "buy_now_pay_later": "Buy now, pay later", "medical_bill": "Medical bill",
-    "tax_debt": "Tax debt", "payday_loan": "Payday loan", "other": "Other obligation",
+    "credit_card":"Credit card", "loan":"Loan or line of credit", "line_of_credit":"Line of credit",
+    "personal_loan":"Personal loan", "student_loan":"Student loan", "auto_loan":"Auto loan",
+    "mortgage":"Mortgage", "buy_now_pay_later":"Buy now, pay later", "medical_bill":"Medical bill",
+    "tax_debt":"Tax debt", "payday_loan":"Payday loan", "other":"Other obligation",
 }
 
-
 def _month_shift(year, month, offset):
-    index = year * 12 + month - 1 + offset
-    return index // 12, index % 12 + 1
+    value=year*12+month-1+offset
+    return value//12,value%12+1
 
-
-def _month_key(year, month):
-    return f"{year:04d}-{month:02d}"
-
+def _month_key(year,month): return f"{year:04d}-{month:02d}"
 
 def record_debt_payment(db, debt_id, amount, payment_date):
-    """Record a user-declared payment and award currency once a minimum is met before due day."""
-    paid_date = payment_date if isinstance(payment_date, date) else date.fromisoformat(str(payment_date))
-    amount = round(float(amount), 2)
-    if amount <= 0:
-        raise ValueError("Enter a payment amount greater than $0.00.")
+    paid_date=payment_date if isinstance(payment_date,date) else date.fromisoformat(str(payment_date))
+    value=round(float(amount),2)
+    if value<=0: raise ValueError("Enter a payment amount greater than zero.")
     with db.connect() as c:
-        debt_row = c.execute("SELECT * FROM debts WHERE id=?", (int(debt_id),)).fetchone()
-        if not debt_row:
-            raise ValueError("That debt could not be found.")
-        debt = dict(debt_row)
-        if debt.get("status") != "active":
-            raise ValueError("Payments can only be recorded for active debts.")
-        due_day = min(int(debt.get("due_day") or 15), 31)
-        month_key = paid_date.strftime("%Y-%m")
-        due_date = f"{month_key}-{min(due_day, 28):02d}"
-        prior_paid_by_due = c.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM debt_payment_events WHERE debt_id=? AND substr(payment_date,1,7)=? AND CAST(substr(payment_date,9,2) AS INTEGER)<=?",
-            (int(debt_id), month_key, due_day),
-        ).fetchone()[0]
-        c.execute("INSERT INTO debt_payment_events(debt_id,payment_date,amount,created_at) VALUES(?,?,?,?)",
-                  (int(debt_id), paid_date.isoformat(), amount, now_iso()))
-        total_paid_by_due = float(prior_paid_by_due or 0) + (amount if paid_date.day <= due_day else 0)
-        crossed_minimum = total_paid_by_due + 0.001 >= float(debt["minimum"] or 0) and float(prior_paid_by_due or 0) + 0.001 < float(debt["minimum"] or 0)
-        # A user-reported payment reduces the tracked balance. Future interest and fees
-        # are not predicted in the stored balance; the user should refresh it from statements.
-        new_balance = round(max(0.0, float(debt["balance"] or 0) - amount), 2)
-        new_status = "defeated" if new_balance <= 0.01 else "active"
-        c.execute("UPDATE debts SET balance=?,status=? WHERE id=?", (0.0 if new_status == "defeated" else new_balance, new_status, int(debt_id)))
-        # The event date must be on or before the due day to count toward this month's minimum.
-        paid_on_time = total_paid_by_due + 0.001 >= float(debt["minimum"] or 0)
-    state_after_payment = get_state(db)
-    if new_status == "defeated":
-        state_after_payment["pending_redirect"] = {"debt_name": debt.get("name") or "Debt", "freed_payment": float(debt.get("minimum") or 0), "debt_id": int(debt_id), "user_reported": True}
-    write_state(db, state_after_payment)
-    awarded = 0
-    if crossed_minimum and paid_on_time:
-        state = get_state(db)
-        state["game"]["points"] = int(state["game"].get("points", 0)) + 20
-        write_state(db, state)
-        with db.connect() as c:
-            c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)", (f"on-time debt payment {debt_id} {month_key}", 20, now_iso()))
-        awarded = 20
-    log_action(db, "Tactician", "debt_payment_recorded", {"debt_id": int(debt_id), "amount": amount, "payment_date": paid_date.isoformat()},
-               "Record a user-declared payment and check it against the entered minimum and due day.",
-               "User-reported payment; not independently verified", {"paid_on_time": paid_on_time, "currency_awarded": awarded})
-    result = get_debt_progress(db)
-    result["recorded"] = {"debt_id": int(debt_id), "amount": amount, "payment_date": paid_date.isoformat(), "paid_on_time": paid_on_time, "currency_awarded": awarded}
+        row=c.execute("SELECT * FROM debts WHERE id=?",(int(debt_id),)).fetchone()
+        if not row: raise ValueError("That debt could not be found.")
+        debt=dict(row)
+        if debt["status"]!="active": raise ValueError("Only active debts can have a payment recorded.")
+        due_day=min(31,int(debt.get("due_day") or 15)); month=paid_date.strftime("%Y-%m")
+        prior=float(c.execute("SELECT COALESCE(SUM(amount),0) FROM debt_payment_events WHERE debt_id=? AND substr(payment_date,1,7)=? AND CAST(substr(payment_date,9,2) AS INTEGER)<=?",(int(debt_id),month,due_day)).fetchone()[0] or 0)
+        c.execute("INSERT INTO debt_payment_events(debt_id,payment_date,amount,created_at) VALUES(?,?,?,?)",(int(debt_id),paid_date.isoformat(),value,now_iso()))
+        total_by_due=prior+(value if paid_date.day<=due_day else 0)
+        on_time=total_by_due+0.001>=float(debt["minimum"] or 0)
+        old_balance=float(debt["balance"] or 0); new_balance=round(max(0,old_balance-value),2); new_status="defeated" if new_balance<=0.01 else "active"
+        c.execute("UPDATE debts SET balance=?,status=? WHERE id=?",(0 if new_status=="defeated" else new_balance,new_status,int(debt_id)))
+    state=get_state(db); awarded=0
+    if on_time and prior+0.001<float(debt["minimum"] or 0) and paid_date.day<=due_day:
+        awarded=20;state["game"]["points"]=int(state["game"].get("points",0))+awarded
+        with db.connect() as c:c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",(f"on-time-debt:{debt_id}:{month}",awarded,now_iso()))
+    if new_status=="defeated": state["pending_redirect"]={"debt_name":debt["name"],"freed_payment":float(debt["minimum"] or 0),"debt_id":int(debt_id),"user_reported":True}
+    write_state(db,state)
+    log_action(db,"Glim","debt_payment_recorded",{"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat()},"Record a payment reported by the user; update the tracked balance and check minimum due date.","User-reported; not independently verified",{"paid_on_time":on_time,"currency_awarded":awarded})
+    result=get_debt_progress(db);result["recorded"]={"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat(),"paid_on_time":on_time,"currency_awarded":awarded,"balance_after":0 if new_status=="defeated" else new_balance}
     return result
-
 
 def get_debt_progress(db):
-    state = get_state(db)
-    today = datetime.now(_profile_zone(state)).date()
-    debts = [d for d in get_debts(db) if d.get("status") == "active"]
+    state=get_state(db); now_local=datetime.now(_profile_zone(state)).date(); debts=[d for d in get_debts(db) if d["status"]=="active"]
     with db.connect() as c:
-        raw = [dict(r) for r in c.execute("SELECT debt_id,payment_date,amount FROM debt_payment_events ORDER BY payment_date,id").fetchall()]
-        owned = {int(r[0]) for r in c.execute("SELECT cosmetic_id FROM user_cosmetics").fetchall()}
-        items = [dict(r) for r in c.execute("SELECT * FROM cosmetics WHERE id>=101 ORDER BY id").fetchall()]
-    payments_by_debt_month = {}
-    for payment in raw:
-        key = (int(payment["debt_id"]), str(payment["payment_date"])[:7])
-        item = payments_by_debt_month.setdefault(key, {"total": 0.0, "by_due": 0.0, "last_date": None})
-        item["total"] += float(payment["amount"] or 0)
-        if int(str(payment["payment_date"])[8:10]) <= 31:
-            item["last_date"] = max(item["last_date"] or str(payment["payment_date"]), str(payment["payment_date"]))
+        events=[dict(r) for r in c.execute("SELECT debt_id,payment_date,amount FROM debt_payment_events ORDER BY payment_date,id").fetchall()]
+        owned={int(r[0]) for r in c.execute("SELECT cosmetic_id FROM user_cosmetics").fetchall()}
+        cosmetics=[dict(r) for r in c.execute("SELECT * FROM cosmetics WHERE id>=101 ORDER BY id").fetchall()]
+    summaries={}
+    for event in events:
+        key=(int(event["debt_id"]),str(event["payment_date"])[:7]); summaries.setdefault(key,{"total":0,"by_due":0})["total"]+=float(event["amount"] or 0)
     for debt in debts:
-        for (did, month), summary in payments_by_debt_month.items():
-            if did != int(debt["id"]):
-                continue
-            due_day = min(int(debt.get("due_day") or 15), 31)
-            summary["by_due"] = sum(
-                float(p["amount"] or 0) for p in raw
-                if int(p["debt_id"]) == did and str(p["payment_date"])[:7] == month
-                and int(str(p["payment_date"])[8:10]) <= due_day
-            )
-    by_debt = []
-    today_month = (today.year, today.month)
-    max_due = max([min(int(d.get("due_day") or 15), 31) for d in debts] or [1])
-    if today.day >= max_due:
-        start_year, start_month = today_month
-    else:
-        start_year, start_month = _month_shift(today.year, today.month, -1)
+        due_day=min(31,int(debt.get("due_day") or 15))
+        for (debt_id,month),summary in summaries.items():
+            if debt_id==int(debt["id"]):
+                summary["by_due"]=sum(float(e["amount"] or 0) for e in events if int(e["debt_id"])==debt_id and str(e["payment_date"])[:7]==month and int(str(e["payment_date"])[8:10])<=due_day)
+    rows=[];streaks=[]
     for debt in debts:
-        due_day = min(int(debt.get("due_day") or 15), 31)
-        streak = 0
-        for offset in range(0, 120):
-            y, m = _month_shift(start_year, start_month, -offset)
-            summary = payments_by_debt_month.get((int(debt["id"]), _month_key(y, m)), {})
-            if float(summary.get("by_due", 0)) + 0.001 < float(debt.get("minimum") or 0):
-                break
-            streak += 1
-        current_key = _month_key(today.year, today.month)
-        current = payments_by_debt_month.get((int(debt["id"]), current_key), {})
-        amount_this_month = float(current.get("total", 0))
-        due_status = "paid" if float(current.get("by_due", 0)) + 0.001 >= float(debt.get("minimum") or 0) else ("due" if today.day >= due_day else "upcoming")
-        by_debt.append({
-            "id": int(debt["id"]), "name": debt["name"], "type": debt["type"],
-            "due_day": due_day, "minimum": float(debt["minimum"]),
-            "paid_this_month": round(amount_this_month, 2), "paid_on_time_this_month": due_status == "paid",
-            "payment_status": due_status, "streak": streak,
-        })
-    streak = min((x["streak"] for x in by_debt), default=0) if by_debt else 0
-    if streak >= 12: stage, stage_label = "grown", "Grown otter"
-    elif streak >= 6: stage, stage_label = "confident", "Confident otter"
-    elif streak >= 3: stage, stage_label = "young", "Growing otter"
-    else: stage, stage_label = "pup", "Otter pup"
-    for item in items:
-        item["owned"] = int(item["id"]) in owned
-        item["equipped"] = int(state["game"].get("otter_equipped_id") or 0) == int(item["id"])
-    # Keep only public catalogue fields for the UI.
-    public_items = [{k: item[k] for k in ("id", "name", "description", "cost", "icon", "owned", "equipped")} for item in items]
-    latest_due = None
-    if debts:
-        due_options = []
-        for debt in debts:
-            due_day = min(int(debt.get("due_day") or 15), 28)
-            year, month = today.year, today.month
-            if today.day > due_day:
-                year, month = _month_shift(year, month, 1)
-            due_date = date(year, month, due_day)
-            due_options.append((due_date, debt))
-        latest_due = min(due_options, key=lambda x: x[0])[0].isoformat()
-    return {
-        "on_time_streak": streak, "stage": stage, "stage_label": stage_label,
-        "currency": int(state["game"].get("points", 0)), "equipped_id": state["game"].get("otter_equipped_id"),
-        "debts": by_debt, "items": public_items, "next_due_date": latest_due,
-        "estimated_monthly_interest": round(sum(float(d["balance"] or 0) * float(d["apr"] or 0) / 1200 for d in debts), 2),
-    }
+        due_day=min(31,int(debt.get("due_day") or 15)); month=now_local.strftime("%Y-%m"); current=summaries.get((int(debt["id"]),month),{})
+        paid=float(current.get("by_due",0))+0.001>=float(debt["minimum"] or 0)
+        if paid:start=now_local
+        elif now_local.day<due_day:
+            y,m=_month_shift(now_local.year,now_local.month,-1);start=date(y,m,1)
+        else:start=now_local
+        count=0
+        for offset in range(120):
+            y,m=_month_shift(start.year,start.month,-offset); summary=summaries.get((int(debt["id"]),_month_key(y,m)),{})
+            if float(summary.get("by_due",0))+0.001<float(debt["minimum"] or 0):break
+            count+=1
+        streaks.append(count)
+        status="paid" if paid else ("due" if now_local.day>=due_day else "upcoming")
+        rows.append({"id":int(debt["id"]),"name":debt["name"],"type":debt["type"],"due_day":due_day,"minimum":float(debt["minimum"] or 0),"paid_this_month":round(float(current.get("total",0)),2),"paid_on_time_this_month":paid,"payment_status":status,"streak":count})
+    streak=min(streaks,default=0)
+    stage,label=("grown","Grown otter") if streak>=12 else (("confident","Confident otter") if streak>=6 else (("young","Growing otter") if streak>=3 else ("pup","Otter pup")))
+    items=[]
+    for item in cosmetics:
+        item.update({"owned":int(item["id"]) in owned,"equipped":int(state["game"].get("otter_equipped_id") or 0)==int(item["id"])})
+        items.append({k:item[k] for k in ("id","name","description","cost","icon","owned","equipped")})
+    next_due=None
+    for debt in debts:
+        due_day=min(28,int(debt.get("due_day") or 15)); due=date(now_local.year,now_local.month,due_day)
+        if due<now_local:
+            y,m=_month_shift(now_local.year,now_local.month,1);due=date(y,m,due_day)
+        next_due=due if next_due is None or due<next_due else next_due
+    return {"on_time_streak":streak,"stage":stage,"stage_label":label,"currency":int(state["game"].get("points",0)),"equipped_id":state["game"].get("otter_equipped_id"),"debts":rows,"items":items,"next_due_date":next_due.isoformat() if next_due else None,"estimated_monthly_interest":round(sum(float(d["balance"] or 0)*float(d["apr"] or 0)/1200 for d in debts),2)}
 
-
-def buy_otter_item(db, item_id):
-    state = get_state(db)
+def buy_otter_item(db,item_id):
+    state=get_state(db)
     with db.connect() as c:
-        item = c.execute("SELECT * FROM cosmetics WHERE id=? AND id>=101", (int(item_id),)).fetchone()
-        owned = c.execute("SELECT 1 FROM user_cosmetics WHERE cosmetic_id=?", (int(item_id),)).fetchone()
-        if not item:
-            raise ValueError("Otter item not found.")
-        if owned:
-            return get_debt_progress(db)
-        cost = int(item["cost"])
-        if int(state["game"].get("points", 0)) < cost:
-            raise ValueError(f"You need {cost} shells for this item.")
-        state["game"]["points"] = int(state["game"].get("points", 0)) - cost
-        write_state(db, state)
-        c.execute("INSERT INTO user_cosmetics(cosmetic_id,purchased_at) VALUES(?,?)", (int(item_id), now_iso()))
-    log_action(db, "Glim", "otter_customization_purchased", {"item_id": int(item_id)}, "Use earned in-app currency to customize the otter.", "User confirmed purchase", {"cost": cost})
+        item=c.execute("SELECT * FROM cosmetics WHERE id=? AND id>=101",(int(item_id),)).fetchone()
+        owned=c.execute("SELECT 1 FROM user_cosmetics WHERE cosmetic_id=?",(int(item_id),)).fetchone()
+        if not item:raise ValueError("Otter item not found.")
+        if not owned:
+            if int(state["game"].get("points",0))<int(item["cost"]):raise ValueError("Not enough in-app currency for this item.")
+            state["game"]["points"]-=int(item["cost"]);write_state(db,state)
+            c.execute("INSERT INTO user_cosmetics(cosmetic_id,purchased_at) VALUES(?,?)",(int(item_id),now_iso()))
     return get_debt_progress(db)
 
-
-def equip_otter_item(db, item_id):
-    state = get_state(db)
-    with db.connect() as c:
-        if item_id is not None:
-            owned = c.execute("SELECT 1 FROM user_cosmetics WHERE cosmetic_id=? AND cosmetic_id>=101", (int(item_id),)).fetchone()
-            if not owned:
-                raise ValueError("Unlock the item before equipping it.")
-        state["game"]["otter_equipped_id"] = int(item_id) if item_id is not None else None
-        write_state(db, state)
+def equip_otter_item(db,item_id):
+    state=get_state(db)
+    if item_id is not None:
+        with db.connect() as c:owned=c.execute("SELECT 1 FROM user_cosmetics WHERE cosmetic_id=? AND cosmetic_id>=101",(int(item_id),)).fetchone()
+        if not owned:raise ValueError("Unlock the item before equipping it.")
+    state["game"]["otter_equipped_id"]=int(item_id) if item_id is not None else None;write_state(db,state)
     return get_debt_progress(db)
-
-
-def _donation_list(db):
-    with db.connect() as c:
-        rows = c.execute("SELECT id,charity_name,recipient_email,amount,status,last_error,created_at,updated_at FROM savings_donations ORDER BY id DESC LIMIT 12").fetchall()
-    return [dict(row) for row in rows]
-
-
-def submit_savings_donation(db, charity_name, recipient_email, amount):
-    name = str(charity_name or "").strip()
-    email = str(recipient_email or "").strip()
-    amount = round(float(amount), 2)
-    if len(name) < 2 or len(name) > 100:
-        raise ValueError("Enter a charity name between 2 and 100 characters.")
-    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
-        raise ValueError("Enter a valid recipient email address.")
-    if amount <= 0:
-        raise ValueError("Donation amount must be greater than zero.")
-    state = get_state(db)
-    if amount > round(float(state.get("stash", {}).get("balance", 0) or 0), 2):
-        raise ValueError("The donation amount cannot exceed your recorded savings balance.")
-    if state.get("paypal", {}).get("status") != "connected":
-        raise ValueError("Connect a test payment account before creating a donation test.")
-    paypal = PayPalSandbox(db)
-    if not paypal.configured:
-        raise ValueError("A server-backed payment connection is required. No donation was sent.")
-    reference = "donation-" + uuid.uuid4().hex
-    created = now_iso()
-    with db.connect() as c:
-        c.execute("INSERT INTO savings_donations(reference,charity_name,recipient_email,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                  (reference, name, email, amount, "creating_order", created, created))
-    try:
-        order = paypal.create_order_from_vault(amount, reference, request_id="glim-donation-order-" + reference[-24:])
-        order_id = order.get("id")
-        status = str(order.get("status", "")).upper()
-        if status == "APPROVED" and order_id:
-            order = paypal.capture_order(order_id)
-            status = str(order.get("status", "")).upper()
-        if not order_id or status != "COMPLETED":
-            with db.connect() as c:
-                c.execute("UPDATE savings_donations SET status='capture_pending',order_id=?,last_error=?,updated_at=? WHERE reference=?",
-                          (order_id, f"Funding status: {status or 'unknown'}", now_iso(), reference))
-            return {"status": "capture_pending", "reference": reference, "message": "The test payment is not confirmed. Check its status before retrying."}
-        with db.connect() as c:
-            c.execute("UPDATE savings_donations SET status='captured',order_id=?,updated_at=? WHERE reference=?", (order_id, now_iso(), reference))
-        payout = paypal.create_recipient_payout(amount, email, name, reference, request_id="glim-donation-payout-" + reference[-24:])
-        batch_id = (payout.get("batch_header") or {}).get("payout_batch_id")
-        if not batch_id:
-            raise PayPalAPIError("The donation payout was not assigned a batch ID. Manual review is required.")
-        with db.connect() as c:
-            c.execute("UPDATE savings_donations SET status='payout_submitted',payout_batch_id=?,last_error=NULL,updated_at=? WHERE reference=?", (batch_id, now_iso(), reference))
-        log_action(db, "Banker", "savings_donation_submitted", {"reference": reference, "charity_name": name, "amount": amount},
-                   "Collect the chosen amount through the connected test funding source and submit a test payout to the recipient.",
-                   "User confirmed test-mode donation", {"status": "payout_submitted", "payout_batch_id": batch_id})
-        return {"status": "payout_submitted", "reference": reference, "amount": amount, "charity_name": name, "message": "The test payout was submitted; refresh status for final confirmation."}
-    except Exception as exc:
-        with db.connect() as c:
-            c.execute("UPDATE savings_donations SET status='needs_review',last_error=?,updated_at=? WHERE reference=?", (str(exc)[:700], now_iso(), reference))
-        log_action(db, "Banker", "savings_donation_needs_review", {"reference": reference, "amount": amount},
-                   "Stop and require review when a donation flow fails after payment may have been captured.", "Payment action uncertain; no automatic retry", {"error": str(exc)[:700]})
-        raise
-
-
-def refresh_savings_donations(db):
-    paypal = PayPalSandbox(db)
-    if not paypal.configured:
-        return _donation_list(db)
-    with db.connect() as c:
-        rows = [dict(r) for r in c.execute("SELECT * FROM savings_donations WHERE status='payout_submitted' AND payout_batch_id IS NOT NULL ORDER BY id DESC LIMIT 12").fetchall()]
-    for row in rows:
-        try:
-            result = paypal.get_payout_batch(row["payout_batch_id"])
-            status = str((result.get("batch_header") or {}).get("batch_status", "")).upper()
-            if status in {"SUCCESS", "SUCCEEDED"}:
-                with db.connect() as c:
-                    applied = c.execute("UPDATE savings_donations SET status='completed',completed_at=?,updated_at=?,last_error=NULL WHERE id=? AND status='payout_submitted'", (now_iso(), now_iso(), row["id"])).rowcount
-                    if applied:
-                        state = get_state(db)
-                        state["stash"]["balance"] = round(max(0, float(state.get("stash", {}).get("balance", 0)) - float(row["amount"])), 2)
-                        write_state(db, state)
-                        # A donation reduces goal allocations as well as the total planning balance.
-                        left = float(row["amount"])
-                        with db.connect() as c:
-                            goals = c.execute("SELECT * FROM stash_goals WHERE saved_amount>0 ORDER BY id DESC").fetchall()
-                            for goal in goals:
-                                if left <= 0: break
-                                take = min(left, float(goal["saved_amount"] or 0))
-                                remaining = round(max(0, float(goal["saved_amount"] or 0) - take), 2)
-                                status_goal = "active" if goal["status"] == "completed" and remaining + .001 < float(goal["target_amount"] or 0) else goal["status"]
-                                c.execute("UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?", (remaining, status_goal, None if status_goal == "active" else goal["completed_at"], goal["id"]))
-                                left = round(left - take, 2)
-            elif status in {"DENIED", "FAILED", "CANCELED"}:
-                with db.connect() as c:
-                    c.execute("UPDATE savings_donations SET status='failed',last_error=?,updated_at=? WHERE id=? AND status='payout_submitted'", (f"Payout status: {status}", now_iso(), row["id"]))
-        except Exception as exc:
-            with db.connect() as c:
-                c.execute("UPDATE savings_donations SET last_error=?,updated_at=? WHERE id=? AND status='payout_submitted'", (str(exc)[:700], now_iso(), row["id"]))
-    return _donation_list(db)
-
-
-def _month_keys_backwards(start_date, limit=120):
-    keys = []
-    for offset in range(limit):
-        year, month = _month_shift(start_date.year, start_date.month, -offset)
-        keys.append(_month_key(year, month))
-    return keys
-
 
 def get_savings_progress(db):
-    state = get_state(db)
-    today = datetime.now(_profile_zone(state)).date()
+    state=get_state(db);today=datetime.now(_profile_zone(state)).date()
     with db.connect() as c:
-        goals = [dict(r) for r in c.execute("SELECT * FROM stash_goals ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END,id").fetchall()]
-        events = [dict(r) for r in c.execute("SELECT goal_id,contribution_date,amount,source FROM savings_goal_events ORDER BY contribution_date,id").fetchall()]
-    sums = {}
+        goals=[dict(r) for r in c.execute("SELECT * FROM stash_goals ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END,id").fetchall()]
+        events=[dict(r) for r in c.execute("SELECT goal_id,contribution_date,amount,source FROM savings_goal_events ORDER BY contribution_date,id").fetchall()]
+    totals={}
     for event in events:
-        month = str(event["contribution_date"])[:7]
-        key = (int(event["goal_id"]) if event["goal_id"] is not None else None, month)
-        sums[key] = sums.get(key, 0.0) + float(event["amount"] or 0)
-    goal_rows = []
-    streaks = []
-    months = _month_keys_backwards(today)
+        key=(int(event["goal_id"]) if event["goal_id"] is not None else None,str(event["contribution_date"])[:7]);totals[key]=totals.get(key,0)+float(event["amount"] or 0)
+    goal_rows=[];streaks=[]
     for goal in goals:
-        target = float(goal.get("monthly_target") or 0)
-        streak = 0
-        if target > 0:
-            # Keep the streak alive through the current unfinished month; count backwards from
-            # the previous month until this month has met its target.
-            start_offset = 0 if sums.get((int(goal["id"]), months[0]), 0) + .001 >= target else (1 if today.day < 28 else 0)
-            for month in months[start_offset:]:
-                if sums.get((int(goal["id"]), month), 0) + .001 < target:
-                    break
-                streak += 1
+        target=float(goal.get("monthly_target") or 0);streak=0
+        if target>0:
+            for offset in range(120):
+                y,m=_month_shift(today.year,today.month,-offset);amount=totals.get((int(goal["id"]),_month_key(y,m)),0)
+                if amount+0.001<target:break
+                streak+=1
             streaks.append(streak)
-        goal_rows.append({
-            "id": int(goal["id"]), "name": goal["name"], "target_amount": float(goal["target_amount"]),
-            "saved_amount": float(goal["saved_amount"]), "monthly_target": target, "status": goal["status"],
-            "monthly_streak": streak, "current_month_contribution": round(sums.get((int(goal["id"]), today.strftime("%Y-%m")), 0), 2),
-        })
-    return {"balance": round(float(state.get("stash", {}).get("balance", 0) or 0), 2),
-            "currency": int(state.get("game", {}).get("points", 0)),
-            "savings_streak": max(streaks, default=0), "goals": goal_rows,
-            "contributions": events[-12:][::-1],
-            "note": "Recorded savings contributions are user-reported unless a confirmed test-mode contribution is shown."}
+        goal_rows.append({"id":int(goal["id"]),"name":goal["name"],"target_amount":float(goal["target_amount"]),"saved_amount":float(goal["saved_amount"]),"monthly_target":target,"status":goal["status"],"monthly_streak":streak,"current_month_contribution":round(totals.get((int(goal["id"]),today.strftime("%Y-%m")),0),2)})
+    return {"balance":round(float(state.get("stash",{}).get("balance",0)),2),"currency":int(state["game"].get("points",0)),"savings_streak":max(streaks,default=0),"goals":goal_rows,"contributions":events[-12:][::-1]}
 
-
-def record_savings_contribution(db, amount, contribution_date, goal_id=None):
-    contrib_date = contribution_date if isinstance(contribution_date, date) else date.fromisoformat(str(contribution_date))
-    value = round(float(amount), 2)
-    if value <= 0:
-        raise ValueError("Enter a contribution amount greater than $0.00.")
-    state = get_state(db)
+def record_savings_contribution(db,amount,contribution_date,goal_id=None):
+    contrib_date=contribution_date if isinstance(contribution_date,date) else date.fromisoformat(str(contribution_date));value=round(float(amount),2)
+    if value<=0:raise ValueError("Enter a contribution greater than zero.")
+    state=get_state(db);goal=None
     if goal_id is not None:
-        with db.connect() as c:
-            goal = c.execute("SELECT * FROM stash_goals WHERE id=? AND status='active'", (int(goal_id),)).fetchone()
-        if not goal:
-            raise ValueError("Choose an active savings goal.")
-    state.setdefault("stash", {})["balance"] = round(float(state.get("stash", {}).get("balance", 0) or 0) + value, 2)
+        with db.connect() as c:row=c.execute("SELECT * FROM stash_goals WHERE id=? AND status='active'",(int(goal_id),)).fetchone()
+        if not row:raise ValueError("Choose an active savings goal.")
+        goal=dict(row)
+    state.setdefault("stash",{})["balance"]=round(float(state["stash"].get("balance",0))+value,2);awarded=0
     with db.connect() as c:
-        if goal_id is not None:
-            goal = c.execute("SELECT * FROM stash_goals WHERE id=?", (int(goal_id),)).fetchone()
-            saved = round(float(goal["saved_amount"] or 0) + value, 2)
-            status = "completed" if saved + .001 >= float(goal["target_amount"]) else "active"
-            c.execute("UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?",
-                      (saved, status, now_iso() if status == "completed" else None, int(goal_id)))
-        c.execute("INSERT INTO savings_goal_events(goal_id,contribution_date,amount,source,created_at) VALUES(?,?,?,?,?)",
-                  (int(goal_id) if goal_id is not None else None, contrib_date.isoformat(), value, "self_reported", now_iso()))
-        c.execute("INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,status) VALUES(?,?,?,?,?,?)",
-                  (now_iso(), "savings_contribution_reported", value, value, 0, "self_reported"))
-        points_awarded = 0
-        if goal_id is not None:
-            monthly_target = float(goal["monthly_target"] or 0)
-            month = contrib_date.strftime("%Y-%m")
-            total = c.execute("SELECT COALESCE(SUM(amount),0) FROM savings_goal_events WHERE goal_id=? AND substr(contribution_date,1,7)=?", (int(goal_id), month)).fetchone()[0]
-            reason = f"savings-goal-target:{int(goal_id)}:{month}"
-            exists = c.execute("SELECT 1 FROM points_events WHERE reason=? LIMIT 1", (reason,)).fetchone()
-            if monthly_target > 0 and float(total or 0) + .001 >= monthly_target and not exists:
-                points_awarded = 15
-                state["game"]["points"] = int(state["game"].get("points", 0)) + points_awarded
-                c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)", (reason, points_awarded, now_iso()))
-    write_state(db, state)
-    log_action(db, "Glim", "savings_contribution_recorded", {"amount": value, "goal_id": goal_id, "contribution_date": contrib_date.isoformat()},
-               "Record a user-reported savings contribution and update the selected goal.", "User-reported; no payment moved", {"points_awarded": points_awarded})
-    result = get_savings_progress(db)
-    result["recorded"] = {"amount": value, "goal_id": goal_id, "contribution_date": contrib_date.isoformat(), "points_awarded": points_awarded}
-    return result
+        if goal:
+            saved=round(float(goal["saved_amount"] or 0)+value,2);status="completed" if saved+0.001>=float(goal["target_amount"]) else "active"
+            c.execute("UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?",(saved,status,now_iso() if status=="completed" else None,int(goal_id)))
+        c.execute("INSERT INTO savings_goal_events(goal_id,contribution_date,amount,source,created_at) VALUES(?,?,?,?,?)",(int(goal_id) if goal_id is not None else None,contrib_date.isoformat(),value,"self_reported",now_iso()))
+        if goal and float(goal.get("monthly_target") or 0)>0:
+            total=c.execute("SELECT COALESCE(SUM(amount),0) FROM savings_goal_events WHERE goal_id=? AND substr(contribution_date,1,7)=?",(int(goal_id),contrib_date.strftime("%Y-%m"))).fetchone()[0]
+            reason=f"savings-target:{goal_id}:{contrib_date.strftime('%Y-%m')}";seen=c.execute("SELECT 1 FROM points_events WHERE reason=?",(reason,)).fetchone()
+            if float(total or 0)+0.001>=float(goal["monthly_target"]) and not seen:
+                awarded=15;state["game"]["points"]=int(state["game"].get("points",0))+awarded;c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",(reason,awarded,now_iso()))
+        c.execute("INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,status) VALUES(?,?,?,?,?,?)",(now_iso(),"savings_contribution_reported",value,value,0,"self_reported"))
+    write_state(db,state);log_action(db,"Glim","savings_contribution_recorded",{"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat()},"Record a savings contribution reported by the user.","User-reported; no money moved",{"currency_awarded":awarded})
+    result=get_savings_progress(db);result["recorded"]={"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat(),"points_awarded":awarded};return result
 
+def _list_donations(db):
+    with db.connect() as c: rows=c.execute("SELECT id,charity_name,recipient_email,amount,status,last_error,created_at,updated_at FROM savings_donations ORDER BY id DESC LIMIT 12").fetchall()
+    return [dict(r) for r in rows]
+
+def submit_savings_donation(db,charity_name,recipient_email,amount):
+    name=str(charity_name or "").strip();email=str(recipient_email or "").strip();value=round(float(amount),2);state=get_state(db)
+    if len(name)<2 or len(name)>100:raise ValueError("Enter a charity name.")
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",email):raise ValueError("Enter a valid recipient email.")
+    if value<=0:raise ValueError("Donation must be greater than zero.")
+    goals=get_stash_goals(db)["goals"]
+    if not any(g["status"]=="completed" for g in goals):raise ValueError("Complete at least one savings goal before making a donation.")
+    if value>float(state.get("stash",{}).get("balance",0)):raise ValueError("The donation cannot exceed your recorded savings balance.")
+    if state.get("paypal",{}).get("status")!="connected":raise ValueError("A connected payment source is required for a donation.")
+    paypal=PayPalSandbox(db)
+    if not paypal.configured:raise ValueError("The donation could not be submitted. Check your account connection.")
+    ref="donation-"+uuid.uuid4().hex;created=now_iso()
+    with db.connect() as c:c.execute("INSERT INTO savings_donations(reference,charity_name,recipient_email,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(ref,name,email,value,"creating_order",created,created))
+    try:
+        order=paypal.create_order_from_vault(value,ref,request_id="glim-donation-order-"+ref[-24:]);order_id=order.get("id");status=str(order.get("status","")).upper()
+        if status=="APPROVED" and order_id:order=paypal.capture_order(order_id);status=str(order.get("status","")).upper()
+        if not order_id or status!="COMPLETED":
+            with db.connect() as c:c.execute("UPDATE savings_donations SET status='needs_review',order_id=?,last_error=?,updated_at=? WHERE reference=?",(order_id,f"Payment status {status or 'unknown'}",now_iso(),ref))
+            return {"status":"needs_review","reference":ref,"message":"The payment was not confirmed. Check its status before retrying."}
+        payout=paypal.create_recipient_payout(value,email,name,ref,request_id="glim-donation-payout-"+ref[-24:]);batch=(payout.get("batch_header") or {}).get("payout_batch_id")
+        if not batch:raise PayPalAPIError("No payout batch ID was returned; review the payment status.")
+        with db.connect() as c:c.execute("UPDATE savings_donations SET status='payout_submitted',order_id=?,payout_batch_id=?,updated_at=? WHERE reference=?",(order_id,batch,now_iso(),ref))
+        return {"status":"payout_submitted","reference":ref,"amount":value,"charity_name":name,"message":"Donation request submitted. Final status will appear in the donation history."}
+    except Exception as exc:
+        with db.connect() as c:c.execute("UPDATE savings_donations SET status='needs_review',last_error=?,updated_at=? WHERE reference=?",(str(exc)[:700],now_iso(),ref))
+        raise
+
+def refresh_savings_donations(db):
+    paypal=PayPalSandbox(db)
+    if not paypal.configured:return _list_donations(db)
+    with db.connect() as c:rows=[dict(r) for r in c.execute("SELECT * FROM savings_donations WHERE status='payout_submitted' AND payout_batch_id IS NOT NULL ORDER BY id DESC LIMIT 12").fetchall()]
+    for row in rows:
+        try:
+            payout=paypal.get_payout_batch(row["payout_batch_id"]);status=str((payout.get("batch_header") or {}).get("batch_status","")).upper()
+            if status in {"SUCCESS","SUCCEEDED"}:
+                with db.connect() as c:applied=c.execute("UPDATE savings_donations SET status='completed',completed_at=?,updated_at=? WHERE id=? AND status='payout_submitted'",(now_iso(),now_iso(),row["id"])).rowcount
+                if applied:
+                    state=get_state(db);state["stash"]["balance"]=round(max(0,float(state["stash"].get("balance",0))-float(row["amount"])),2);write_state(db,state)
+            elif status in {"DENIED","FAILED","CANCELED"}:
+                with db.connect() as c:c.execute("UPDATE savings_donations SET status='failed',last_error=?,updated_at=? WHERE id=?",(status,now_iso(),row["id"]))
+        except Exception:pass
+    return _list_donations(db)
 
 def compute_safe_to_move(profile):
     free=max(0.0,profile["monthly_income"]-profile.get("average_monthly_expenses",profile["monthly_income"]*0.75)-profile.get("floor_balance",0))
@@ -981,60 +804,41 @@ def ordered_debts(debts,strategy):
 def multi_debt_projection(debts,monthly_extra,strategy):
     ds=[dict(d) for d in ordered_debts(debts,strategy)]; total_interest=0.0; months=0; freed=0.0
     while any(d["balance"]>0.01 for d in ds) and months<360:
-        months+=1; available_extra=max(0.0, float(monthly_extra)+freed); freed=0.0
+        months+=1; available_extra=monthly_extra+freed
         for d in ds:
             if d["balance"]<=0.01: continue
             interest=d["balance"]*float(d["apr"])/100/12; total_interest+=interest
-            due=d["balance"]+interest
-            payment=min(due,float(d["minimum"])+available_extra)
-            extra_used=max(0.0,payment-min(float(d["minimum"]),due))
-            d["balance"]=max(0,due-payment)
-            available_extra=max(0.0,available_extra-extra_used)
+            payment=min(d["balance"]+interest,float(d["minimum"]))
+            if d is ds[0]: payment=min(d["balance"]+interest,payment+available_extra)
+            d["balance"]=max(0,d["balance"]+interest-payment)
             if d["balance"]<=0.01: freed+=float(d["minimum"])
+        # Once the first is done, route the entire payment stack to the next target.
     return {"months":months,"interest_paid":round(total_interest,2)}
 
 
-def choose_smart_strategy(debts, monthly_extra):
-    """Compare deterministic repayment projections and choose a practical approach."""
-    candidates = {
-        name: multi_debt_projection(debts, monthly_extra, name)
-        for name in ("avalanche", "snowball", "hybrid")
-    }
-    lowest_cost = min(candidates, key=lambda name: (candidates[name]["interest_paid"], candidates[name]["months"]))
-    base = candidates[lowest_cost]
-    snowball = candidates["snowball"]
-    hybrid = candidates["hybrid"]
-    if snowball["months"] <= base["months"] + 1 and snowball["interest_paid"] <= max(1.0, base["interest_paid"] * 1.05):
-        chosen = "snowball"
-    elif hybrid["months"] <= base["months"] + 1 and hybrid["interest_paid"] <= max(1.0, base["interest_paid"] * 1.03):
-        chosen = "hybrid"
-    else:
-        chosen = lowest_cost
-    rationale = {
-        "avalanche": "it produces the lowest modeled interest cost among the approaches compared.",
-        "snowball": "it clears a smaller balance sooner while keeping modeled interest close to the lowest-cost option.",
-        "hybrid": "it offers a close balance between modeled payoff time and interest cost.",
-    }[chosen]
-    return chosen, candidates, rationale
-
-
-def build_plan(db,strategy="avalanche",stash_pct=65.0):
+def build_plan(db,strategy="smart",stash_pct=65.0):
     state=get_state(db); debts=[d for d in get_debts(db) if d["status"]=="active"]
     if not debts: raise ValueError("Add a debt before building the plan.")
     daily=compute_daily_drip(state["profile"]); monthly_extra=daily*30*(1-stash_pct/100)
-    smart_summary = None
     resolved_strategy = strategy
+    smart_summary = None
     if strategy == "smart":
-        resolved_strategy, scenarios, rationale = choose_smart_strategy(debts, monthly_extra)
-        smart_summary = f"Smart Strategy compared repayment approaches using your balances, interest rates, and minimum payments. It recommends {resolved_strategy.title()} because {rationale}"
-    reason={"snowball":"Smallest balance first for faster visible wins.","hybrid":"Balances interest reduction with milestone wins.","avalanche":"Highest APR first to reduce interest fastest."}[resolved_strategy]
-    if smart_summary:
-        reason = smart_summary
+        minimum_interest=sum(payoff_projection(d,0)["interest_paid"] for d in debts)
+        candidates={key:multi_debt_projection(debts,monthly_extra,key) for key in ("avalanche","snowball","hybrid")}
+        lowest=min(candidates,key=lambda key:(candidates[key]["interest_paid"],candidates[key]["months"]))
+        # Prefer snowball when it gets an earlier win with at most a 5% modeled-interest premium.
+        snow=candidates["snowball"]
+        if snow["months"] <= candidates[lowest]["months"]+1 and snow["interest_paid"] <= max(1, candidates[lowest]["interest_paid"]*1.05):
+            resolved_strategy="snowball"
+        else: resolved_strategy=lowest
+        rationale={"avalanche":"it has the lowest modeled interest cost among the compared approaches.","snowball":"it clears a smaller balance sooner while keeping modeled interest close to the lowest-cost approach.","hybrid":"it balances modeled interest cost and the timing of individual debt payoffs."}[resolved_strategy]
+        smart_summary=f"Smart Strategy compared three repayment approaches and recommends {resolved_strategy.title()} because {rationale}"
+    reason=smart_summary or {"snowball":"Smallest balance first for faster progress.","hybrid":"Balances interest reduction with earlier milestones.","avalanche":"Highest interest rate first to reduce interest cost."}[resolved_strategy]
     proj=multi_debt_projection(debts,monthly_extra,resolved_strategy)
     min_interest=sum(payoff_projection(d,0)["interest_paid"] for d in debts)
     projection={"months":proj["months"],"interest_paid":proj["interest_paid"],"interest_saved":round(max(0,min_interest-proj["interest_paid"]),2)}
     plan={"strategy":strategy,"resolved_strategy":resolved_strategy,"smart_summary":smart_summary,"stash_pct":round(stash_pct,1),"boss_pct":round(100-stash_pct,1),"daily_drip":daily,"reason":reason,"projection":projection,"safe_to_move_daily":compute_safe_to_move(state["profile"]),"attack_order":[d["name"] for d in ordered_debts(debts,resolved_strategy)]}
-    state["plan"]=plan; write_state(db,state); log_action(db,"Glim","build_plan",plan,reason,"Figures calculated by code only",plan); return plan
+    state["plan"]=plan; write_state(db,state); log_action(db,"Tactician","build_plan",plan,reason,"Figures calculated by code only",plan); return plan
 
 
 def parse_what_if(text, profile=None):
@@ -2073,10 +1877,9 @@ def process_paypal_event(db, payload):
                                 "INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,status,settlement_id) VALUES(?,?,?,?,?,?,?)",
                                 (now_iso(), "monthly_deposit", amount, amount, 0, "settled", batch_id),
                             )
-                            # Apply the selected goal first, then allocate any remainder to other active goals.
+                            # Earmark the newly confirmed amount in the same transaction as the ledger update.
                             left = amount
-                            target_goal_id = monthly["goal_id"] if "goal_id" in monthly.keys() else None
-                            goals = c.execute("SELECT * FROM stash_goals WHERE status='active' ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,id", (target_goal_id or -1,)).fetchall()
+                            goals = c.execute("SELECT * FROM stash_goals WHERE status='active' ORDER BY id").fetchall()
                             for goal in goals:
                                 if left <= 0:
                                     break
@@ -2090,8 +1893,6 @@ def process_paypal_event(db, payload):
                                     "UPDATE stash_goals SET saved_amount=?,status=?,completed_at=? WHERE id=?",
                                     (saved, goal_status, now_iso() if goal_status == "completed" else None, goal["id"]),
                                 )
-                                c.execute("INSERT INTO savings_goal_events(goal_id,contribution_date,amount,source,created_at) VALUES(?,?,?,?,?)",
-                                          (goal["id"], now_iso()[:10], take, "automatic_test_deposit", now_iso()))
                                 left = round(left - take, 2)
                     if applied:
                         state["stash"] = current_stash
@@ -2193,33 +1994,23 @@ def _send_email_nudge(db, message):
         return False
 
 
-def _debt_specific_reminder(db, state, now_local, tone, recent_responses=None):
-    debts = [d for d in get_debts(db) if d.get("status") == "active"]
-    if not debts:
-        return None, None
-    responses = [str(r["response"] or "") for r in (recent_responses or [])]
-    actual_tone = tone or "zen"
-    if actual_tone == "adaptive":
-        actual_tone = "zen" if responses and responses[0] in {"snoozed", "dismissed", "muted"} else "direct"
-    interest = round(sum(float(d.get("balance") or 0) * float(d.get("apr") or 0) / 1200 for d in debts), 2)
-    if actual_tone == "direct":
-        message = f"You really should be paying this back. You racked up {f'${interest:,.2f}'} in estimated interest over the past month."
-        if not tone_linter(message):
-            message = f"Your current balances and rates imply about ${interest:,.2f} in interest over the past month. Review your repayment plan."
-        return message, "Interest is an estimate using each active balance multiplied by its APR and divided by 12. Check your latest statement for the actual charge."
-    # For Zen mode, mention the next upcoming due date and label the obligation correctly.
-    options = []
+def _debt_reminder_copy(db, state, now_local, recent_responses):
+    debts=[d for d in get_debts(db) if d.get("status")=="active"]
+    if not debts:return None,None,"zen"
+    tone=str(state.get("notifications",{}).get("debt_reminder_tone") or (state.get("profile") or {}).get("debt_reminder_tone") or "zen")
+    recent=[str(x.get("response") or "") for x in recent_responses]
+    if tone=="adaptive": tone="zen" if recent and recent[0] in {"snoozed","dismissed","muted"} else "direct"
+    interest=round(sum(float(d.get("balance") or 0)*float(d.get("apr") or 0)/1200 for d in debts),2)
+    if tone=="direct":
+        return f"Your balances added about {money(interest)} in estimated interest over the past month. Review your repayment plan and choose your next payment.","Estimate uses your entered balances and APRs divided by 12. Confirm the actual interest on your latest statement.",tone
+    due_options=[]
     for debt in debts:
-        due_day = min(int(debt.get("due_day") or 15), 28)
-        due = date(now_local.year, now_local.month, due_day)
-        if now_local.date() > due:
-            year, month = _month_shift(now_local.year, now_local.month, 1)
-            due = date(year, month, min(int(debt.get("due_day") or 15), 28))
-        options.append((due, debt))
-    due, debt = min(options, key=lambda pair: pair[0])
-    kind = "credit card" if debt.get("type") == "credit_card" else DEBT_TYPE_LABELS.get(str(debt.get("type")), "debt").lower()
-    message = f"Try to get in your next {kind} payment! It's due {due.strftime('%B')} {due.day}!"
-    return message, f"Your entered due day for {debt.get('name') or kind} is the {due.day}{'th' if due.day % 100 in (11,12,13) else {1:'st',2:'nd',3:'rd'}.get(due.day % 10,'th')} of the month."
+        day=min(28,int(debt.get("due_day") or 15)); due=date(now_local.year,now_local.month,day)
+        if now_local.date()>due:
+            y,m=_month_shift(now_local.year,now_local.month,1);due=date(y,m,day)
+        due_options.append((due,debt))
+    due,debt=min(due_options,key=lambda x:x[0]);label="credit card" if debt["type"]=="credit_card" else DEBT_TYPE_LABELS.get(debt["type"],"debt").lower()
+    return f"Try to get in your next {label} payment! It's due {due.strftime('%B')} {due.day}.",f"Based on the due day you entered for {debt['name']}. Check the date against your latest statement.",tone
 
 
 def next_nudge(db, now=None):
@@ -2256,14 +2047,11 @@ def next_nudge(db, now=None):
         return {"status": "unavailable", "message": "No notification variants are configured."}
     key = max((random.betavariate(float(row["alpha"]), float(row["beta"])), row["arm_key"]) for row in rows)[1]
     message = dict(ARMS)[key]
-    debt_message, debt_why = _debt_specific_reminder(
-        db, state, now_local,
-        state.get("notifications", {}).get("debt_reminder_tone", (state.get("profile") or {}).get("debt_reminder_tone", "zen")),
-        recent,
-    )
-    if debt_message:
-        message = debt_message
-    if not tone_linter(message) and not (debt_message and "should be paying this back" in message):
+    debt_why = None
+    reminder_tone = state.get("notifications", {}).get("debt_reminder_tone", "zen")
+    if any(d.get("status") == "active" for d in get_debts(db)):
+        message, debt_why, reminder_tone = _debt_reminder_copy(db, state, now_local, [dict(x) for x in recent])
+    if not tone_linter(message) and not (reminder_tone == "direct" and message):
         message = ARMS[-1][1]
     with db.connect() as c:
         c.execute("INSERT INTO nudges(created_at,arm_key,message) VALUES(?,?,?)", (now_iso(), key, message))
@@ -2273,7 +2061,7 @@ def next_nudge(db, now=None):
         external_sent = send_web_push(db, message)
     elif channel == "email":
         external_sent = _send_email_nudge(db, message)
-    why = debt_why if debt_message else f"Reminder wording was selected from your preferences; Glim adapts frequency using your responses."
+    why = debt_why or f"Reminder wording was selected from your preferences; frequency updates from your responses."
     if channel in {"web_push", "email"} and not external_sent:
         why += " External delivery was not confirmed; the check-in remains available in Glim."
     return {"status": "ready", "arm_key": key, "message": message, "why": why, "external_channel_sent": external_sent, "channel": channel}
@@ -2604,64 +2392,17 @@ def redirect_freed_payment(db,destination):
 
 
 def debt_chart_data(db):
-    """Project the combined active-debt balance under the selected strategy vs minimums only."""
-    debts = [dict(d) for d in get_debts(db) if d["status"] == "active"]
-    state = get_state(db)
-    plan = state.get("plan") or (build_plan(db) if debts else None)
-    if not debts:
-        return {"labels": [], "balances": [], "minimum_only": [], "starting_balance": 0.0}
-    strategy = (plan or {}).get("resolved_strategy") or (plan or {}).get("strategy") or "avalanche"
-    ordered = ordered_debts(debts, strategy)
-    daily = float((plan or {}).get("daily_drip") or compute_daily_drip(state.get("profile", {})))
-    stash_pct = float((plan or {}).get("stash_pct", 65))
-    extra = max(0.0, daily * 30 * (1 - stash_pct / 100))
-    starting_balance = round(sum(float(d["balance"] or 0) for d in debts), 2)
-
-    def series(apply_extra):
-        balances = {int(d["id"]): float(d["balance"] or 0) for d in ordered}
-        recurring_freed_minimum = 0.0
-        out = [round(sum(balances.values()), 2)]
+    debts=[d for d in get_debts(db) if d["status"]=="active"]; state=get_state(db); plan=state.get("plan") or (build_plan(db) if debts else None)
+    if not debts:return {"labels":[],"balances":[],"minimum_only":[]}
+    extra=(plan["daily_drip"]*30*(1-plan["stash_pct"]/100)) if plan else 0; d=ordered_debts(debts,plan.get("strategy","avalanche") if plan else "avalanche")[0]
+    def series(ex):
+        bal=float(d["balance"]); out=[]
         for _ in range(24):
-            if sum(balances.values()) <= .01:
-                out.append(0.0)
-                continue
-            reusable_this_month = recurring_freed_minimum
-            recurring_freed_minimum = 0.0
-            # Accrue one month of interest and apply each minimum first.
-            for debt in ordered:
-                key = int(debt["id"])
-                bal = balances[key]
-                if bal <= .01:
-                    continue
-                due = bal + bal * float(debt["apr"] or 0) / 100 / 12
-                minimum = float(debt["minimum"] or 0)
-                paid_minimum = min(due, minimum)
-                balances[key] = max(0.0, due - paid_minimum)
-                if apply_extra and balances[key] <= .01:
-                    reusable_this_month += max(0.0, minimum - paid_minimum)
-                    recurring_freed_minimum += minimum
-            available = extra + reusable_this_month if apply_extra else 0.0
-            if apply_extra:
-                for debt in ordered:
-                    key = int(debt["id"])
-                    if available <= .001:
-                        break
-                    prior = balances[key]
-                    if prior <= .01:
-                        continue
-                    used = min(prior, available)
-                    balances[key] = max(0.0, prior - used)
-                    available = max(0.0, available - used)
-                    if balances[key] <= .01:
-                        # Reuse the freed minimum starting next month.
-                        recurring_freed_minimum += float(debt["minimum"] or 0)
-            out.append(round(sum(balances.values()), 2))
+            out.append(round(max(0,bal),2));
+            if bal<=.01:continue
+            i=bal*float(d["apr"])/100/12; p=min(bal+i,float(d["minimum"])+ex); bal=bal+i-p
         return out
-
-    strategy_balances = series(True)
-    minimum_balances = series(False)
-    return {"labels": ["Now"] + [f"M{i}" for i in range(1, 25)], "balances": strategy_balances,
-            "minimum_only": minimum_balances, "starting_balance": starting_balance}
+    a,b=series(extra),series(0); return {"labels":[f"M{i+1}" for i in range(len(a))],"balances":a,"minimum_only":b}
 
 
 # ---------- Auth ----------
@@ -3177,122 +2918,94 @@ def allocate_stash_to_goals(db,amount):
             left=round(left-take,2)
 
 
-def monthly_auto_deposit_settings(db):
-    with db.connect() as c:
-        row = c.execute("SELECT * FROM monthly_auto_deposit WHERE id=1").fetchone()
-    if not row:
-        return {"enabled": False, "amount": 0, "income_pct": 0, "duration_months": 12, "due_day": 1, "status": "disabled"}
-    out = dict(row)
-    out["enabled"] = bool(out["enabled"])
-    out.pop("id", None)
-    state = get_state(db)
-    income = float((state.get("profile") or {}).get("monthly_income") or 0)
-    if float(out.get("income_pct") or 0) > 0:
-        out["amount"] = round(income * float(out["income_pct"]) / 100, 2)
-    if out.get("start_month"):
-        try:
-            start_y, start_m = map(int, str(out["start_month"]).split("-"))
-            now = datetime.now(timezone.utc)
-            out["months_elapsed"] = max(0, (now.year - start_y) * 12 + now.month - start_m)
-            out["months_remaining"] = max(0, int(out.get("duration_months") or 12) - out["months_elapsed"])
-        except (TypeError, ValueError):
-            out["months_elapsed"] = 0
-            out["months_remaining"] = int(out.get("duration_months") or 12)
+def smart_savings_recommendation(db):
+    state=get_state(db);profile=state.get("profile") or {}
+    income=float(profile.get("monthly_income") or 0);expenses=float(profile.get("average_monthly_expenses") or 0)
+    available=max(0,income-expenses);current_pct=float(profile.get("savings_pct") or 5)
+    active_debts=[d for d in get_debts(db) if d.get("status")=="active"]
+    highest_apr=max((float(d.get("apr") or 0) for d in active_debts),default=0.0)
+    stash=state.get("stash") or {};buffer_target=max(1.0,float(stash.get("shield_threshold") or 500));buffer_balance=float(stash.get("balance") or 0)
+    buffer_progress=max(0.0,min(100.0,buffer_balance/buffer_target*100))
+    # Keep the savings contribution within 90% of entered monthly surplus.
+    max_pct=(available/income*100*0.9) if income>0 else 0
+    recommended=max(0,min(current_pct,max_pct))
+    if active_debts and buffer_progress<100:
+        reason=(f"Smart Strategy recommends {recommended:.1f}% of income for savings while you build the {money(buffer_target)} buffer. "
+                f"Continue meeting debt minimums; use the Debt plan to prioritize extra repayment by interest rate.")
+    elif active_debts:
+        reason=(f"Your savings buffer has reached its target. Smart Strategy recommends {recommended:.1f}% of income for savings and prioritizing extra debt payments toward the highest APR ({highest_apr:.2f}%).")
     else:
-        out["months_elapsed"] = 0
-        out["months_remaining"] = int(out.get("duration_months") or 12)
+        reason=f"Smart Strategy keeps your savings percentage within the {money(available)} monthly surplus you entered. Adjust it any time as your goals change."
+    return {"recommended_pct":round(recommended,1),"monthly_amount":round(income*recommended/100,2),"monthly_surplus":round(available,2),"current_pct":current_pct,"active_debt_count":len(active_debts),"highest_apr":round(highest_apr,2),"buffer_progress_pct":round(buffer_progress,1),"reason":reason}
+
+
+def monthly_auto_deposit_settings(db):
+    with db.connect() as c:row=c.execute("SELECT * FROM monthly_auto_deposit WHERE id=1").fetchone()
+    if not row:return {"enabled":False,"amount":0,"income_pct":0,"duration_months":6,"due_day":1,"status":"disabled"}
+    out=dict(row);out["enabled"]=bool(out["enabled"]);out.pop("id",None)
+    state=get_state(db);income=float((state.get("profile") or {}).get("monthly_income") or 0)
+    if float(out.get("income_pct") or 0)>0:out["amount"]=round(income*float(out["income_pct"])/100,2)
+    if out.get("start_month"):
+        try:y,m=map(int,str(out["start_month"]).split("-"));now=datetime.now(timezone.utc);elapsed=max(0,(now.year-y)*12+now.month-m)
+        except (TypeError,ValueError):elapsed=0
+    else:elapsed=0
+    out["months_elapsed"]=elapsed;out["months_remaining"]=max(0,int(out.get("duration_months") or 6)-elapsed)
     return out
 
 
-def save_monthly_auto_deposit(db,enabled,amount,due_day,consent,income_pct=0,duration_months=12,goal_id=None):
-    state = get_state(db)
-    income = float((state.get("profile") or {}).get("monthly_income") or 0)
-    income_pct = round(float(income_pct or 0), 2)
-    amount = round(income * income_pct / 100, 2) if income_pct > 0 else round(float(amount or 0), 2)
-    duration_months = int(duration_months or 12)
-    if enabled and income_pct <= 0 and amount <= 0:
-        raise ValueError("Enter a savings percentage or a fixed monthly amount greater than $0.00.")
-    if enabled and income_pct > 0 and income <= 0:
-        raise ValueError("Enter your monthly income in Settings before enabling percentage-based savings.")
-    if enabled and amount <= 0:
-        raise ValueError("Your current income and savings percentage produce a monthly amount of $0.00.")
-    if enabled and not 1 <= duration_months <= 60:
-        raise ValueError("Choose a savings period between 1 and 60 months.")
-    if enabled and not consent:
-        raise ValueError("Confirm the test-mode collection and savings payout before enabling automatic savings.")
-    if enabled and state.get("paypal",{}).get("status")!="connected":
-        raise ValueError("Connect and authorize a test payment source before enabling automatic savings.")
-    if enabled and not PayPalSandbox(db).stash_email:
-        raise ValueError("The savings payout destination is not configured. Automatic savings was not enabled.")
+def save_monthly_auto_deposit(db,enabled,amount,due_day,consent,income_pct=0,duration_months=6,goal_id=None):
+    state=get_state(db);income=float((state.get("profile") or {}).get("monthly_income") or 0)
+    pct=round(float(income_pct or 0),2);value=round(income*pct/100,2) if pct>0 else round(float(amount or 0),2);duration=int(duration_months or 6)
+    if enabled and value<=0:raise ValueError("Enter a savings percentage that produces a positive monthly amount.")
+    if enabled and not 1<=duration<=60:raise ValueError("Choose a savings period between 1 and 60 months.")
+    if enabled and not consent:raise ValueError("Confirm the savings schedule and review each transfer before it is sent.")
+    if enabled and state.get("paypal",{}).get("status")!="connected":raise ValueError("Connect a payment source before enabling automatic saving.")
+    if enabled and not PayPalSandbox(db).stash_email:raise ValueError("The savings destination has not been configured.")
     if goal_id is not None:
-        with db.connect() as c:
-            goal = c.execute("SELECT id,status FROM stash_goals WHERE id=?", (int(goal_id),)).fetchone()
-        if not goal or goal["status"] != "active":
-            raise ValueError("Choose an active savings goal or select no specific goal.")
-    consent_at = now_iso() if enabled and consent else None
-    status = "scheduled" if enabled else "disabled"
-    current_month = datetime.now(timezone.utc).strftime("%Y-%m") if enabled else None
-    with db.connect() as c:
-        c.execute("UPDATE monthly_auto_deposit SET enabled=?,amount=?,due_day=?,consent_at=COALESCE(?,consent_at),status=?,last_error=NULL,income_pct=?,duration_months=?,goal_id=?,start_month=? WHERE id=1",
-                  (int(enabled), amount, int(due_day), consent_at, status, income_pct, duration_months, int(goal_id) if goal_id is not None else None, current_month))
-    log_action(db,"Banker","monthly_auto_deposit_setting",{"enabled":enabled,"income_pct":income_pct,"monthly_amount":amount,"duration_months":duration_months,"goal_id":goal_id,"due_day":due_day},
-               "Schedule a finite monthly savings contribution calculated from the entered take-home income, subject to explicit test-mode consent.",
-               "User consented" if enabled else "User disabled",{"status":status})
+        with db.connect() as c:goal=c.execute("SELECT id,status FROM stash_goals WHERE id=?",(int(goal_id),)).fetchone()
+        if not goal or goal["status"]!="active":raise ValueError("Choose an active savings goal or general savings.")
+    start_month=datetime.now(timezone.utc).strftime("%Y-%m") if enabled else None;consent_at=now_iso() if enabled and consent else None;status="scheduled" if enabled else "disabled"
+    with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET enabled=?,amount=?,due_day=?,consent_at=COALESCE(?,consent_at),status=?,last_error=NULL,income_pct=?,duration_months=?,goal_id=?,start_month=? WHERE id=1",(int(enabled),value,int(due_day),consent_at,status,pct,duration,int(goal_id) if goal_id is not None else None,start_month))
+    log_action(db,"Banker","monthly_auto_deposit_setting",{"enabled":enabled,"income_pct":pct,"amount":value,"duration_months":duration,"goal_id":goal_id},"Save a percentage-based savings schedule with an explicit end date.","User consented" if enabled else "User disabled",{"status":status})
     return monthly_auto_deposit_settings(db)
 
 
 def run_monthly_auto_deposit(db,force=False):
-    settings = monthly_auto_deposit_settings(db)
-    if not settings.get("enabled"):
-        return {"status":"disabled","message":"Automatic savings is disabled."}
-    now = datetime.now(timezone.utc)
-    month = now.strftime("%Y-%m")
-    start_month = str(settings.get("start_month") or month)
+    settings=monthly_auto_deposit_settings(db)
+    if not settings.get("enabled"):return {"status":"disabled","message":"Monthly auto-deposit is disabled."}
+    now=datetime.now(timezone.utc); month=now.strftime("%Y-%m")
+    start_month=str(settings.get("start_month") or month)
+    try:sy,sm=map(int,start_month.split("-"));elapsed=(now.year-sy)*12+now.month-sm
+    except ValueError:elapsed=0
+    if elapsed>=int(settings.get("duration_months") or 6):
+        with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET enabled=0,status='duration_complete' WHERE id=1")
+        return {"status":"duration_complete","message":"The selected savings period has ended."}
+    if not force and now.day < int(settings["due_day"]):return {"status":"not_due","due_day":settings["due_day"],"month":month}
+    if settings.get("last_run_month")==month:return {"status":"already_run","month":month,"last_status":settings.get("status"),"order_id":settings.get("order_id"),"payout_batch_id":settings.get("payout_batch_id")}
+    if settings.get("last_attempt_month")==month and not force:return {"status":"attempted_this_month","month":month,"last_error":settings.get("last_error")}
+    state=get_state(db)
+    if state.get("paused"):raise ValueError("Glim is paused. Resume before the monthly deposit can run.")
+    if state.get("paypal",{}).get("status")!="connected":raise ValueError("Connect PayPal Sandbox before the monthly deposit runs.")
+    with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET last_attempt_month=?,status='processing',last_error=NULL,last_run_at=? WHERE id=1",(month,now_iso()))
+    reference=f"monthly-deposit-{month}"
     try:
-        sy, sm = map(int, start_month.split("-"))
-        elapsed = (now.year - sy) * 12 + now.month - sm
-    except ValueError:
-        elapsed = 0
-    if elapsed >= int(settings.get("duration_months") or 12):
-        with db.connect() as c:
-            c.execute("UPDATE monthly_auto_deposit SET enabled=0,status='duration_complete',last_error=NULL WHERE id=1")
-        return {"status":"duration_complete","message":"The selected savings period has ended; no further collection was scheduled."}
-    if not force and now.day < int(settings["due_day"]):
-        return {"status":"not_due","due_day":settings["due_day"],"month":month}
-    if settings.get("last_run_month")==month:
-        return {"status":"already_run","month":month,"last_status":settings.get("status"),"order_id":settings.get("order_id"),"payout_batch_id":settings.get("payout_batch_id")}
-    if settings.get("last_attempt_month")==month and not force:
-        return {"status":"attempted_this_month","month":month,"last_error":settings.get("last_error")}
-    state = get_state(db)
-    if state.get("paused"):
-        raise ValueError("Transfers are paused. Resume before automatic savings can run.")
-    if state.get("paypal",{}).get("status")!="connected":
-        raise ValueError("Connect a test payment source before automatic savings can run.")
-    amount = round(float(settings.get("amount") or 0), 2)
-    if amount <= 0:
-        raise ValueError("The calculated monthly savings amount is zero; update your income or savings percentage.")
-    with db.connect() as c:
-        c.execute("UPDATE monthly_auto_deposit SET last_attempt_month=?,status='processing',last_error=NULL,last_run_at=? WHERE id=1",(month,now_iso()))
-    reference = f"monthly-deposit-{month}"
-    try:
-        paypal = PayPalSandbox(db)
-        order = paypal.create_order_from_vault(amount, reference, request_id=f"glim-monthly-{month}")
-        order_status, order_id = order.get("status"), order.get("id")
+        paypal=PayPalSandbox(db)
+        order=paypal.create_order_from_vault(float(settings["amount"]),reference,request_id=f"glim-monthly-{month}")
+        order_status=order.get("status")
+        order_id=order.get("id")
         if order_status == "APPROVED" and order_id:
-            order = paypal.capture_order(order_id); order_status = order.get("status")
+            order=paypal.capture_order(order_id); order_status=order.get("status")
         if order_status != "COMPLETED":
-            raise PayPalAPIError(f"The test payment returned status {order_status or 'unknown'}; no savings payout was submitted.")
-        payout = paypal.create_payout(0, amount, reference, request_id=f"glim-monthly-payout-{month}")
-        header = payout.get("batch_header") or {}; batch = header.get("payout_batch_id")
-        with db.connect() as c:
-            c.execute("UPDATE monthly_auto_deposit SET last_run_month=?,status='payout_submitted',last_error=NULL,order_id=?,payout_batch_id=? WHERE id=1",(month,order_id,batch))
-        result = {"status":"payout_submitted","month":month,"amount":amount,"income_pct":settings.get("income_pct"),"duration_months":settings.get("duration_months"),"order_id":order_id,"payout_batch_id":batch,"message":"The test-mode collection was captured and the savings payout was submitted; the final status must be confirmed."}
-        log_action(db,"Banker","monthly_auto_deposit",result,"Collect the user-approved percentage of entered monthly income through the connected test source, then submit a payout to the configured savings test recipient.","Explicit test-mode opt-in; payout submitted",result)
+            raise PayPalAPIError(f"PayPal returned order status {order_status or 'unknown'}; no savings payout was sent.")
+        payout=paypal.create_payout(0,float(settings["amount"]),reference,request_id=f"glim-monthly-payout-{month}")
+        header=payout.get("batch_header") or {}; batch=header.get("payout_batch_id")
+        with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET last_run_month=?,status='payout_submitted',last_error=NULL,order_id=?,payout_batch_id=? WHERE id=1",(month,order_id,batch))
+        result={"status":"payout_submitted","month":month,"amount":float(settings["amount"]),"order_id":order_id,"payout_batch_id":batch,"message":"PayPal accepted the collection and the savings payout was submitted; final payout status comes from PayPal."}
+        log_action(db,"Banker","monthly_auto_deposit",result,"Collect the user-approved monthly amount through the vaulted PayPal Sandbox source, then submit a Payout to the savings Sandbox account","Explicit monthly opt-in; API collection completed",result)
         return result
     except Exception as exc:
-        with db.connect() as c:
-            c.execute("UPDATE monthly_auto_deposit SET status='error',last_error=? WHERE id=1",(str(exc)[:700],))
-        log_action(db,"Banker","monthly_auto_deposit_failed",{"month":month,"amount":amount},"Stop without claiming success if collection or payout submission fails.","Payment/API error",{"error":str(exc)[:700]})
+        with db.connect() as c:c.execute("UPDATE monthly_auto_deposit SET status='error',last_error=? WHERE id=1",(str(exc)[:700],))
+        log_action(db,"Banker","monthly_auto_deposit_failed",{"month":month,"amount":settings["amount"]},"Stop without claiming success if PayPal collection or payout submission fails","PayPal/API error",{"error":str(exc)[:700]})
         raise
 
 

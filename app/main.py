@@ -19,7 +19,8 @@ if __package__:
         ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
         LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
         RedirectRequest, SquadCreateRequest, SquadJoinRequest, WhatIfRequest,
-        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm, SavingsBalanceRequest, DebtPaymentCreate, SavingsDonationCreate, SavingsContributionCreate,
+        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm,
+        DebtPaymentCreate, SavingsBalanceRequest, SavingsContributionCreate, SavingsDonationCreate,
     )
     from .services import *  # noqa: F401,F403
 else:  # pragma: no cover - used by Vercel's flat module loader
@@ -27,7 +28,8 @@ else:  # pragma: no cover - used by Vercel's flat module loader
         ApprovalRequest, AuthRequest, ChatRequest, CheerRequest, DebtCreate,
         LessonCompleteRequest, NudgeResponseRequest, PlanRequest, Profile,
         RedirectRequest, SquadCreateRequest, SquadJoinRequest, WhatIfRequest,
-        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm, SavingsBalanceRequest, DebtPaymentCreate, SavingsDonationCreate, SavingsContributionCreate,
+        StashGoalCreate, MonthlyDepositSettings, SquadGoalCreate, ScoutDebtConfirm,
+        DebtPaymentCreate, SavingsBalanceRequest, SavingsContributionCreate, SavingsDonationCreate,
     )
     from services import *  # noqa: F401,F403
 
@@ -110,15 +112,6 @@ def user_data_db(user):
     return _user_db_cache[cache_key]
 
 
-def run_tenant_scheduled_jobs(tenant, email, shared_db):
-    """Run one hourly pass of due payments, reminders, savings and settlement checks."""
-    auto_drip_tick(tenant, email=email, shared_db=shared_db)
-    scheduled_nudge_tick(tenant)
-    process_monthly_auto_deposit_if_due(tenant)
-    weekly_settlement_tick(tenant)
-    reconcile_stale_settlements(tenant)
-
-
 async def _monthly_deposit_worker():
     while True:
         try:
@@ -127,7 +120,11 @@ async def _monthly_deposit_worker():
             for user in users:
                 try:
                     tenant = user_data_db(user)
-                    run_tenant_scheduled_jobs(tenant, email=user["email"], shared_db=db)
+                    auto_drip_tick(tenant, email=user["email"], shared_db=db)
+                    scheduled_nudge_tick(tenant)
+                    process_monthly_auto_deposit_if_due(tenant)
+                    weekly_settlement_tick(tenant)
+                    reconcile_stale_settlements(tenant)
                 except Exception:
                     # One account's payment problem must not stop other accounts' scheduled jobs.
                     continue
@@ -212,7 +209,7 @@ def app_home():
 def app_section(request: Request, active_section: str):
     if active_section in {"coach", "game", "squad", "learn"}:
         return RedirectResponse(url="/app/overview", status_code=302)
-    allowed = {"overview", "plan", "savings", "insights", "settings", "help"}
+    allowed = {"overview", "plan", "savings", "settings", "help"}
     if active_section not in allowed:
         raise HTTPException(404, "Glim section not found.")
     if DATABASE_ENABLED and not get_session_user(db, request.cookies.get("glim_session")):
@@ -491,17 +488,17 @@ def debt_progress(user=Depends(current_user)):
     return get_debt_progress(user_data_db(user))
 
 
+@app.get("/api/otter")
+def otter_state(user=Depends(current_user)):
+    return get_debt_progress(user_data_db(user))
+
+
 @app.post("/api/debts/{debt_id}/payments")
 def debt_payment_record(debt_id: int, req: DebtPaymentCreate, user=Depends(current_user)):
     try:
         return record_debt_payment(user_data_db(user), debt_id, req.amount, req.payment_date)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-
-
-@app.get("/api/otter")
-def otter_state(user=Depends(current_user)):
-    return get_debt_progress(user_data_db(user))
 
 
 @app.post("/api/otter/items/{item_id}/buy")
@@ -763,19 +760,46 @@ def stash_goals(user=Depends(current_user)):
     return get_stash_goals(user_data_db(user))
 
 
-@app.get("/api/savings/progress")
-def savings_progress(user=Depends(current_user)):
-    return get_savings_progress(user_data_db(user))
-
-
 @app.post("/api/stash/balance")
 def stash_balance_update(req: SavingsBalanceRequest, user=Depends(current_user)):
     data_db = user_data_db(user)
     state = get_state(data_db)
     state.setdefault("stash", {})["balance"] = round(float(req.balance), 2)
     write_state(data_db, state)
-    log_action(data_db, "Glim", "savings_balance_updated", {"balance": state["stash"]["balance"]}, "Update the manually entered current savings balance.", "User-entered balance", {"balance": state["stash"]["balance"]})
+    log_action(data_db, "Glim", "savings_balance_updated", {"balance": state["stash"]["balance"]},
+               "Update the savings balance used in the plan.", "User-entered balance", {"balance": state["stash"]["balance"]})
     return get_stash_goals(data_db)
+
+
+@app.get("/api/savings/progress")
+def savings_progress(user=Depends(current_user)):
+    return get_savings_progress(user_data_db(user))
+
+
+@app.get("/api/savings/recommendation")
+def savings_recommendation(user=Depends(current_user)):
+    return smart_savings_recommendation(user_data_db(user))
+
+
+@app.post("/api/savings/contributions")
+def savings_contribution(req: SavingsContributionCreate, user=Depends(current_user)):
+    try:
+        return record_savings_contribution(user_data_db(user), req.amount, req.contribution_date, req.goal_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/savings/donations")
+def savings_donations_list(user=Depends(current_user)):
+    return refresh_savings_donations(user_data_db(user))
+
+
+@app.post("/api/savings/donations")
+def savings_donation(req: SavingsDonationCreate, user=Depends(current_user)):
+    try:
+        return submit_savings_donation(user_data_db(user), req.charity_name, req.recipient_email, req.amount)
+    except (ValueError, PayPalAPIError) as exc:
+        raise HTTPException(400, str(exc))
 
 
 @app.post("/api/stash/goals")
@@ -798,29 +822,6 @@ def stash_auto_deposit_save(req: MonthlyDepositSettings, user=Depends(current_us
                                          income_pct=req.income_pct, duration_months=req.duration_months, goal_id=req.goal_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
-
-
-@app.get("/api/savings/donations")
-def savings_donations_list(user=Depends(current_user)):
-    return refresh_savings_donations(user_data_db(user))
-
-
-@app.post("/api/savings/donations")
-def savings_donation_submit(req: SavingsDonationCreate, user=Depends(current_user)):
-    try:
-        return submit_savings_donation(user_data_db(user), req.charity_name, req.recipient_email, req.amount)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    except PayPalAPIError as exc:
-        raise HTTPException(400, str(exc))
-
-
-@app.post("/api/savings/contributions")
-def savings_contribution_record(req: SavingsContributionCreate, user=Depends(current_user)):
-    try:
-        return record_savings_contribution(user_data_db(user), req.amount, req.contribution_date, req.goal_id)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
 
 
 @app.post("/api/stash/auto-deposit/run")

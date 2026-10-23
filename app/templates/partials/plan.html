@@ -1,79 +1,51 @@
 <section id="tab-plan" class="tab-panel {{ 'active' if active_section == 'plan' else 'hidden' }}">
-  <div class="page-heading">
-    <div><h1>Debt plan</h1><p>Add your debts, choose a repayment approach, and review estimated payoff time and interest.</p></div>
-  </div>
-
+  <div class="page-heading"><div><h1>Debt plan</h1><p>Track what you owe, choose a repayment approach, and follow progress against your due dates.</p></div></div>
+  <nav class="debt-subtabs" role="tablist" aria-label="Debt plan views">
+    <button type="button" class="debt-subtab active" id="debtTabDebts" data-debt-tab="debts" role="tab" aria-selected="true" aria-controls="debtPanelDebts">Your debts</button>
+    <button type="button" class="debt-subtab" id="debtTabStrategy" data-debt-tab="strategy" role="tab" aria-selected="false" aria-controls="debtPanelStrategy">Repayment plan</button>
+    <button type="button" class="debt-subtab" id="debtTabProgress" data-debt-tab="progress" role="tab" aria-selected="false" aria-controls="debtPanelProgress">Payment progress</button>
+  </nav>
+  <div class="debt-subpanel active" id="debtPanelDebts" role="tabpanel" aria-labelledby="debtTabDebts">
   <section class="content-section plan-section">
-    <div class="section-title-row"><div><h2>Add a debt</h2><p class="muted">Use your latest statement for the balance, interest rate, and minimum payment.</p></div></div>
+    <div class="section-title-row"><div><h2>Add a debt</h2><p class="muted">Enter the balance, annual interest rate, minimum payment, and due day from your latest statement.</p></div></div>
     <form id="debtForm" class="compact-form debt-entry-form">
-      <label>Debt name<input id="dName" placeholder="e.g. Credit card" autocomplete="off" required/></label>
-      <label>Debt type<select id="dType">
-        <option value="credit_card">Credit card</option><option value="line_of_credit">Line of credit</option>
-        <option value="personal_loan">Personal loan</option><option value="student_loan">Student loan</option>
-        <option value="auto_loan">Auto loan</option><option value="mortgage">Mortgage</option>
-        <option value="buy_now_pay_later">Buy now, pay later</option><option value="medical_bill">Medical bill</option>
-        <option value="tax_debt">Tax debt</option><option value="payday_loan">Payday loan</option><option value="other">Other obligation</option>
-      </select></label>
+      <label>Debt name<input id="dName" placeholder="e.g. Main credit card" autocomplete="off" required/></label>
+      <label>Debt type<select id="dType"><option value="credit_card">Credit card</option><option value="line_of_credit">Line of credit</option><option value="personal_loan">Personal loan</option><option value="student_loan">Student loan</option><option value="auto_loan">Auto loan</option><option value="mortgage">Mortgage</option><option value="buy_now_pay_later">Buy now, pay later</option><option value="medical_bill">Medical bill</option><option value="tax_debt">Tax debt</option><option value="payday_loan">Payday loan</option><option value="other">Other obligation</option></select></label>
       <label>Current balance (CAD)<input id="dBalance" type="number" min="0.01" step="0.01" placeholder="3500" required/></label>
       <label>Annual interest rate (%)<input id="dApr" type="number" min="0" max="100" step="0.01" placeholder="19.99" required/></label>
       <label>Minimum monthly payment (CAD)<input id="dMin" type="number" min="0.01" step="0.01" placeholder="100" required/></label>
       <label>Payment due day<input id="dDueDay" type="number" min="1" max="31" value="15" required/></label>
       <button class="primary" type="submit">Add debt</button>
-      <p class="form-help full-width">Use your latest statement for the balance, rate, minimum payment and due day. Do not enter a full card number. A card number alone cannot retrieve your issuer’s balance, APR or minimum payment in this version.</p>
+      <p class="form-help full-width">Do not enter a full card number. Glim needs the account figures from your statement, not your card credentials.</p>
     </form>
     <div id="debtList" class="debt-list" aria-live="polite"></div>
-    <section class="otter-progress-card" aria-labelledby="otterHeading">
-      <div class="otter-visual" aria-hidden="true">
-        <svg viewBox="0 0 120 112" role="img" focusable="false">
-          <ellipse cx="58" cy="69" rx="36" ry="29" class="otter-body"/><ellipse cx="60" cy="47" rx="29" ry="27" class="otter-head"/>
-          <circle cx="39" cy="28" r="10" class="otter-ear"/><circle cx="80" cy="28" r="10" class="otter-ear"/>
-          <ellipse cx="60" cy="57" rx="19" ry="13" class="otter-muzzle"/>
-          <circle cx="49" cy="45" r="3.5" class="otter-eye"/><circle cx="71" cy="45" r="3.5" class="otter-eye"/>
-          <ellipse cx="60" cy="53" rx="4" ry="3" class="otter-nose"/><path d="M60 56v4m0 0q-5 5-9 0m9 0q5 5 9 0" class="otter-mouth"/>
-          <path d="M33 72q-9 10-4 20q12 4 21-6m34-14q11 10 6 20q-12 4-21-6" class="otter-paws"/>
-          <path d="M38 65q22 12 44 0" class="otter-belly-line"/>
-        </svg>
-        <span id="otterAccessory" class="otter-accessory" aria-hidden="true"></span>
-      </div>
-      <div class="otter-content">
-        <div class="section-title-row"><div><h2 id="otterHeading">On-time payment streak</h2><p class="muted">Record payments to track consistency. Glim does not verify payments with your lender.</p></div></div>
-        <div class="otter-stats"><div><strong id="otterStageLabel">Otter pup</strong><span>Otter growth</span></div><div><strong id="otterStreakValue">0 months</strong><span>On-time streak</span></div><div><strong id="otterCurrency">0 shells</strong><span>Customization balance</span></div></div>
-        <p id="otterInterestNote" class="muted"></p>
-      </div>
-      <div id="debtPaymentProgressList" class="debt-payment-progress" aria-live="polite"></div>
-      <div class="otter-shop"><div><h3>Customize your otter</h3><p class="muted">Earn shells by meeting the entered minimum payments on time.</p></div><div id="otterItems" class="otter-items"></div></div>
-    </section>
   </section>
-
+  </div>
+  <div class="debt-subpanel hidden" id="debtPanelStrategy" role="tabpanel" aria-labelledby="debtTabStrategy" hidden>
   <section class="content-section plan-section">
-    <div class="section-title-row"><div><h2>Repayment strategy</h2><p class="muted">Choose a method or let Smart Strategy recommend an approach using your debt details.</p></div><button class="secondary" id="planBtn" type="button">Recalculate plan</button></div>
+    <div class="section-title-row"><div><h2>Repayment strategy</h2><p class="muted">Smart Strategy compares the options using your balances, interest rates, and minimum payments.</p></div><button class="secondary" id="planBtn" type="button">Recalculate</button></div>
     <div class="strategy-row" role="group" aria-label="Repayment strategy">
-      <button data-strategy="smart" class="strategy active" type="button">Smart Strategy<span>Reviews balances, rates, and minimum payments to recommend an order.</span></button>
-      <button data-strategy="avalanche" class="strategy" type="button">Highest interest first<span>Usually costs less in interest.</span></button>
-      <button data-strategy="snowball" class="strategy" type="button">Smallest balance first<span>Clears smaller debts first.</span></button>
-      <button data-strategy="hybrid" class="strategy" type="button">Balanced<span>Balances interest cost and earlier milestones.</span></button>
+      <button data-strategy="smart" class="strategy active" type="button" aria-pressed="true">Smart Strategy<span>Choose an approach based on the modeled payoff and interest.</span></button>
+      <button data-strategy="avalanche" class="strategy" type="button" aria-pressed="false">Highest interest first<span>Prioritizes the highest APR.</span></button>
+      <button data-strategy="snowball" class="strategy" type="button" aria-pressed="false">Smallest balance first<span>Clears smaller balances first.</span></button>
+      <button data-strategy="hybrid" class="strategy" type="button" aria-pressed="false">Balanced<span>Balances interest cost and earlier milestones.</span></button>
     </div>
-    <div id="smartRecommendation" class="smart-recommendation hidden" aria-live="polite">
-      <h3>Smart Strategy recommendation</h3>
-      <p id="smartRecommendationCopy"></p>
-      <p class="muted" id="smartResolvedStrategy"></p>
-    </div>
+    <div id="smartPlanExplanation" class="smart-plan-explanation hidden" aria-live="polite"></div>
     <div class="projection" id="projection"></div>
     <p id="attackOrder" class="muted repayment-order"></p>
-    <div class="payment-visualization-controls">
-      <button type="button" class="secondary" id="togglePaymentVisualization" aria-expanded="false" aria-controls="paymentVisualizationPanel">View payment visualization</button>
-    </div>
-    <div id="paymentVisualizationPanel" class="payment-visualization hidden">
-      <div class="chart-section">
-        <h3>Estimated debt balance over time</h3>
-        <p class="muted">Solid line: selected strategy. Dashed line: minimum payments only.</p>
-        <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Estimated debt balance compared with minimum payments"></svg></div>
-      </div>
-      <div class="payment-split" aria-label="Suggested daily allocation">
-        <div><span>To savings</span><strong id="visualSavingsAllocation">—</strong></div>
-        <div><span>Toward debt</span><strong id="visualDebtAllocation">—</strong></div>
-      </div>
-    </div>
+    <details class="plain-details chart-details"><summary>View payment visualization</summary><div class="chart-section"><h3>Estimated total debt over time</h3><p class="muted">Compare your selected strategy with minimum payments only.</p><div class="chart-wrap"><svg id="debtChart" viewBox="0 0 640 220" role="img" aria-label="Estimated debt balance comparison"></svg></div></div></details>
   </section>
+  </div>
+  <div class="debt-subpanel hidden" id="debtPanelProgress" role="tabpanel" aria-labelledby="debtTabProgress" hidden>
+  <details class="plain-details otter-details" open>
+    <summary>Payment consistency and otter</summary>
+    <div class="otter-progress-card" aria-label="Payment streak and otter appearance">
+      <div class="otter-visual" aria-hidden="true"><svg viewBox="0 0 120 112"><ellipse cx="58" cy="69" rx="36" ry="29" class="otter-body"/><ellipse cx="60" cy="47" rx="29" ry="27" class="otter-head"/><circle cx="39" cy="28" r="10" class="otter-ear"/><circle cx="80" cy="28" r="10" class="otter-ear"/><ellipse cx="60" cy="57" rx="19" ry="13" class="otter-muzzle"/><circle cx="49" cy="45" r="3.5" class="otter-eye"/><circle cx="71" cy="45" r="3.5" class="otter-eye"/><ellipse cx="60" cy="53" rx="4" ry="3" class="otter-nose"/><path d="M60 56v4m0 0q-5 5-9 0m9 0q5 5 9 0" class="otter-mouth"/><path d="M33 72q-9 10-4 20q12 4 21-6m34-14q11 10 6 20q-12 4-21-6" class="otter-paws"/></svg><span id="otterAccessory" class="otter-accessory" aria-hidden="true"></span></div>
+      <div class="otter-content"><h2 id="otterStageLabel">Otter pup</h2><p class="muted">Progress reflects the payments you record.</p><div class="otter-stats"><div><strong id="otterStreakValue">0 months</strong><span>On-time payment streak</span></div><div><strong id="otterCurrency">0 shells</strong><span>Available currency</span></div><div><strong id="otterInterestNote">$0.00</strong><span>Estimated monthly interest</span></div></div></div>
+      <div id="debtPaymentProgressList" class="debt-payment-progress" aria-live="polite"></div>
+      <div class="otter-shop"><div id="otterItems" class="otter-items"></div></div>
+    </div>
+  </details>
+  </div>
   <div id="planError" class="muted" aria-live="polite"></div>
 </section>

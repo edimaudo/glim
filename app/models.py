@@ -27,7 +27,7 @@ class Profile(BaseModel):
 
 class DebtCreate(BaseModel):
     name: str = Field(min_length=1)
-    type: Literal["credit_card", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other", "loan"] = "credit_card"
+    type: Literal["credit_card", "loan", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other"] = "credit_card"
     balance: float = Field(gt=0)
     apr: float = Field(ge=0, le=100)
     minimum: float = Field(gt=0)
@@ -35,7 +35,7 @@ class DebtCreate(BaseModel):
 
 
 class PlanRequest(BaseModel):
-    strategy: Literal["smart", "avalanche", "snowball", "hybrid"] = "avalanche"
+    strategy: Literal["smart", "avalanche", "snowball", "hybrid"] = "smart"
     stash_pct: float = Field(default=65.0, ge=0, le=100)
 
 
@@ -81,10 +81,6 @@ class LessonCompleteRequest(BaseModel):
     answer: str = ""
 
 
-class SavingsBalanceRequest(BaseModel):
-    balance: float = Field(ge=0, le=1000000000)
-
-
 class StashGoalCreate(BaseModel):
     name: str = Field(min_length=2, max_length=60)
     target_amount: float = Field(gt=0)
@@ -95,7 +91,7 @@ class MonthlyDepositSettings(BaseModel):
     enabled: bool = False
     amount: float = Field(default=0, ge=0)
     income_pct: float = Field(default=0, ge=0, le=50)
-    duration_months: int = Field(default=12, ge=1, le=60)
+    duration_months: int = Field(default=6, ge=1, le=60)
     goal_id: int | None = Field(default=None, ge=1)
     due_day: int = Field(default=1, ge=1, le=28)
     consent: bool = False
@@ -104,6 +100,16 @@ class MonthlyDepositSettings(BaseModel):
 class DebtPaymentCreate(BaseModel):
     amount: float = Field(gt=0, le=1000000000)
     payment_date: date
+
+
+class SavingsBalanceRequest(BaseModel):
+    balance: float = Field(ge=0, le=1000000000)
+
+
+class SavingsContributionCreate(BaseModel):
+    amount: float = Field(gt=0, le=1000000000)
+    contribution_date: date
+    goal_id: int | None = Field(default=None, ge=1)
 
 
 class SavingsDonationCreate(BaseModel):
@@ -119,14 +125,8 @@ class SquadGoalCreate(BaseModel):
 
 
 class ScoutDebtConfirm(BaseModel):
-    type: Literal["credit_card", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other", "loan"] = "credit_card"
+    type: Literal["credit_card", "loan", "line_of_credit", "personal_loan", "student_loan", "auto_loan", "mortgage", "buy_now_pay_later", "medical_bill", "tax_debt", "payday_loan", "other"] = "credit_card"
     balance: float = Field(gt=0)
     apr: float = Field(ge=0, le=100)
     minimum: float = Field(gt=0)
     due_day: int = Field(default=15, ge=1, le=31)
-
-
-class SavingsContributionCreate(BaseModel):
-    amount: float = Field(gt=0, le=1000000000)
-    contribution_date: date
-    goal_id: int | None = Field(default=None, ge=1)

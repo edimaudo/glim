@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f7f8f6" />
   <title>{% block title %}Glim — debt and savings{% endblock %}</title>
   <link rel="manifest" href="/static/manifest.json" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261018simple2" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261023sharedsmart" />
 </head>
 <body>
 <header class="topbar">
@@ -19,11 +19,11 @@
       <button type="button" class="font-choice" id="fontLargeBtn" aria-pressed="false">Large</button>
     </div>
     <button type="button" class="text-button theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">Dark mode</button>
-    {% if app_shell %}<button type="button" class="text-button" id="logoutBtn">Sign out</button>{% elif not hide_header_signin %}<a class="text-button header-signin" href="/signin">Sign in</a>{% endif %}
+    {% if app_shell %}<button type="button" class="text-button" id="logoutBtn">Sign out</button>{% else %}<a class="text-button header-signin" href="/signin">Sign in</a>{% endif %}
   </div>
 </header>
 {% block main %}{% endblock %}
-<script src="/static/preferences.js?v=20261018simple"></script>
+<script src="/static/preferences.js?v=20261023sharedsmart"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
