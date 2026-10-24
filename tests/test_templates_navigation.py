@@ -48,9 +48,9 @@ def test_public_landing_is_separate_from_sign_in():
         assert "In this prototype, your plan is stored in this browser" not in signin.text
 
 
-def test_navigation_has_five_main_destinations_and_old_sections_redirect():
+def test_navigation_has_six_main_destinations_and_old_sections_redirect():
     with TestClient(app) as client:
-        for section in ["overview", "plan", "savings", "settings", "help"]:
+        for section in ["overview", "plan", "savings", "insights", "settings", "help"]:
             response = client.get(f"/app/{section}")
             assert response.status_code == 200, section
             assert f'href="/app/{section}"' in response.text
@@ -60,7 +60,7 @@ def test_navigation_has_five_main_destinations_and_old_sections_redirect():
             assert 'id="pExpenses"' in response.text
             assert "Income range" not in response.text
             assert "Connections and AI" not in response.text
-            assert 'id="startWalkthroughBtn"' in response.text
+            assert 'data-start-walkthrough' in response.text
             assert "PayPal Sandbox" not in response.text
             assert "eyebrow" not in response.text
             assert "Gemini" not in response.text
@@ -114,6 +114,9 @@ def test_profile_schema_uses_one_income_value_and_expenses():
     assert data["average_monthly_expenses"] == 3200
     assert "income_range" not in data
     assert data["name"] == ""
+    assert data["country"] == "CA"
+    assert data["currency"] == "CAD"
+    assert data["timezone"] == "America/Toronto"
     assert data["persona"] == "custom"
     assert "show_friend_support" in data
 
@@ -148,3 +151,22 @@ def test_main_experience_is_financial_and_gamification_free():
         assert "Customize your otter" not in copy
         assert "Earn shells by meeting the entered minimum payments on time" not in copy
         assert not re.search(r"\b(forest|stash|boss|drip|points|squad|gamification|ogre)\b", copy, re.I)
+
+
+def test_financial_insights_and_otter_are_included():
+    with TestClient(app) as client:
+        response = client.get("/app/insights")
+        assert response.status_code == 200
+        for label in ["Cash flow", "What-if planner", "Calendar", "Reports", "Import & reconcile"]:
+            assert label in response.text
+        for field in ["cashTransactionForm", "financeScenarioForm", "financialCalendarEvents", "financialReportSummary", "transactionImportForm", "debtReconcileForm"]:
+            assert f'id="{field}"' in response.text
+        visible = VisibleText()
+        visible.feed(response.text)
+        assert "Plaid" not in visible.text()  # provider details are not advertised as UI copy
+        assert 'data-start-walkthrough' in response.text
+        assert 'class="otter-mark"' in client.get("/app/savings").text
+        assert 'class="otter-mark"' in client.get("/app/plan").text
+        assert 'id="fontSmallBtn" aria-pressed="false">90%' in response.text
+        assert 'id="fontMediumBtn" aria-pressed="true">100%' in response.text
+        assert 'id="fontLargeBtn" aria-pressed="false">112%' in response.text

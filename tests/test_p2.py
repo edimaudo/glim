@@ -78,24 +78,6 @@ def test_monthly_recap_summarizes_drips_for_selected_month():
         assert recap["bars"] == {"stash_pct": 65.0, "debt_pct": 35.0}
 
 
-def test_squad_goal_unlocks_group_cosmetic_on_daily_drip():
-    with tempfile.TemporaryDirectory() as td:
-        db = make_db(td)
-        email = "riley@example.test"
-        connect_demo_sandbox(db)
-        create_squad(db, "Forest Crew", email)
-        create_squad_goal(db, "One member-day", 1, 1, email)
-        approve_drip(db, True, email=email)
-        squad = get_squad(db, email)
-        assert squad["goals"][0]["status"] == "completed"
-        assert squad["goals"][0]["progress_count"] == 1
-        assert any(item["cosmetic_id"] == 1 for item in squad["unlocked_cosmetics"])
-        # A second drip on the same UTC day does not increase the same member-day twice.
-        approve_drip(db, True, email=email)
-        squad = get_squad(db, email)
-        assert squad["goals"][0]["progress_count"] == 1
-
-
 def test_monthly_deposit_requires_consent_and_connected_sandbox():
     with tempfile.TemporaryDirectory() as td:
         db = make_db(td)

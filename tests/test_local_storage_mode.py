@@ -3,9 +3,9 @@ import os
 from fastapi.testclient import TestClient
 
 
-def test_localstorage_mode_does_not_initialize_sqlite_or_accept_api_writes(monkeypatch, tmp_path):
+def test_indexeddb_mode_does_not_initialize_sqlite_or_accept_api_writes(monkeypatch, tmp_path):
     database_path = tmp_path / "should-not-exist.db"
-    monkeypatch.setenv("GLIM_STORAGE_MODE", "localStorage")
+    monkeypatch.setenv("GLIM_STORAGE_MODE", "indexedDB")
     monkeypatch.setenv("DATABASE_PATH", str(database_path))
     module = importlib.import_module("app.main")
     module = importlib.reload(module)
@@ -17,12 +17,12 @@ def test_localstorage_mode_does_not_initialize_sqlite_or_accept_api_writes(monke
     with TestClient(module.app) as client:
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["storage_mode"] == "localStorage"
+        assert health.json()["storage_mode"] == "indexedDB"
         assert health.json()["database_initialized"] is False
 
         config = client.get("/storage-config.js")
         assert config.status_code == 200
-        assert "storageMode: 'localStorage'" in config.text
+        assert "storageMode: 'indexedDB'" in config.text
 
         landing = client.get("/")
         assert landing.status_code == 200

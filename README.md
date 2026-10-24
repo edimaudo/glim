@@ -1,54 +1,60 @@
 # Glim
 
-Glim is a FastAPI app for planning debt repayment alongside a savings buffer. The main experience is a single financial plan with plain-language estimates and user-controlled transfer settings.
+Glim is a FastAPI personal-finance app for coordinating debt repayment, savings goals, and monthly cash flow. Financial estimates use entered or imported data and are presented as projections, not lender quotes.
 
-## Architecture
+## Main navigation
 
-- `app/main.py` defines FastAPI routes and the local-storage/database API boundary.
-- `app/templates/` contains Jinja2 pages and reusable feature partials.
-- `app/static/` contains browser assets; it is not the application-template directory.
-- `app/static/storage.js` implements the browser localStorage adapter used by the default prototype mode.
-- `app/services.py` contains deterministic financial calculations, the PayPal Sandbox client, Gemini adapter and service functions used by the agent roles.
+The app has six destinations: **Overview**, **Debt plan**, **Savings**, **Insights**, **Settings**, and **Help**.
 
-## First-run flow and navigation
+- **Overview** summarizes active debt, savings balance, the selected repayment strategy, and the payment streak.
+- **Debt plan** groups debt entry, repayment strategies, and payment progress into tabs. Smart Strategy is part of debt and savings planning, not a standalone section.
+- **Savings** groups goals, the savings plan, contributions, and giving into tabs. Giving appears only after at least one savings goal is complete. The otter pup is a decorative progress companion; there is no points currency, accessory shop, or reward system. Payment and savings streaks remain.
+- **Insights** has five tabs: **Cash flow**, **What-if planner**, **Calendar**, **Reports**, and **Import & reconcile**. It supports manual income/expense entries, CSV import with duplicate detection, scenario comparisons for income/expense changes, extra or lump-sum payments, unexpected costs and APR changes, debt/savings calendar reminders, six-month reports, optional bank transaction syncing, and lender-statement reconciliation.
+- **Settings** manages reminders and preferences. **Help** includes a six-step app walkthrough.
 
-Sign-in now takes users directly into the app. If there is no saved plan, the first-run form appears inside the app shell instead of opening a separate example-profile picker. It collects monthly take-home income, typical monthly expenses, a savings target and a minimum balance. A first debt can be entered in the same form or added later from Debt plan.
+## Canada defaults
 
-The main navigation has five destinations: `/app/overview`, `/app/plan`, `/app/savings`, `/app/settings` and `/app/help`. Overview combines the debt and savings balances with the user's payment streak. Debt plan is organized into tabs for debt entry, repayment planning and payment progress; Smart Strategy is one of the repayment options rather than a standalone destination. Savings has tabs for goals, the percentage-based savings plan, contributions, and giving. Giving only becomes available after a savings goal is complete. Smart savings uses the same financial context to balance the savings target and debt costs. Settings contains reminders and account controls; Help includes the walkthrough and common questions.
+Glim defaults to Canada (`CA`), Canadian dollars (`CAD`), and `America/Toronto`. Amounts throughout the interface are formatted in CAD.
 
-## Integration status and deployment gates
+## Storage, sign-in, and account isolation
 
-### Storage, sign-in and account isolation
+The default `GLIM_STORAGE_MODE=indexedDB` stores browser-local financial state and UI preferences in IndexedDB. A one-time compatibility migration reads prior app data from IndexedDB and moves it into IndexedDB; the old stored keys are then removed. In IndexedDB mode, email entry is a local profile selector, not verified authentication, and server payment/bank APIs are unavailable.
 
-`GLIM_STORAGE_MODE=localStorage` remains the default. In this mode profile data stays in the current browser, email entry is only a local profile selector, and server/payment API routes are disabled. Use `GLIM_STORAGE_MODE=database` to enable the API: it sends one-time sign-in links through SMTP, stores magic-link/session secrets as SHA-256 digests, and keeps each account's financial state in a separate SQLite tenant file. The master database stores authentication, PayPal callback correlations and shared squad membership.
+Use `GLIM_STORAGE_MODE=database` to enable verified email-link sign-in, isolated per-user SQLite data, PayPal Sandbox, and optional direct bank connections. Configure SMTP for verified sign-in and use durable writable storage for the SQLite database and tenant files. Do not use an ephemeral or read-only serverless filesystem for this mode. A managed Postgres adapter is not included.
 
-SQLite must live on durable writable storage. Do not run this mode on an ephemeral serverless filesystem, or across several app instances without a shared database/migration strategy. A production managed Postgres adapter is not included in this codebase, so select a host with a persistent volume for the current SQLite implementation. In production, `APP_ENV=production` requires HTTPS in `APP_PUBLIC_URL` and an SMTP connection for verified email sign-in.
+## PayPal Sandbox: Canada / CAD
 
-### PayPal Sandbox and financial ledger
+The existing PayPal integration uses PayPal's Sandbox API and is configured for country `CA` and currency `CAD`. It includes consent/token exchange, supported payment operations, callback-state verification, webhook signature verification, reconciliation, idempotency, and safeguards for unresolved transfers. A tracked balance is not updated merely because a transfer was requested; the confirmed provider outcome is required.
 
-The server-side flow includes Vault setup-token consent and exchange, Orders, capture, Payouts, callback-state verification, webhook signature verification, reconciliation and idempotent request references. A daily approval creates an accrued ledger item; **it does not change savings or debt balances**. Balances update only after PayPal confirms the payout batch. Uncertain outcomes pause new transfers until the existing settlement is reconciled; a second batch cannot start while a prior settlement is unresolved. The app validates payout recipients before capture, checks that debt payments do not exceed a debt's remaining balance, and keeps provider token identifiers out of API state and data exports.
+To exercise it, use `GLIM_STORAGE_MODE=database`, set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_STASH_EMAIL`, `PAYPAL_LENDER_EMAIL`, and an externally reachable HTTPS `APP_PUBLIC_URL`, then configure the matching webhook in the PayPal Developer Dashboard. Use Sandbox business and personal accounts. Credentials and a provider round trip are required for a true end-to-end test; automated tests only verify request construction and safety rules.
 
-Configure `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_STASH_EMAIL`, `PAYPAL_LENDER_EMAIL`, and an externally reachable HTTPS `APP_PUBLIC_URL`. Register the webhook with PayPal Sandbox and configure its matching ID. Automated tests exercise request construction, token handling and settlement safeguards, but they do not substitute for an end-to-end run with your own PayPal Sandbox business/personal accounts and webhook configuration.
+PayPal's developer documentation lists Canada as eligible for payouts and payment-method vaulting, with local-currency support for payouts. Certain payment capabilities still depend on account eligibility and the relevant Sandbox app features being enabled. Verify Vault/save-payment-method capability in the Developer Dashboard before exercising that path: [PayPal supported payout features](https://developer.paypal.com/payouts/supported-features/) · [PayPal save payment methods](https://developer.paypal.com/docs/checkout/save-payment-methods/).
 
-Scout only analyzes activity returned by the connected PayPal reporting API. It does not invent missing recurring payments or imply that PayPal reporting represents every bank or credit-card transaction. Debt suggestions remain pending until the user confirms the balance, rate and payment details.
+## Canadian bank connections and lender reconciliation
 
-### Gemini and deterministic specialist tools
+CSV transaction import and statement reconciliation are available without a bank connection. Optional direct bank syncing uses Plaid Link with Canada selected as the country and requests transaction data. It requires `GLIM_STORAGE_MODE=database`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, and a valid `PLAID_TOKEN_ENCRYPTION_KEY` (a Fernet key); tokens are encrypted before being stored. Set `PLAID_ENV=sandbox` for integration testing. Production institution and product coverage must be checked with the provider; not every institution supports every data product, and liability coverage in Canada is limited. No bank password is collected by Glim.
 
-`GeminiAdapter` supports bounded Gemini function calling using allow-listed, read-only tools for the financial snapshot, deterministic payoff comparisons, what-if calculations, Scout activity, Sage lessons, habit progress, Chipper check-in preferences and Banker settlement status. The model cannot initiate, approve, capture or retry a payment; those operations remain behind explicit app controls. When Gemini is unconfigured or its response fails validation, Glim uses deterministic Python guidance. Tool calls and financial actions are recorded in the per-user audit log, with provider token values redacted from the browser-facing audit and export.
+For lenders, the user can compare a statement balance with the tracked debt and explicitly choose whether to apply statement values. Bank transaction sync does not itself prove a lender balance or automatically reduce a debt. CSV imports and recorded payment activity are labelled by source; reports do not infer missing history.
 
-Set `GEMINI_API_KEY` and, when necessary, `GEMINI_MODEL`. The example environment defaults to `gemini-3.8-flash`; verify that the model is available to your API key before enabling it ([Google Gemini API model catalogue](https://ai.google.dev/gemini-api/docs/models)). The specialist roles share deterministic service functions rather than running as five independent autonomous agents.
+Canadian consumer-driven banking (open banking) is still moving through its federal framework implementation. This optional Plaid integration uses Plaid's supported connections; it should not be described as a connection to a generally available, universal Canadian open-banking API. See the [Government of Canada's consumer-driven banking overview](https://www.canada.ca/en/financial-consumer-agency/services/banking/open-banking.html) and [Plaid's Canada product coverage](https://support.plaid.com/hc/en-us/articles/27895826947735-What-Plaid-products-are-supported-in-each-country-and-region).
 
-### Debt payments, savings scheduling and reminders
+## Financial calculations and data quality
 
-Debt entries include the type, balance, APR, minimum payment, and due day. Users can record a payment; this reduces the tracked balance and is identified as user-reported rather than lender-verified. The debt progress view compares recorded payments with the entered minimum and due day, builds an on-time streak, and unlocks otter accessories with non-cash in-app currency. The debt chart projects combined debt under the selected repayment strategy against minimum payments only.
+The What-if planner calculates payoff estimates against current debt entries and the entered income/expense baseline. It can model:
 
-Savings goals can include a monthly contribution target. A recorded contribution updates the tracked savings balance and goal status, and the savings streak counts months that meet the selected target. Percentage-of-income schedules have a fixed duration and may be disabled at any time. Charity giving stays hidden and the service rejects donation requests until at least one goal is complete; any configured connected payment flow remains subject to payment-provider authorization and payout status.
+- extra recurring monthly debt payments;
+- monthly income and expense changes;
+- a one-time unexpected expense, including the portion that exceeds the recorded savings buffer;
+- a one-time lump-sum debt payment; and
+- changes in APR percentage.
 
-### P1 notifications, progression, squads and data controls
+The calendar combines entered debt due days, scheduled savings, goal contribution targets, and a monthly budget-review reminder. Reports show recorded income, expenses, debt payments, savings contributions, current balances, and estimated interest avoided where the current repayment projection provides that value. Historical balances are not invented when older snapshots are unavailable.
 
-In database mode, the hourly worker applies the standing-rule daily allocation and finite monthly savings schedules, schedules at most one check-in per user-local calendar day during the 09:00–19:59 delivery window, runs weekly settlement checks, and reconciles stale outcomes. Scheduled check-ins respect the configured time zone, quiet hours, daily cap, and ignore backoff. Email requires `SMTP_HOST` plus a sender address; web push requires `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` and a browser subscription. These external channels are only enabled when configured.
+Imported transactions are deduplicated using date, amount, and description. Reconciliation records show the tracked balance, statement balance, variance, statement date, and whether the user applied the updated value.
 
-The app includes debt payoff projections and freed-payment decisions, streak freezes and evolution/points, per-user check-in learning, user-confirmed Scout debt proposals, situation-aware Sage lessons, six-member squads with invites/positive cheers/privacy-safe progress, account export and account deletion, and responsive/reduced-motion/focus treatments. Squad features are shared only when server mode is enabled; the browser-only version does not fabricate shared members.
+## Preferences, accessibility, and appearance
+
+The 90%, 100%, and 112% font control scales the page's text and interface elements together. Light/dark mode and walkthrough-completion preferences are stored in IndexedDB. Action buttons use shared sizing, corner radius, type, and focus-visible treatment. The interface is responsive and includes keyboard-focus styling.
 
 ## Run locally
 
@@ -57,8 +63,7 @@ python -m pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-To exercise verified authentication and server integrations locally, configure `.env` from `.env.example`, use a durable `DATABASE_PATH` and `GLIM_USER_DATA_DIR`, set `GLIM_STORAGE_MODE=database`, and configure SMTP/PayPal/Gemini or VAPID credentials as needed. Do not switch production traffic to server mode until the real-account flow and webhook round trip have been verified in PayPal Sandbox.
-
+To test server integrations, configure `.env` from `.env.example`, switch `GLIM_STORAGE_MODE=database`, set a durable `DATABASE_PATH` and `GLIM_USER_DATA_DIR`, and configure Sandbox/provider credentials. Do not switch live financial traffic to production credentials without validating the relevant account eligibility, webhook round trip, and reconciliation behavior.
 
 ## Tests
 

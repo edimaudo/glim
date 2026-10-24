@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f7f8f6" />
   <title>{% block title %}Glim — debt and savings{% endblock %}</title>
   <link rel="manifest" href="/static/manifest.json" />
-  <link rel="stylesheet" href="/static/styles.css?v=20261023sharedsmart" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261024idbfinance" />
 </head>
 <body>
 <header class="topbar">
@@ -14,16 +14,16 @@
   <div class="top-actions">
     <div class="font-size-group" role="group" aria-label="Text size">
       <span class="font-size-label">Text size</span>
-      <button type="button" class="font-choice" id="fontSmallBtn" aria-pressed="false">Small</button>
-      <button type="button" class="font-choice active" id="fontMediumBtn" aria-pressed="true">Medium</button>
-      <button type="button" class="font-choice" id="fontLargeBtn" aria-pressed="false">Large</button>
+      <button type="button" class="font-choice" id="fontSmallBtn" aria-pressed="false">90%</button>
+      <button type="button" class="font-choice active" id="fontMediumBtn" aria-pressed="true">100%</button>
+      <button type="button" class="font-choice" id="fontLargeBtn" aria-pressed="false">112%</button>
     </div>
     <button type="button" class="text-button theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">Dark mode</button>
     {% if app_shell %}<button type="button" class="text-button" id="logoutBtn">Sign out</button>{% else %}<a class="text-button header-signin" href="/signin">Sign in</a>{% endif %}
   </div>
 </header>
 {% block main %}{% endblock %}
-<script src="/static/preferences.js?v=20261023sharedsmart"></script>
+<script src="/static/preferences.js?v=20261024idbfinance"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

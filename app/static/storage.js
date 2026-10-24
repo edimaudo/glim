@@ -1,11 +1,11 @@
-/* Glim storage adapters.
- * Prototype mode keeps user/application data in this browser only.
- * DatabaseApiAdapter preserves the same request contract for a future API/database migration.
- */
+/* Glim storage adapters. IndexedDB is the default client-side store; the database adapter supports verified sign-in and payment-provider APIs. */
 (() => {
   'use strict';
   const STORAGE_KEY = 'glim.prototype.v1';
   const ACTIVE_EMAIL_KEY = 'glim.prototype.active-email';
+  const DB_NAME = 'glim-finance';
+  const DB_VERSION = 1;
+  const DB_STORE = 'records';
   const accountKey = email => `${STORAGE_KEY}.user.${encodeURIComponent(String(email || '').trim().toLowerCase())}`;
   const COSMETICS = [
     { id: 1, name: 'Leaf trail', description: 'A subtle visual accent.', cost: 80, icon: 'leaf' },
@@ -28,15 +28,16 @@
   const id = () => (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const newState = () => ({
     schemaVersion: 1,
-    mode: 'localStorage',
+    mode: 'indexedDB',
     authenticated: false,
     user: null,
-    profile: {},
+    profile: { country: 'CA', currency: 'CAD', timezone: 'America/Toronto' },
     paypal: { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] },
     stash: { balance: 0, shield_threshold: 1000, goals: [] },
-    game: { streak: 0, freezes: 1, points: 0, level: 1, evolution_stage: 'Revolver', otter_equipped_id: null },
+    game: { streak: 0 },
     plan: {}, paused: false, pending_redirect: null,
     debts: [], seeded_transactions: [], ledger: [], audit: [], points_events: [],
+    cash_transactions: [], saved_scenarios: [], reconciliations: [],
     notifications: { quiet_start: '22:00', quiet_end: '08:00', daily_cap: 3, channel: 'in_app', consecutive_ignores: 0, debt_reminder_tone: 'zen' },
     inbox: [], nudge_history: [], debt_payment_events: [], savings_goal_events: [], donations: [],
     monthly_deposit: { enabled: false, amount: 0, income_pct: 0, duration_months: 6, goal_id: null, due_day: 1, consent: false, status: 'disabled' },
@@ -44,80 +45,107 @@
     owned_cosmetics: [], completed_lessons: [], last_drip_date: null,
   });
 
-  class BrowserLocalStorageAdapter {
-    constructor(key = STORAGE_KEY) { this.baseKey = key; this.key = key; this.name = 'localStorage'; }
-    resolveKey() {
-      const email = String(localStorage.getItem(ACTIVE_EMAIL_KEY) || '').trim().toLowerCase();
-      if (email) { this.key = accountKey(email); return this.key; }
-      // One-time migration from the former single shared browser record. Only migrate it
-      // to the email already recorded inside that record; never copy it to another email.
-      try {
-        const raw = localStorage.getItem(this.baseKey);
-        const prior = raw ? JSON.parse(raw) : null;
-        const oldEmail = String(prior?.user?.email || '').trim().toLowerCase();
-        if (oldEmail) {
-          localStorage.setItem(ACTIVE_EMAIL_KEY, oldEmail);
-          const nextKey = accountKey(oldEmail);
-          if (!localStorage.getItem(nextKey)) localStorage.setItem(nextKey, raw);
-          localStorage.removeItem(this.baseKey);
-          this.key = nextKey;
-          return this.key;
-        }
-      } catch {}
-      this.key = this.baseKey;
-      return this.key;
+  class BrowserIndexedDBAdapter {
+    constructor(key = STORAGE_KEY) {
+      this.baseKey = key;
+      this.key = key;
+      this.name = 'indexedDB';
+      this.db = null;
+      this.activeEmail = '';
+      this.cache = null;
+      this.pendingWrites = Promise.resolve();
+      this.ready = this.initialize();
     }
-    read() {
-      try {
-        this.resolveKey();
-        const raw = localStorage.getItem(this.key);
-        if (!raw) return newState();
-        const value = JSON.parse(raw);
-        if (value.schemaVersion !== 1) return { ...newState(), ...value, schemaVersion: 1 };
-        // Remove the legacy sample identity and synthetic activity on existing installs.
-        // Persist the one-time migration so each subsequent read doesn't reset state.
-        let migratedSample = false;
-        if (!value.legacy_sample_cleared && (value.profile?.sample_selected === true || ['riley', 'sam'].includes(String(value.profile?.persona || '')) || ['Riley', 'Sam', 'Credit-card payoff example', 'Loan and savings example'].includes(String(value.profile?.name || '')))) {
-          value.profile = { name: '', persona: 'custom' };
-          value.debts = [];
-          value.plan = {};
-          value.stash = { balance: 0, shield_threshold: 1000, goals: [] };
-          value.game = { streak: 0, freezes: 1, points: 0, level: 1, evolution_stage: 'Revolver' };
-          value.seeded_transactions = [];
-          value.seeded_subscriptions = [];
-          value.ledger = [];
-          value.audit = [];
-          value.points_events = [];
-          value.last_drip_date = null;
-          if (value.user) value.user.display_name = '';
-          value.legacy_sample_cleared = true;
-          migratedSample = true;
-        }
-        const defaults = newState();
-        const state = { ...defaults, ...value };
-        state.notifications = { ...defaults.notifications, ...(value.notifications || {}) };
-        state.game = { ...defaults.game, ...(value.game || {}) };
-        state.monthly_deposit = { ...defaults.monthly_deposit, ...(value.monthly_deposit || {}) };
-        for (const key of ['debt_payment_events','savings_goal_events','donations']) if (!Array.isArray(state[key])) state[key] = [];
-        if (migratedSample) this.save(state);
-        return state;
-      } catch (error) {
-        console.warn('Glim local storage could not be read; starting an empty prototype state.', error);
-        return newState();
+    openDatabase() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) { reject(new Error('This browser does not support IndexedDB. Use a current version of Safari, Chrome, Firefox, or Edge.')); return; }
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' }); };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('Glim could not open its secure browser database.'));
+      });
+    }
+    getRecord(key) {
+      return new Promise((resolve, reject) => {
+        const tx = this.db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result?.value ?? null);
+        req.onerror = () => reject(req.error || new Error('Could not read saved financial information.'));
+      });
+    }
+    putRecord(key, value) {
+      return new Promise((resolve, reject) => {
+        const tx = this.db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put({ key, value });
+        tx.oncomplete = () => resolve();
+        tx.onerror = tx.onabort = () => reject(tx.error || new Error('Glim could not save your changes.'));
+      });
+    }
+    deleteRecord(key) {
+      return new Promise((resolve, reject) => {
+        const tx = this.db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = tx.onabort = () => reject(tx.error || new Error('Glim could not delete the saved data.'));
+      });
+    }
+    async initialize() {
+      this.db = await this.openDatabase();
+      this.activeEmail = String(await this.getRecord('meta.activeEmail') || '').trim().toLowerCase();
+      this.key = this.activeEmail ? accountKey(this.activeEmail) : this.baseKey;
+      let stored = await this.getRecord(this.key);
+      this.cache = this.normalizeState(stored || newState());
+      if (!stored) await this.putRecord(this.key, this.cache);
+      return true;
+    }
+    normalizeState(value) {
+      const defaults = newState();
+      const state = { ...defaults, ...(value || {}) };
+      state.profile = { country: 'CA', currency: 'CAD', timezone: 'America/Toronto', ...(value?.profile || {}) };
+      state.notifications = { ...defaults.notifications, ...(value?.notifications || {}) };
+      state.game = { streak: Number(value?.game?.streak || 0) };
+      state.monthly_deposit = { ...defaults.monthly_deposit, ...(value?.monthly_deposit || {}) };
+      for (const key of ['debt_payment_events','savings_goal_events','donations','cash_transactions','saved_scenarios','reconciliations']) if (!Array.isArray(state[key])) state[key] = [];
+      if (!state.legacy_sample_cleared && (state.profile?.sample_selected === true || ['riley','sam'].includes(String(state.profile?.persona || '')) || ['Riley','Sam','Credit-card payoff example','Loan and savings example'].includes(String(state.profile?.name || '')))) {
+        state.profile = { country:'CA', currency:'CAD', timezone:'America/Toronto', name:'', persona:'custom' };
+        state.debts=[]; state.plan={}; state.stash={balance:0,shield_threshold:1000,goals:[]};
+        state.game={streak:0};
+        state.seeded_transactions=[]; state.seeded_subscriptions=[]; state.ledger=[]; state.audit=[]; state.points_events=[];
+        state.last_drip_date=null; if(state.user)state.user.display_name=''; state.legacy_sample_cleared=true;
       }
+      return state;
     }
-    save(s) {
-      try { this.resolveKey(); localStorage.setItem(this.key, JSON.stringify(s)); }
-      catch (error) { throw new Error('Glim could not save to this browser. Check available site storage or export your data before continuing.'); }
+    read() { return this.cache || newState(); }
+    save(state) {
+      this.cache = this.normalizeState(state);
+      const snapshot = clone(this.cache), key = this.key;
+      this.pendingWrites = this.pendingWrites.catch(() => {}).then(() => this.putRecord(key, snapshot));
+      return this.pendingWrites;
     }
-    clear() {
-      try {
-        const email = String(localStorage.getItem(ACTIVE_EMAIL_KEY) || '').trim().toLowerCase();
-        if (email) localStorage.removeItem(accountKey(email));
-        if (this.key === this.baseKey) localStorage.removeItem(this.baseKey);
-        localStorage.removeItem(ACTIVE_EMAIL_KEY);
-        this.key = this.baseKey;
-      } catch {}
+    async flush() { await this.pendingWrites; }
+    async selectAccount(email) {
+      this.activeEmail = String(email || '').trim().toLowerCase();
+      this.key = this.activeEmail ? accountKey(this.activeEmail) : this.baseKey;
+      if (this.activeEmail) await this.putRecord('meta.activeEmail', this.activeEmail);
+      this.cache = this.normalizeState((await this.getRecord(this.key)) || newState());
+      if (!(await this.getRecord(this.key))) await this.putRecord(this.key, this.cache);
+    }
+    async clear() {
+      await this.ready;
+      await this.deleteRecord(this.key).catch(() => {});
+      await this.deleteRecord('meta.activeEmail').catch(() => {});
+      this.activeEmail = ''; this.key = this.baseKey; this.cache = newState();
+      await this.putRecord(this.key, this.cache);
+    }
+    state(s) {
+      return {
+        profile: s.profile, paypal: s.paypal, stash: s.stash, game: { streak: Number(s.game?.streak || 0) }, plan: s.plan,
+        paused: s.paused, pending_redirect: s.pending_redirect, user: s.user,
+        debts: s.debts, daily_drip: this.dailyDrip(s.profile), paypal_configured: false,
+        weekly_approved: this.weeklyTotal(s), standing_rule_today: this.canAutoApprove(s),
+        stress_mode: this.stressMode(s), storage_mode: 'indexedDB', cash_transactions: s.cash_transactions || [],
+        saved_scenarios: s.saved_scenarios || [], reconciliations: s.reconciliations || []
+      };
     }
     addAudit(s, agent, inputRef, rationale, approval, result) {
       s.audit.unshift({ id: id(), created_at: now(), agent, input_ref: inputRef, proposal: {}, rationale, approval, result });
@@ -125,11 +153,11 @@
     }
     state(s) {
       return {
-        profile: s.profile, paypal: s.paypal, stash: s.stash, game: s.game, plan: s.plan,
+        profile: s.profile, paypal: s.paypal, stash: s.stash, game: { streak: Number(s.game?.streak || 0) }, plan: s.plan,
         paused: s.paused, pending_redirect: s.pending_redirect, user: s.user,
         debts: s.debts, daily_drip: this.dailyDrip(s.profile), paypal_configured: false,
         weekly_approved: this.weeklyTotal(s), standing_rule_today: this.canAutoApprove(s),
-        stress_mode: this.stressMode(s), storage_mode: 'localStorage',
+        stress_mode: this.stressMode(s), storage_mode: 'indexedDB',
       };
     }
     dailyDrip(profile) {
@@ -251,25 +279,44 @@
       return { squad: s.squad, members, cheers: s.cheers.slice(-30).reverse(), goals: s.squad_goals, unlocked_cosmetics: s.unlocked_group_cosmetics };
     }
     debtProgress(s) {
-      const today=new Date(), monthKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      const rows=s.debts.filter(d=>d.status==='active').map(debt=>{
-        const dueDay=Math.min(31,Number(debt.due_day||15)),events=s.debt_payment_events.filter(p=>Number(p.debt_id)===Number(debt.id)),byMonth={};
-        events.forEach(p=>{const month=String(p.payment_date).slice(0,7),day=Number(String(p.payment_date).slice(8,10));byMonth[month] ||= {total:0,onTime:0};byMonth[month].total+=Number(p.amount||0);if(day<=dueDay)byMonth[month].onTime+=Number(p.amount||0);});
-        const current=byMonth[monthKey(today)]||{total:0,onTime:0},paid=current.onTime+.001>=Number(debt.minimum||0);let start=new Date(today.getFullYear(),today.getMonth(),1);if(!paid&&today.getDate()<dueDay)start.setMonth(start.getMonth()-1);let streak=0;
-        for(let i=0;i<120;i++){if(Number(byMonth[monthKey(start)]?.onTime||0)+.001<Number(debt.minimum||0))break;streak++;start.setMonth(start.getMonth()-1);}
-        return {id:Number(debt.id),name:debt.name,type:debt.type,due_day:dueDay,minimum:Number(debt.minimum),paid_this_month:round2(current.total),paid_on_time_this_month:paid,payment_status:paid?'paid':today.getDate()>=dueDay?'due':'upcoming',streak};
+      const today = new Date();
+      const active = s.debts.filter(d => d.status === 'active');
+      const rows = active.map(debt => {
+        const dueDay = Math.min(31, Number(debt.due_day || 15));
+        const month = today.toISOString().slice(0,7);
+        const events = s.debt_payment_events.filter(e => Number(e.debt_id) === Number(debt.id) && String(e.payment_date).slice(0,7) === month);
+        const paidByDue = events.filter(e => Number(String(e.payment_date).slice(8,10)) <= dueDay).reduce((sum,e)=>sum+Number(e.amount||0),0);
+        const paid = paidByDue + .001 >= Number(debt.minimum||0);
+        const streak = this.debtStreak(s, debt);
+        return { id: Number(debt.id), name: debt.name, type: debt.type, due_day: dueDay, minimum: Number(debt.minimum||0), paid_this_month: round2(events.reduce((sum,e)=>sum+Number(e.amount||0),0)), paid_on_time_this_month: paid, payment_status: paid ? 'paid' : (today.getDate() >= dueDay ? 'due' : 'upcoming'), streak };
       });
-      const streak=rows.length?Math.min(...rows.map(d=>d.streak)):0,stage=streak>=12?['grown','Grown otter']:streak>=6?['confident','Confident otter']:streak>=3?['young','Growing otter']:['pup','Otter pup'];
-      const items=COSMETICS.filter(c=>c.id>=101).map(item=>({...item,owned:s.owned_cosmetics.includes(item.id),equipped:Number(s.game.otter_equipped_id)===item.id}));
-      const nextDue=rows.map(d=>{const x=new Date(today.getFullYear(),today.getMonth(),Math.min(d.due_day,28));if(x<new Date(today.getFullYear(),today.getMonth(),today.getDate()))x.setMonth(x.getMonth()+1);return x}).sort((a,b)=>a-b)[0];
-      const active=s.debts.filter(d=>d.status==='active');
-      return {on_time_streak:streak,stage:stage[0],stage_label:stage[1],currency:Number(s.game.points||0),equipped_id:s.game.otter_equipped_id??null,debts:rows,items,next_due_date:nextDue?nextDue.toISOString().slice(0,10):null,estimated_monthly_interest:round2(active.reduce((sum,d)=>sum+Number(d.balance||0)*Number(d.apr||0)/1200,0))};
+      const streak = rows.length ? Math.min(...rows.map(r=>r.streak)) : 0;
+      let nextDue = null;
+      for (const debt of active) {
+        const dueDay = Math.min(28, Number(debt.due_day || 15));
+        const due = new Date(today.getFullYear(), today.getMonth(), dueDay);
+        if (due < new Date(today.getFullYear(),today.getMonth(),today.getDate())) due.setMonth(due.getMonth()+1);
+        if (!nextDue || due < nextDue) nextDue = due;
+      }
+      return { on_time_streak: streak, debts: rows, next_due_date: nextDue ? nextDue.toISOString().slice(0,10) : null, estimated_monthly_interest: round2(active.reduce((sum,d)=>sum+Number(d.balance||0)*Number(d.apr||0)/1200,0)) };
+    }
+    debtStreak(s, debt) {
+      let count=0; const today=new Date(); const dueDay=Math.min(31,Number(debt.due_day||15));
+      const currentMonthPaid=s.debt_payment_events.filter(e=>Number(e.debt_id)===Number(debt.id)&&String(e.payment_date).slice(0,7)===`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`&&Number(String(e.payment_date).slice(8,10))<=dueDay).reduce((sum,e)=>sum+Number(e.amount||0),0)>=Number(debt.minimum||0)-.001;
+      const firstOffset=!currentMonthPaid&&today.getDate()<dueDay?1:0;
+      for(let offset=firstOffset;offset<firstOffset+120;offset++){
+        const date=new Date(today.getFullYear(),today.getMonth()-offset,1), key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+        const paid=s.debt_payment_events.filter(e=>Number(e.debt_id)===Number(debt.id)&&String(e.payment_date).slice(0,7)===key&&Number(String(e.payment_date).slice(8,10))<=Math.min(31,Number(debt.due_day||15))).reduce((sum,e)=>sum+Number(e.amount||0),0);
+        if(paid+.001<Number(debt.minimum||0))break;
+        count++;
+      }
+      return count;
     }
     savingsProgress(s) {
       const today=new Date(),monthKey=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,monthAt=n=>monthKey(new Date(today.getFullYear(),today.getMonth()-n,1)),totals={};
       s.savings_goal_events.forEach(e=>{const key=`${e.goal_id??'none'}:${String(e.contribution_date).slice(0,7)}`;totals[key]=(totals[key]||0)+Number(e.amount||0);});
       const goals=s.stash.goals.map(g=>{let streak=0,target=Number(g.monthly_target||0);if(target>0){let start=0;if((totals[`${g.id}:${monthKey(today)}`]||0)+.001<target&&today.getDate()<28)start=1;for(let i=start;i<120;i++){if((totals[`${g.id}:${monthAt(i)}`]||0)+.001<target)break;streak++;}}return {...g,monthly_streak:streak,current_month_contribution:round2(totals[`${g.id}:${monthKey(today)}`]||0)};});
-      return {balance:Number(s.stash.balance||0),currency:Number(s.game.points||0),savings_streak:goals.reduce((m,g)=>Math.max(m,Number(g.monthly_streak||0)),0),goals,contributions:s.savings_goal_events.slice(-12).reverse()};
+      return {balance:Number(s.stash.balance||0),savings_streak:goals.reduce((m,g)=>Math.max(m,Number(g.monthly_streak||0)),0),goals,contributions:s.savings_goal_events.slice(-12).reverse()};
     }
     smartSavings(s) {
       const income=Number(s.profile.monthly_income||0),expenses=Number(s.profile.average_monthly_expenses??income*.75),surplus=Math.max(0,income-expenses),current=Number(s.profile.savings_pct||5),maxPct=income?surplus/income*100*.9:0,pct=round2(Math.max(0,Math.min(current,maxPct)));
@@ -277,24 +324,118 @@
       const reason=debts.length&&bufferPct<100?`Smart Strategy recommends ${pct}% of income for savings while you build the ${money(target)} buffer. Keep debt minimums current, then use Debt plan to prioritize extra repayment by interest rate.`:debts.length?`Your savings buffer has reached its target. Smart Strategy recommends ${pct}% of income for savings and prioritizing extra debt payments toward the highest APR (${highestApr.toFixed(2)}%).`:`Smart Strategy keeps your savings percentage within the ${money(surplus)} monthly surplus you entered. Adjust it as your goals change.`;
       return {recommended_pct:pct,monthly_amount:round2(income*pct/100),monthly_surplus:round2(surplus),current_pct:current,active_debt_count:debts.length,highest_apr:highestApr,buffer_progress_pct:round2(bufferPct),reason};
     }
+    normalizeCashTransaction(row) {
+      const txnDate = String(row.date || row.transaction_date || row.txn_date || '').slice(0, 10);
+      const amount = round2(Math.abs(Number(row.amount)));
+      const type = String(row.type || row.transaction_type || row.txn_type || 'expense').toLowerCase();
+      const allowed = ['income', 'expense', 'transfer'];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(txnDate) || Number.isNaN(Date.parse(txnDate))) throw new Error('Each transaction needs a valid date in YYYY-MM-DD format.');
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Each transaction needs a positive amount.');
+      if (!allowed.includes(type)) throw new Error('Transaction type must be income, expense, or transfer.');
+      const description = String(row.description || row.name || row.merchant || '').trim().slice(0, 160);
+      if (!description) throw new Error('Each transaction needs a description.');
+      const category = String(row.category || (type === 'income' ? 'Income' : type === 'transfer' ? 'Transfer' : 'Uncategorized')).trim().slice(0, 60);
+      return { id: String(row.id || id()), date: txnDate, description, category, type, amount, source: String(row.source || 'manual').slice(0, 40), created_at: row.created_at || now() };
+    }
+    financeTransactions(s) { return [...(s.cash_transactions || [])].sort((a,b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at).localeCompare(String(a.created_at))); }
+    financeImport(s, rows) {
+      if (!Array.isArray(rows) || !rows.length) throw new Error('Choose a CSV file with transaction rows first.');
+      if (rows.length > 5000) throw new Error('Import up to 5,000 rows at a time.');
+      const existing = new Set((s.cash_transactions || []).map(t => `${t.date}|${Number(t.amount).toFixed(2)}|${String(t.description).toLowerCase()}`));
+      let imported = 0, skipped = 0;
+      for (const raw of rows) {
+        try {
+          const txn = this.normalizeCashTransaction({ ...raw, source: raw.source || 'CSV import' });
+          const fingerprint = `${txn.date}|${txn.amount.toFixed(2)}|${txn.description.toLowerCase()}`;
+          if (existing.has(fingerprint)) { skipped++; continue; }
+          existing.add(fingerprint); s.cash_transactions.push(txn); imported++;
+        } catch (error) { skipped++; }
+      }
+      if (!imported) throw new Error('No new valid rows were imported. Check the date, amount, description, and type columns.');
+      this.addAudit(s, 'Glim', 'transactions_imported', 'Import and deduplicate user-provided transaction records.', 'User initiated CSV import', { imported, skipped });
+      return { imported, skipped, transactions: this.financeTransactions(s) };
+    }
+    financeCalendar(s, month) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a month in YYYY-MM format.');
+      const [year, mon] = month.split('-').map(Number), days = new Date(year, mon, 0).getDate(), today = new Date();
+      const events = [];
+      const dayDate = day => `${month}-${String(Math.max(1, Math.min(days, day))).padStart(2,'0')}`;
+      for (const debt of (s.debts || []).filter(d => d.status === 'active')) {
+        const dueDay = Math.min(days, Math.max(1, Number(debt.due_day || 15)));
+        const paid = (s.debt_payment_events || []).filter(e => Number(e.debt_id) === Number(debt.id) && String(e.payment_date).slice(0,7) === month && Number(String(e.payment_date).slice(8,10)) <= dueDay).reduce((sum,e)=>sum+Number(e.amount||0),0) >= Number(debt.minimum||0)-.001;
+        events.push({ date: dayDate(dueDay), kind: 'debt', title: `${debt.name} minimum payment`, amount: Number(debt.minimum||0), status: paid ? 'recorded' : 'upcoming', detail: paid ? 'Minimum recorded before the due day' : 'Check the due date and record the payment once made' });
+      }
+      const schedule = s.monthly_deposit || {};
+      if (schedule.enabled && Number(schedule.amount) > 0) events.push({ date: dayDate(Number(schedule.due_day || 1)), kind: 'savings', title: 'Scheduled savings contribution', amount: Number(schedule.amount), status: 'scheduled', detail: 'Review your balance and authorization before transferring' });
+      for (const goal of (s.stash?.goals || []).filter(g => g.status === 'active' && Number(g.monthly_target||0) > 0)) events.push({ date: dayDate(Math.min(28, days)), kind: 'savings', title: `${goal.name} monthly target`, amount: Number(goal.monthly_target), status: 'target', detail: 'Savings contribution target' });
+      events.push({ date: dayDate(1), kind: 'review', title: 'Monthly budget review', amount: 0, status: 'reminder', detail: 'Review income, spending, upcoming bills, and savings allocation' });
+      return events.sort((a,b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind));
+    }
+    financeReport(s, month) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a month in YYYY-MM format.');
+      const txns = s.cash_transactions || [], txMonth = txns.filter(t => String(t.date).slice(0,7) === month);
+      const sum = (rows, type) => round2(rows.filter(r => !type || r.type === type).reduce((a,r)=>a+Number(r.amount||0),0));
+      const categories = {};
+      txMonth.filter(t=>t.type==='expense').forEach(t=>{categories[t.category || 'Uncategorized']=(categories[t.category || 'Uncategorized']||0)+Number(t.amount||0)});
+      const months=[]; const [y,m]=month.split('-').map(Number);
+      for(let i=5;i>=0;i--){const d=new Date(y,m-1-i,1), key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const rows=txns.filter(t=>String(t.date).slice(0,7)===key);const debt=(s.debt_payment_events||[]).filter(e=>String(e.payment_date).slice(0,7)===key);const savings=(s.savings_goal_events||[]).filter(e=>String(e.contribution_date).slice(0,7)===key);months.push({month:key,income:sum(rows,'income'),expenses:sum(rows,'expense'),debt_payments:round2(debt.reduce((a,e)=>a+Number(e.amount||0),0)),savings_contributions:round2(savings.reduce((a,e)=>a+Number(e.amount||0),0))});}
+      const debtTotal=(s.debt_payment_events||[]).filter(e=>String(e.payment_date).slice(0,7)===month).reduce((a,e)=>a+Number(e.amount||0),0);
+      const savingsTotal=(s.savings_goal_events||[]).filter(e=>String(e.contribution_date).slice(0,7)===month).reduce((a,e)=>a+Number(e.amount||0),0);
+      const activeDebt=(s.debts||[]).filter(d=>d.status==='active').reduce((a,d)=>a+Number(d.balance||0),0);
+      const estimatedInterest=s.plan?.projection?.interest_saved ?? s.plan?.projection?.interest_avoided ?? 0;
+      return { month, currency:'CAD', income:sum(txMonth,'income'), expenses:sum(txMonth,'expense'), net_cash_flow:round2(sum(txMonth,'income')-sum(txMonth,'expense')), debt_payments:round2(debtTotal), savings_contributions:round2(savingsTotal), active_debt_balance:round2(activeDebt), savings_balance:round2(s.stash?.balance||0), modeled_interest_avoided:round2(estimatedInterest), categories:Object.entries(categories).map(([category,amount])=>({category,amount:round2(amount)})).sort((a,b)=>b.amount-a.amount), months };
+    }
+    projectDebtScenario(debts, extra, options = {}) {
+      const rows = debts.map(d=>({...d,balance:Math.max(0,Number(d.balance||0)),apr:Math.max(0,Number(d.apr||0)+Number(options.aprDelta||0)),minimum:Math.max(0,Number(d.minimum||0))})).filter(d=>d.balance>0.01).sort((a,b)=>b.apr-a.apr||a.balance-b.balance);
+      let interest=0,months=0,freed=0;
+      while(rows.some(d=>d.balance>0.01)&&months<600){months++;let overpay=Math.max(0,Number(extra||0))+freed;freed=0;
+        for(const d of rows){if(d.balance<=.01)continue;const charge=d.balance*d.apr/1200;interest+=charge;const min=Math.min(d.balance+charge,d.minimum);let paid=min;let surplus=Math.min(Math.max(0,d.balance+charge-min),overpay);paid+=surplus;overpay-=surplus;d.balance=Math.max(0,d.balance+charge-paid);if(d.balance<=.01)freed+=d.minimum;}
+        if(rows.every(d=>d.balance>0.01&&d.minimum<=d.balance*d.apr/1200))return {months:600,interest_paid:round2(interest),stalled:true};
+      }
+      return {months,interest_paid:round2(interest),stalled:months>=600};
+    }
+    calculateScenario(s, input) {
+      const debts=(s.debts||[]).filter(d=>d.status==='active');
+      if(!debts.length)throw new Error('Add an active debt before modeling repayment scenarios.');
+      const income=Number(s.profile?.monthly_income||0), expenses=Number(s.profile?.average_monthly_expenses||0), minimums=debts.reduce((a,d)=>a+Number(d.minimum||0),0);
+      const incomeDelta=Number(input.income_delta||0), expenseDelta=Number(input.expense_delta||0), extra=Number(input.extra_monthly_payment||0), lump=Math.max(0,Number(input.lump_sum_payment||0)), unexpected=Math.max(0,Number(input.unexpected_expense||0)), aprDelta=Number(input.apr_delta||0);
+      for(const [name,val] of Object.entries({incomeDelta,expenseDelta,extra,lump,unexpected,aprDelta}))if(!Number.isFinite(val))throw new Error('Enter valid amounts in all scenario fields.');
+      const eligible = debts.map(d=>({...d})).sort((a,b)=>Number(b.apr)-Number(a.apr));
+      let remainingLump=lump; eligible.forEach(d=>{const take=Math.min(Number(d.balance||0),remainingLump);d.balance=round2(Number(d.balance||0)-take);remainingLump-=take;});
+      let unpaidShock=Math.max(0,unexpected-Number(s.stash?.balance||0));
+      if(unpaidShock>0)eligible[0].balance=round2(Number(eligible[0].balance||0)+unpaidShock);
+      const baselineExtra=Math.max(0,income-expenses-minimums);
+      const changedExtra=Math.max(0,income+incomeDelta-(expenses+expenseDelta)-minimums)+Math.max(0,extra);
+      const baseline=this.projectDebtScenario(debts,baselineExtra);
+      const projection=this.projectDebtScenario(eligible,changedExtra,{aprDelta});
+      const baselineBuffer=Number(s.stash?.balance||0), bufferAfter=Math.max(0,baselineBuffer-unexpected);
+      return {name:String(input.name||'Scenario').slice(0,80),inputs:{extra_monthly_payment:extra,income_delta:incomeDelta,expense_delta:expenseDelta,unexpected_expense:unexpected,lump_sum_payment:lump,apr_delta:aprDelta},baseline,projection,months_saved:baseline.months-projection.months,interest_saved:round2(baseline.interest_paid-projection.interest_paid),available_monthly_surplus:round2(income+incomeDelta-expenses-expenseDelta),baseline_monthly_surplus:round2(income-expenses),savings_balance_after_unexpected_expense:round2(bufferAfter),unexpected_expense_from_debt:round2(unpaidShock),minimums_monthly:round2(minimums),created_at:now()};
+    }
+    reconcileDebts(s, rows, applyChanges) {
+      if(!Array.isArray(rows)||!rows.length)throw new Error('Enter at least one statement balance to reconcile.');
+      const results=[];
+      for(const row of rows){const debt=s.debts.find(d=>Number(d.id)===Number(row.debt_id));if(!debt)continue;const statement=Number(row.statement_balance);if(!Number.isFinite(statement)||statement<0)throw new Error(`Enter a valid statement balance for ${debt.name}.`);const variance=round2(statement-Number(debt.balance||0));const result={debt_id:Number(debt.id),name:debt.name,tracked_balance:round2(debt.balance),statement_balance:round2(statement),variance,statement_date:String(row.statement_date||new Date().toISOString().slice(0,10)),applied:Boolean(applyChanges),created_at:now()};s.reconciliations.unshift(result);if(applyChanges){debt.balance=round2(statement);debt.status=statement<=0.01?'defeated':'active';if(row.apr!=null&&row.apr!==''&&Number.isFinite(Number(row.apr)))debt.apr=Number(row.apr);if(row.minimum_payment!=null&&row.minimum_payment!==''&&Number.isFinite(Number(row.minimum_payment)))debt.minimum=Number(row.minimum_payment);if(row.due_day!=null&&row.due_day!==''&&Number.isFinite(Number(row.due_day)))debt.due_day=Math.max(1,Math.min(31,Number(row.due_day)));}results.push(result);}
+      if(!results.length)throw new Error('Select at least one debt for reconciliation.');
+      this.addAudit(s,'Glim','debt_statement_reconciliation','Compare statement balances with Glim tracked balances and apply only when explicitly requested.',applyChanges?'User confirmed statement updates':'Review-only reconciliation',{count:results.length,applied:Boolean(applyChanges)});
+      return { results, applied:Boolean(applyChanges) };
+    }
     async request(path, opts = {}) {
+      await this.ready;
       const method = (opts.method || 'GET').toUpperCase();
       const url = new URL(path, window.location.origin);
       const route = url.pathname;
       let body = {};
       try { body = typeof opts.body === 'string' ? JSON.parse(opts.body || '{}') : (opts.body || {}); } catch { body = {}; }
-      // Resolve an account namespace before touching current state. In localStorage mode
-      // email selection is an offline profile selector, not verified authentication.
+      // Email selects a browser-local profile; this is not verified authentication.
       if (route === '/api/auth/request' && method === 'POST') {
         const email = String(body.email || '').trim().toLowerCase();
         if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
-        localStorage.setItem(ACTIVE_EMAIL_KEY, email);
-        this.key = accountKey(email);
-        let accountState = this.read();
+        await this.selectAccount(email);
+        const accountState = this.read();
         accountState.user = { email, display_name: String(accountState.profile?.name || '') };
         accountState.authenticated = true;
-        this.save(accountState);
-        return clone({ status: 'local_profile_opened', email, storage_mode: 'localStorage', secure_authentication: false });
+        await this.save(accountState); await this.flush();
+        return clone({ status: 'local_profile_opened', email, storage_mode: 'indexedDB', secure_authentication: false });
       }
       let s = this.read();
       const mustBeSignedIn = () => { if (!s.authenticated || !s.user?.email) throw new Error('Sign in to open your Glim plan.'); };
@@ -303,14 +444,14 @@
 
       if (route === '/api/auth/me' && method === 'GET') result = { authenticated: Boolean(s.authenticated && s.user?.email) };
       else if (route === '/api/auth/logout' && method === 'POST') { s.authenticated = false; this.save(s); result = { status: 'signed_out' }; }
-      else if (route === '/api/account' && method === 'DELETE') { this.clear(); result = { status: 'deleted' }; }
-      else if (route === '/api/data/export' && method === 'GET') { mustBeSignedIn(); result = clone({ product: 'Glim', exported_at: now(), storage_mode: 'localStorage', ...s }); }
+      else if (route === '/api/account' && method === 'DELETE') { await this.clear(); result = { status: 'deleted' }; }
+      else if (route === '/api/data/export' && method === 'GET') { mustBeSignedIn(); const exported=this.state(s); result = clone({ product: 'Glim', exported_at: now(), storage_mode: 'indexedDB', state: exported, debts: s.debts, cash_transactions:s.cash_transactions||[], saved_scenarios:s.saved_scenarios||[], reconciliations:s.reconciliations||[], ledger:s.ledger, audit:s.audit }); }
       else if (route === '/api/state' && method === 'GET') { mustBeSignedIn(); result = this.state(s); }
       else if (route.startsWith('/api/personas/') && method === 'POST') throw new Error('Example identities have been removed. Enter your own profile and debt details.')
       else if (route === '/api/profile' && method === 'POST') {
         mustBeSignedIn();
         if (!(Number(body.monthly_income) > 0)) throw new Error('Enter a monthly income greater than zero.');
-        if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('External reminders are not available in localStorage-only mode. Select In-app or enable the server adapter with channel credentials.');
+        if (body.notification_channel === 'web_push' || body.notification_channel === 'email') throw new Error('External reminders are not available in browser storage. Select In-app or enable the server adapter with channel credentials.');
         s.profile = { ...s.profile, ...body, setup_completed: true, monthly_income: Number(body.monthly_income), savings_pct: Number(body.savings_pct || 0), weekly_cap: Number(body.weekly_cap || 0), floor_balance: Number(body.floor_balance || 0), average_monthly_expenses: Number(body.average_monthly_expenses ?? Number(body.monthly_income) * .75), notification_cap: Number(body.notification_cap ?? 3) };
         s.stash.shield_threshold = s.debts.find(d => d.status === 'active')?.minimum || s.stash.shield_threshold || 1000;
         s.notifications = { ...s.notifications, quiet_start: s.profile.quiet_start || '22:00', quiet_end: s.profile.quiet_end || '08:00', daily_cap: s.profile.notification_cap, channel: s.profile.notification_channel || 'in_app', debt_reminder_tone:s.profile.debt_reminder_tone||s.notifications.debt_reminder_tone||'zen' };
@@ -329,9 +470,9 @@
         if(!debt)throw new Error('That active debt could not be found.');if(!(amount>0)||!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)||Number.isNaN(new Date(`${paidDate}T12:00:00`).getTime()))throw new Error('Enter a positive amount and valid payment date.');
         const due=Number(debt.due_day||15),month=paidDate.slice(0,7),prior=s.debt_payment_events.filter(p=>Number(p.debt_id)===debtId&&String(p.payment_date).slice(0,7)===month&&Number(String(p.payment_date).slice(8,10))<=due).reduce((a,p)=>a+Number(p.amount||0),0),day=Number(paidDate.slice(8,10)),total=prior+(day<=due?amount:0),paidOnTime=total+.001>=Number(debt.minimum||0),crossed=paidOnTime&&prior+.001<Number(debt.minimum||0);
         s.debt_payment_events.push({debt_id:debtId,payment_date:paidDate,amount,created_at:now()});debt.balance=round2(Math.max(0,Number(debt.balance||0)-amount));let defeated=false;if(debt.balance<=.01){debt.balance=0;debt.status='defeated';defeated=true;s.pending_redirect={debt_name:debt.name,freed_payment:Number(debt.minimum||0),debt_id:debtId,user_reported:true};}
-        let awarded=0;if(crossed&&day<=due){awarded=20;s.game.points=Number(s.game.points||0)+awarded;s.points_events.push({created_at:now(),points:awarded,reason:`debt-minimum:${debtId}:${month}`});}
-        this.addAudit(s,'Glim','debt_payment_recorded','Record a payment reported by the user and update the tracked balance.','User-reported; not independently verified',{debt_id:debtId,amount,payment_date:paidDate,paid_on_time:paidOnTime,currency_awarded:awarded});this.save(s);result=this.debtProgress(s);result.recorded={debt_id:debtId,amount,payment_date:paidDate,paid_on_time:paidOnTime,currency_awarded:awarded,balance_after:debt.balance};
+        this.addAudit(s,'Glim','debt_payment_recorded','Record a payment reported by the user and update the tracked balance.','User-reported; not independently verified',{debt_id:debtId,amount,payment_date:paidDate,paid_on_time:paidOnTime});this.save(s);result=this.debtProgress(s);result.recorded={debt_id:debtId,amount,payment_date:paidDate,paid_on_time:paidOnTime,balance_after:debt.balance};
       }
+      else if (/^\/api\/(cosmetics|squads|lessons|game\/|otter\/items)/.test(route)) throw new Error('This feature has been removed. Glim now tracks payment and savings streaks only.');
       else if (/^\/api\/otter\/items\/\d+\/buy$/.test(route) && method === 'POST') {mustBeSignedIn();const itemId=Number(route.split('/')[4]),item=COSMETICS.find(c=>c.id===itemId&&c.id>=101);if(!item)throw new Error('Appearance item not found.');if(!s.owned_cosmetics.includes(itemId)){if(Number(s.game.points||0)<item.cost)throw new Error('You do not have enough in-app currency for this item.');s.game.points-=item.cost;s.owned_cosmetics.push(itemId);}this.save(s);result=this.debtProgress(s);}
       else if (/^\/api\/otter\/items\/\d+\/equip$/.test(route) && method === 'POST') {mustBeSignedIn();const itemId=Number(route.split('/')[4]);if(!s.owned_cosmetics.includes(itemId))throw new Error('Unlock this item before equipping it.');s.game.otter_equipped_id=itemId;this.save(s);result=this.debtProgress(s);}
       else if (route === '/api/otter/items/none/equip' && method === 'POST') {mustBeSignedIn();s.game.otter_equipped_id=null;this.save(s);result=this.debtProgress(s);}
@@ -343,8 +484,8 @@
       else if (route === '/api/savings/contributions' && method === 'POST') {
         mustBeSignedIn();const amount=round2(body.amount),paidDate=String(body.contribution_date||'').slice(0,10),goalId=body.goal_id==null||body.goal_id===''?null:Number(body.goal_id);if(!(amount>0)||!/^\d{4}-\d{2}-\d{2}$/.test(paidDate))throw new Error('Enter a positive amount and valid savings date.');const goal=goalId==null?null:s.stash.goals.find(g=>Number(g.id)===goalId&&g.status==='active');if(goalId!=null&&!goal)throw new Error('Choose an active savings goal.');
         s.stash.balance=round2(Number(s.stash.balance||0)+amount);if(goal){goal.saved_amount=round2(Number(goal.saved_amount||0)+amount);goal.status=goal.saved_amount+.001>=Number(goal.target_amount)?'completed':'active';if(goal.status==='completed')goal.completed_at=now();}
-        s.savings_goal_events.push({goal_id:goalId,contribution_date:paidDate,amount,source:'self_reported',created_at:now()});let awarded=0;if(goal&&Number(goal.monthly_target)>0){const month=paidDate.slice(0,7),sum=s.savings_goal_events.filter(x=>Number(x.goal_id)===goalId&&String(x.contribution_date).slice(0,7)===month).reduce((a,x)=>a+Number(x.amount||0),0),reason=`savings-target:${goalId}:${month}`;if(sum+.001>=Number(goal.monthly_target)&&!s.points_events.some(x=>x.reason===reason)){awarded=15;s.game.points=Number(s.game.points||0)+awarded;s.points_events.push({created_at:now(),points:awarded,reason});}}
-        this.addAudit(s,'Glim','savings_contribution_recorded','Record a contribution reported by the user.','User-reported; no money moved',{amount,goal_id:goalId,contribution_date:paidDate,points_awarded:awarded});this.save(s);result=this.savingsProgress(s);result.recorded={amount,goal_id:goalId,contribution_date:paidDate,points_awarded:awarded};
+        s.savings_goal_events.push({goal_id:goalId,contribution_date:paidDate,amount,source:'self_reported',created_at:now()});const month=paidDate.slice(0,7),monthlyTotal=s.savings_goal_events.filter(x=>Number(x.goal_id)===goalId&&String(x.contribution_date).slice(0,7)===month).reduce((a,x)=>a+Number(x.amount||0),0),monthlyTargetMet=Boolean(goal&&Number(goal.monthly_target)>0&&monthlyTotal+.001>=Number(goal.monthly_target));
+        this.addAudit(s,'Glim','savings_contribution_recorded','Record a contribution reported by the user.','User-reported; no money moved',{amount,goal_id:goalId,contribution_date:paidDate,monthly_target_met:monthlyTargetMet});this.save(s);result=this.savingsProgress(s);result.recorded={amount,goal_id:goalId,contribution_date:paidDate,monthly_target_met:monthlyTargetMet};
       }
       else if (route === '/api/savings/donations' && method === 'GET') result=s.donations.slice().reverse();
       else if (route === '/api/savings/donations' && method === 'POST') {mustBeSignedIn();const name=String(body.charity_name||'').trim(),email=String(body.recipient_email||'').trim(),amount=round2(body.amount);if(!name||!/^\S+@\S+\.\S+$/.test(email)||!(amount>0))throw new Error('Enter the charity name, recipient email and a positive amount.');if(!s.stash.goals.some(g=>g.status==='completed'))throw new Error('Complete at least one savings goal before donating.');if(amount>Number(s.stash.balance||0))throw new Error('The amount exceeds your recorded savings balance.');const item={id:id(),charity_name:name,recipient_email:email,amount,status:'planned',created_at:now(),note:'Donation request recorded. No payment was sent from this browser.'};s.donations.push(item);this.save(s);result=item;}
@@ -417,7 +558,7 @@
         this.addAudit(s, 'Glim', 'nudge_response', 'Save your check-in response so future prompts can be adjusted.', response, { response, reward, supportive_mode: this.stressMode(s) }); this.save(s); result = { status: 'saved', reward };
       }
       else if (route === '/api/push/config' && method === 'GET') result = { enabled: false, public_key: '', reason: 'External push subscriptions need a server-side endpoint; local-only prototype stores application data in this browser.' };
-      else if (route === '/api/push/subscribe' && method === 'POST') throw new Error('Web Push subscription storage requires a server endpoint. It is unavailable in localStorage-only mode.');
+      else if (route === '/api/push/subscribe' && method === 'POST') throw new Error('Web Push subscription storage requires a server endpoint. It is unavailable in browser storage.');
       else if (route === '/api/notifications' && method === 'GET') result = { settings: s.notifications, items: s.inbox, stress_mode: this.stressMode(s) };
       else if (route === '/api/squads' && method === 'GET') result = this.getSquad(s);
       else if (route === '/api/squads' && method === 'POST') {
@@ -428,7 +569,7 @@
         this.save(s); result = this.getSquad(s);
       }
       else if (route === '/api/squads/join' && method === 'POST') {
-        mustBeSignedIn(); if (!s.squad || String(body.invite_code || '').toUpperCase() !== s.squad.invite_code) throw new Error('Squad invites cannot sync between browsers in localStorage-only mode. Configure shared database storage to support cross-user invitations.');
+        mustBeSignedIn(); if (!s.squad || String(body.invite_code || '').toUpperCase() !== s.squad.invite_code) throw new Error('Squad invites cannot sync between browsers in browser storage. Configure shared database storage to support cross-user invitations.');
         result = this.getSquad(s);
       }
       else if (route === '/api/squads/cheer' && method === 'POST') {
@@ -474,8 +615,7 @@
       else if (route === '/api/monthly-recap' && method === 'GET') {
         mustBeSignedIn(); const month = url.searchParams.get('month') || new Date().toISOString().slice(0,7); if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Month must use YYYY-MM format.');
         const rows = s.ledger.filter(x => x.kind === 'drip' && x.created_at.slice(0,7) === month); const amount = rows.reduce((a,x)=>a+Number(x.amount||0),0); const stash = rows.reduce((a,x)=>a+Number(x.stash_share||0),0); const debt = rows.reduce((a,x)=>a+Number(x.debt_share||0),0);
-        const pts = s.points_events.filter(x => x.created_at.slice(0,7) === month).reduce((a,x)=>a+Number(x.points||0),0);
-        result = { month, currency: 'CAD', drip_count: rows.length, active_days: new Set(rows.map(x=>x.created_at.slice(0,10))).size, total_moved: round2(amount), stash_contribution: round2(stash), debt_contribution: round2(debt), points_earned: pts, goals_completed: s.stash.goals.filter(g=>g.status==='completed' && (g.completed_at||'').slice(0,7)===month).length, current_stash_balance: s.stash.balance, current_active_debt: round2(s.debts.filter(d=>d.status==='active').reduce((a,d)=>a+d.balance,0)), streak: s.game.streak, bars: { stash_pct: amount ? round2(stash/amount*100) : 0, debt_pct: amount ? round2(debt/amount*100) : 0 }, note: 'Totals summarize recorded steps for the selected month. Current balances and streak are as of now, not month-end snapshots.' };
+        result = { month, currency: 'CAD', drip_count: rows.length, active_days: new Set(rows.map(x=>x.created_at.slice(0,10))).size, total_moved: round2(amount), stash_contribution: round2(stash), debt_contribution: round2(debt), goals_completed: s.stash.goals.filter(g=>g.status==='completed' && (g.completed_at||'').slice(0,7)===month).length, current_stash_balance: s.stash.balance, current_active_debt: round2(s.debts.filter(d=>d.status==='active').reduce((a,d)=>a+d.balance,0)), streak: s.game.streak, bars: { stash_pct: amount ? round2(stash/amount*100) : 0, debt_pct: amount ? round2(debt/amount*100) : 0 }, note: 'Totals summarize recorded steps for the selected month. Current balances and streak are as of now, not month-end snapshots.' };
       }
       else if (route === '/api/audit' && method === 'GET') result = s.audit.slice(0,40);
       else if (route === '/api/debt-chart' && method === 'GET') {
@@ -489,11 +629,26 @@
         }
       }
       else if (route === '/api/ledger' && method === 'GET') result = s.ledger.filter(x=>x.kind==='drip').slice().reverse().slice(0,60);
+      else if (route === '/api/finance/transactions' && method === 'GET') { mustBeSignedIn(); result = this.financeTransactions(s); }
+      else if (route === '/api/finance/transactions' && method === 'POST') { mustBeSignedIn(); const txn=this.normalizeCashTransaction(body); if(s.cash_transactions.some(t=>String(t.id)===String(txn.id)))throw new Error('This transaction was already recorded.');s.cash_transactions.push(txn);this.addAudit(s,'Glim','cash_transaction_recorded','Record a dated income, expense, or transfer entry.','User entered transaction',{transaction_id:txn.id,type:txn.type,amount:txn.amount});this.save(s);result=txn; }
+      else if (route === '/api/finance/import' && method === 'POST') { mustBeSignedIn(); result=this.financeImport(s,body.rows); this.save(s); }
+      else if (route === '/api/finance/report' && method === 'GET') { mustBeSignedIn(); result=this.financeReport(s,url.searchParams.get('month')||new Date().toISOString().slice(0,7)); }
+      else if (route === '/api/finance/calendar' && method === 'GET') { mustBeSignedIn(); result=this.financeCalendar(s,url.searchParams.get('month')||new Date().toISOString().slice(0,7)); }
+      else if (route === '/api/finance/scenarios' && method === 'GET') { mustBeSignedIn(); result=(s.saved_scenarios||[]).slice().reverse(); }
+      else if (route === '/api/finance/scenarios' && method === 'POST') { mustBeSignedIn(); const scenario=this.calculateScenario(s,body); scenario.id=id(); if(body.save!==false){s.saved_scenarios.push(scenario);this.addAudit(s,'Glim','scenario_saved','Save a deterministic debt payoff what-if comparison.','User saved scenario',{scenario_id:scenario.id,name:scenario.name});this.save(s);} result=scenario; }
+      else if (route === '/api/finance/reconcile-debts' && method === 'POST') { mustBeSignedIn(); result=this.reconcileDebts(s,body.rows,Boolean(body.apply_changes)); this.save(s); }
+      else if (route === '/api/bank/status' && method === 'GET') result = { provider: 'Plaid', country: 'CA', configured: false, connected: false, institutions: [] };
+      else if (route === '/api/bank/liabilities' && method === 'GET') result = [];
+      else if (route === '/api/bank/link-token' && method === 'POST') throw new Error('Direct bank connection is not enabled for this account. Import a statement CSV instead.');
+      else if (route === '/api/bank/exchange' && method === 'POST') throw new Error('Direct bank connection is not enabled for this account.');
+      else if (route === '/api/bank/sync' && method === 'POST') throw new Error('Direct bank connection is not enabled for this account.');
+      else if (route === '/api/bank/disconnect' && method === 'POST') result = { status: 'disconnected' };
       else if (route === '/api/paypal/health' && method === 'GET') result = { configured: false, authenticated: false, environment: 'sandbox', country: 'CA', currency: 'CAD', reason: 'Account connections are unavailable here.' };
       else if (route === '/api/paypal/connect' && method === 'POST') throw new Error('Account connections are unavailable from this session.');
       else if (route === '/api/paypal/disconnect' && method === 'POST') { s.paypal = { status: 'disconnected', mode: 'sandbox', country: 'CA', currency: 'CAD', scopes: [] }; this.save(s); result = s.paypal; }
-      else throw new Error(`This action is not available in the localStorage adapter: ${method} ${route}`);
+      else throw new Error(`This action is not available in the browser adapter: ${method} ${route}`);
 
+      await this.flush();
       return clone(result);
     }
   }
@@ -508,7 +663,7 @@
     }
   }
 
-  const mode = String(window.GLIM_CONFIG?.storageMode || 'localStorage').toLowerCase();
-  const adapter = mode === 'database' ? new DatabaseApiAdapter() : new BrowserLocalStorageAdapter();
+  const mode = String(window.GLIM_CONFIG?.storageMode || 'indexedDB').toLowerCase();
+  const adapter = mode === 'database' ? new DatabaseApiAdapter() : new BrowserIndexedDBAdapter();
   window.GlimStorage = { adapter, mode: adapter.name, key: STORAGE_KEY };
 })();

@@ -4,7 +4,7 @@
   const form = $('#authForm');
   const result = $('#signinResult');
   const safeNavigate = async () => {
-    if (window.GlimStorage?.mode !== 'localStorage') return;
+    if (window.GlimStorage?.mode !== 'indexedDB') return;
     try {
       const me = await window.GlimStorage.adapter.request('/api/auth/me');
       if (!me.authenticated) return;
@@ -21,7 +21,7 @@
     button.textContent = 'Continuing…';
     try {
       const r = await window.GlimStorage.adapter.request('/api/auth/request', { method: 'POST', body: JSON.stringify({ email }) });
-      if (window.GlimStorage.mode === 'localStorage') {
+      if (window.GlimStorage.mode === 'indexedDB') {
         window.location.assign('/app/overview');
         return;
       }

@@ -85,25 +85,20 @@ async function renderDebtProgress(){
     const setText=(selector,value)=>{const node=$(selector);if(node)node.textContent=value};
     const streak=Number(progress.on_time_streak||0);
     setText('#overviewStreakValue',`${streak} month${streak===1?'':'s'}`);
-    setText('#overviewStreakStage',progress.stage_label||'Getting started');
+    setText('#overviewStreakStage',progress.next_due_date?`Next payment due ${new Date(`${progress.next_due_date}T12:00:00`).toLocaleDateString('en-CA',{month:'short',day:'numeric'})}`:'Payment consistency');
     setText('#overviewStreakCopy',(progress.debts||[]).length
       ? (progress.next_due_date?`Your next entered payment due date is ${new Date(`${progress.next_due_date}T12:00:00`).toLocaleDateString('en-CA',{month:'short',day:'numeric'})}. Record payments to track your streak.`:'Record payments to track your on-time streak.')
       : 'Add a debt to start tracking your on-time payment streak.');
-    setText('#otterStageLabel',progress.stage_label||'Otter pup');
+    setText('#otterStageLabel','Your payment streak');
     setText('#otterStreakValue',`${streak} month${streak===1?'':'s'}`);
-    setText('#otterCurrency',`${Number(progress.currency||0)} shells`);
     setText('#otterInterestNote',money(progress.estimated_monthly_interest));
-    const accessory=$('#otterAccessory');if(accessory){const equipped=(progress.items||[]).find(item=>item.equipped);const labels={101:'Striped scarf',102:'Rain hat',103:'Shell glasses',104:'Blue float'};accessory.textContent=labels[Number(equipped?.id)]||'';}
     const statuses=$('#debtPaymentProgressList');
-    if(statuses)statuses.innerHTML=(progress.debts||[]).length?progress.debts.map(debt=>`<article class="debt-payment-status"><div><strong>${escapeHtml(debt.name)}</strong><span>${debt.payment_status==='paid'?'Minimum met by due day':debt.payment_status==='due'?'Due; minimum not recorded':'Due day '+Number(debt.due_day)}</span></div><div class="debt-mini-amount">${money(debt.paid_this_month)}<small>recorded this month</small></div></article>`).join(''):'<p class="muted">Add a debt to start tracking payments.</p>';
-    const shop=$('#otterItems');
-    if(shop)shop.innerHTML=(progress.items||[]).map(item=>`<article class="otter-item"><strong>${escapeHtml(item.name)}</strong><span class="muted">${escapeHtml(item.description||'')}</span><span class="otter-item-price">${item.owned?'Unlocked':`${Number(item.cost)} shells`}</span><button type="button" class="secondary" data-otter-action="${item.owned?'equip':'buy'}" data-otter-id="${Number(item.id)}">${item.equipped?'Equipped':item.owned?'Equip':'Unlock'}</button></article>`).join('');
-    shop?.querySelectorAll('[data-otter-action]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const action=button.dataset.otterAction,id=Number(button.dataset.otterId);await api(action==='buy'?`/api/otter/items/${id}/buy`:`/api/otter/items/${id}/equip`,{method:'POST'});await load();}catch(error){toast(cleanCopy(error.message));button.disabled=false;}}));
+    if(statuses)statuses.innerHTML=(progress.debts||[]).length?progress.debts.map(debt=>`<article class="debt-payment-status"><div><strong>${escapeHtml(debt.name)}</strong><span>${debt.payment_status==='paid'?'Minimum recorded by due day':debt.payment_status==='due'?'Due; minimum not recorded':'Due day '+Number(debt.due_day)}</span></div><div class="debt-mini-amount">${money(debt.paid_this_month)}<small>recorded this month</small></div></article>`).join(''):'<p class="muted">Add a debt to start tracking payments.</p>';
   }catch(error){console.error(error)}
 }
 
 async function renderNotifications(){
-  const data=await api('/api/notifications');const settings=data.settings||{};const localMode=window.GlimStorage?.mode==='localStorage';
+  const data=await api('/api/notifications');const settings=data.settings||{};const localMode=window.GlimStorage?.mode==='indexedDB';
   const start=$('#notifStart'),end=$('#notifEnd'),cap=$('#notifCap'),channel=$('#notifChannel'),zone=$('#notifTimezone');
   if(start)start.value=settings.quiet_start||STATE?.profile?.quiet_start||'22:00';
   if(end)end.value=settings.quiet_end||STATE?.profile?.quiet_end||'08:00';
@@ -150,7 +145,7 @@ async function renderAudit(){
 async function renderShop(){try{const x=await api('/api/cosmetics');$('#shop').innerHTML=x.items.map(i=>`<article class="shop-item"><div class="shop-icon">${visualIcon(i.id===1?'leaf':i.id===2?'acorn':'moon')}</div><strong>${escapeHtml(i.name)}</strong><p class="muted">${escapeHtml(i.description)}</p><span class="price">${i.owned?'Unlocked':i.cost+' points'}</span>${i.owned?'<span class="owned-label">In your collection</span>':` <button class="secondary" data-buy="${i.id}" type="button">Unlock</button>`}</article>`).join('');$$('[data-buy]').forEach(b=>b.onclick=async()=>{try{await api(`/api/cosmetics/${b.dataset.buy}/buy`,{method:'POST'});await load();toast('Reward unlocked.')}catch(e){toast(e.message)}})}catch{}}
 async function renderSquad(){
  try{
-  const x=await api('/api/squads');const squad=x.squad;const localMode=window.GlimStorage?.mode==='localStorage';
+  const x=await api('/api/squads');const squad=x.squad;const localMode=window.GlimStorage?.mode==='indexedDB';
   const joinForm=$('#joinSquadForm'),joinBtn=$('#joinSquadBtn'),leaveBtn=$('#leaveSquadBtn'),createBtn=$('#createSquadBtn');
   if(joinForm)joinForm.classList.toggle('hidden',localMode);if(joinBtn)joinBtn.disabled=localMode;if(createBtn)createBtn.disabled=false;if(leaveBtn)leaveBtn.classList.add('hidden');
   if(!squad){$('#squadInfo').innerHTML='<p class="muted">No group yet. Create one to share small wins with friends.</p>';$('#leaderboard').innerHTML='<p class="muted">People you invite will appear here.</p>';$('#cheerFeed').innerHTML='';$('#squadGoals').innerHTML='';$('#squadRewards').innerHTML='';return;}
@@ -241,6 +236,8 @@ async function renderStash(){
     const scheduleStatus=$('#monthlyDepositStatus');
     if(scheduleStatus){const status=String(schedule.status||'disabled');scheduleStatus.textContent=status==='scheduled'?'Savings schedule is active.':status==='saved'?'Savings schedule saved.':status==='duration_complete'?'Your selected savings period is complete.':status==='error'?'Savings schedule needs attention. Review the amount and payment details.':status==='disabled'?'Savings schedule is off.':'Savings schedule saved.';}
     const streakSummary=$('#savingsStreakSummary');if(streakSummary)streakSummary.innerHTML=`<strong>${Number(progress.savings_streak||0)} month savings streak</strong><p class="muted">A goal streak grows when its monthly contribution target is met.</p>`;
+    setText('#savingsOtterStreak',`${Number(progress.savings_streak||0)} month${Number(progress.savings_streak||0)===1?'':'s'}`);
+    setText('#savingsOtterCaption',goals.some(goal=>Number(goal.monthly_target||0)>0)?'Your streak counts consecutive months when a savings goal meets its monthly target.':'Add a monthly target to start tracking savings consistency.');
     const contributionDate=$('#savingsContributionDate');if(contributionDate&&!contributionDate.value)contributionDate.value=new Date().toISOString().slice(0,10);
     const history=$('#savingsContributionHistory');
     if(history){const rows=Array.isArray(progress.contributions)?progress.contributions:[];history.innerHTML=rows.length?rows.map(item=>`<article class="history-row"><strong>${money(item.amount)}</strong><span>${item.contribution_date?new Date(`${item.contribution_date}T12:00:00`).toLocaleDateString():'Recorded'}</span></article>`).join(''):'<p class="muted">No contributions recorded yet.</p>';}
@@ -260,7 +257,7 @@ function applyOptionalModulePreferences(){
 async function renderMonthlyRecap(){
   try{
     const month=$('#recapMonth').value||new Date().toISOString().slice(0,7);const r=await api('/api/monthly-recap?month='+encodeURIComponent(month));
-    const metrics=[['Contributions recorded',r.drip_count],['Days on track',r.active_days],['Progress rewards',r.points_earned],['Goals completed',r.goals_completed]];
+    const metrics=[['Contributions recorded',r.drip_count],['Days on track',r.active_days],['Goals completed',r.goals_completed],['Goals completed',r.goals_completed]];
     const max=Math.max(Number(r.stash_contribution),Number(r.debt_contribution),1);
     $('#monthlyRecap').innerHTML=`<div class="recap-heading"><div><span class="data-label">${escapeHtml(r.month)} recap</span><h3>${money(r.total_moved)} in recorded practice contributions</h3></div><span class="badge">CAD</span></div><div class="recap-metrics">${metrics.map(([label,val])=>`<div class="recap-metric"><span>${label}</span><strong>${val}</strong></div>`).join('')}</div><div class="recap-allocation"><div class="recap-bar-row"><div><span>Savings contribution</span><strong>${money(r.stash_contribution)}</strong></div><div class="recap-track"><span style="width:${Math.max(0,Math.min(100,Number(r.stash_contribution)/max*100))}%"></span></div></div><div class="recap-bar-row"><div><span>Debt contribution</span><strong>${money(r.debt_contribution)}</strong></div><div class="recap-track"><span style="width:${Math.max(0,Math.min(100,Number(r.debt_contribution)/max*100))}%"></span></div></div></div><div class="recap-current"><div><span>Current savings</span><strong>${money(r.current_stash_balance)}</strong></div><div><span>Current active debt</span><strong>${money(r.current_active_debt)}</strong></div><div><span>Current streak</span><strong>${r.streak} days</strong></div></div><p class="muted recap-note">${escapeHtml(r.note)}</p>`;
   }catch(e){$('#monthlyRecap').innerHTML=`<p class="muted">${escapeHtml(e.message)}</p>`}
@@ -287,12 +284,14 @@ async function load(){
     if(!STATE.plan?.projection && (STATE.debts||[]).some(d=>d.status==='active')){STATE.plan=await api('/api/plan',{method:'POST',body:JSON.stringify({strategy:selectedStrategy,stash_pct:65})})}
     await Promise.all([renderNotifications(), renderSettlements(), setIntegrationStatus()]);
     render();
+    await initFinanceInsights();
+    maybeStartWalkthrough();
   }catch(e){console.error(e);toast(e.message||'Unable to load your Glim plan.');}
 }
 
 async function renderScoutDebtSuggestions(suggestions){
   const host=$('#scoutDebtSuggestions'); if(!host)return;
-  if(window.GlimStorage?.mode==='localStorage'){
+  if(window.GlimStorage?.mode==='indexedDB'){
     host.innerHTML='<p class="muted">No account activity is available to review yet. Glim will not invent recurring charges or debt suggestions.</p>';return;
   }
   const items=Array.isArray(suggestions)?suggestions:[];
@@ -337,7 +336,7 @@ $('#scanBtn')?.addEventListener('click',()=>runScout(true));
 $$('.strategy').forEach(b=>b.addEventListener('click',()=>{selectedStrategy=b.dataset.strategy;$$('.strategy').forEach(x=>{const active=x===b;x.classList.toggle('active',active);x.setAttribute('aria-pressed',String(active));});buildPlan()}));
 $('#planBtn')?.addEventListener('click',buildPlan);
 $('#whatIfBtn')?.addEventListener('click',async()=>{if(!STATE?.plan?.projection){$('#whatIfResult').textContent='Add a debt in Debt plan before comparing scenarios.';return}try{const r=await api('/api/what-if',{method:'POST',body:JSON.stringify({text:$('#whatIfInput').value})});if(!r.what_if){$('#whatIfResult').textContent='Describe one specific change, such as spending less on takeout each week.';return}$('#whatIfResult').textContent=`${r.parsed.label}${r.parsed.assumptions?.length?' Assumptions: '+r.parsed.assumptions.join(' '):''}${r.parsed.needs_clarification?' Add the missing detail before Glim estimates the impact.':r.what_if?` Estimated payoff: ${r.what_if.months} months and ${money(r.what_if.interest_paid)} modeled interest.`:''}`;$('#scenarioComparison').innerHTML=r.what_if?`<div><strong>Current</strong><br>${STATE.plan.projection.months} months · ${money(STATE.plan.projection.interest_paid)} interest</div><hr/><div><strong>What-if</strong><br>${r.what_if.months} months · ${money(r.what_if.interest_paid)} interest<br><span class="muted">${Number(r.what_if.months_saved_vs_baseline||0)} months and ${money(r.what_if.interest_saved_vs_baseline||0)} interest difference versus current plan</span></div>`:''}catch(e){$('#whatIfResult').textContent=cleanCopy(e.message)}});
-$('#approveDrip')?.addEventListener('click',async()=>{const connected=STATE?.paypal?.status==='connected'&&window.GlimStorage?.mode!=='localStorage'&&STATE?.payment_readiness!==false;if(!connected){activateSection('plan',{push:true});return}try{await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s amount has been approved.');await load()}catch(e){toast(cleanCopy(e.message))}});
+$('#approveDrip')?.addEventListener('click',async()=>{const connected=STATE?.paypal?.status==='connected'&&window.GlimStorage?.mode!=='indexedDB'&&STATE?.payment_readiness!==false;if(!connected){activateSection('plan',{push:true});return}try{await api('/api/drip/approve',{method:'POST',body:JSON.stringify({approve:true})});toast('Today’s amount has been approved.');await load()}catch(e){toast(cleanCopy(e.message))}});
 $('#freezeBtn')?.addEventListener('click',async()=>{try{await api('/api/game/freeze',{method:'POST'});await load();toast('Missed-day safeguard used.')}catch(e){toast(e.message)}});
 $('#pauseBtn')?.addEventListener('click',async()=>{const wasPaused=Boolean(STATE?.paused);try{await api(wasPaused?'/api/resume':'/api/pause',{method:'POST'});await load();toast(wasPaused?'Progress tracking resumed.':'Progress tracking paused.')}catch(e){toast(e.message)}});
 $$('.question-suggestion').forEach(button=>button.addEventListener('click',()=>{const input=$('#chatInput');input.value=button.dataset.question||'';$('#chatForm').requestSubmit()}));
@@ -381,7 +380,7 @@ $('#monthlyDepositDay')?.addEventListener('input',()=>$('#monthlyDepositPct')?.d
 $('#applySmartSavingsBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/savings/recommendation');const p=STATE?.profile||{};await api('/api/profile',{method:'POST',body:JSON.stringify({...p,savings_pct:Number(r.recommended_pct||0)})});STATE=await api('/api/state');if($('#monthlyDepositPct'))$('#monthlyDepositPct').value=Number(r.recommended_pct||0)||0.1;$('#monthlyDepositPct')?.dispatchEvent(new Event('input'));await renderStash();toast('Savings recommendation applied.')}catch(e){toast(cleanCopy(e.message))}});
 $('#monthlyDepositForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#monthlyDepositStatus');try{const enabled=$('#monthlyDepositEnabled').checked;const payload={enabled,amount:0,income_pct:+$('#monthlyDepositPct').value,duration_months:+$('#monthlyDepositMonths').value,goal_id:$('#monthlyDepositGoalId').value?+$('#monthlyDepositGoalId').value:null,due_day:+$('#monthlyDepositDay').value,consent:$('#monthlyDepositConsent').checked};const result=await api('/api/stash/auto-deposit',{method:'PUT',body:JSON.stringify(payload)});if(status)status.textContent=result.enabled?'Savings plan saved.': 'Savings plan turned off.';await renderStash();if($('#monthlyDepositConsent'))$('#monthlyDepositConsent').checked=false;toast(enabled?'Savings schedule saved.':'Savings schedule disabled.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
 $('#savingsBalanceForm')?.addEventListener('submit',async e=>{e.preventDefault();const amount=Number($('#savingsCurrentBalance').value);try{await api('/api/stash/balance',{method:'POST',body:JSON.stringify({balance:amount})});await load();toast('Savings balance updated.')}catch(e){toast(cleanCopy(e.message))}});
-$('#savingsContributionForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('/api/savings/contributions',{method:'POST',body:JSON.stringify({amount:+$('#savingsContributionAmount').value,contribution_date:$('#savingsContributionDate').value,goal_id:$('#savingsContributionGoal').value?+$('#savingsContributionGoal').value:null})});$('#savingsContributionAmount').value='';await load();toast(r.recorded?.points_awarded?`Monthly savings target met. Earned ${r.recorded.points_awarded} shells.`:'Savings contribution recorded.')}catch(e){toast(cleanCopy(e.message))}});
+$('#savingsContributionForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('/api/savings/contributions',{method:'POST',body:JSON.stringify({amount:+$('#savingsContributionAmount').value,contribution_date:$('#savingsContributionDate').value,goal_id:$('#savingsContributionGoal').value?+$('#savingsContributionGoal').value:null})});$('#savingsContributionAmount').value='';await load();toast(r.recorded?.monthly_target_met?'Monthly target met. Your savings streak is updated.':'Savings contribution recorded.')}catch(e){toast(cleanCopy(e.message))}});
 $('#donationForm')?.addEventListener('submit',async e=>{e.preventDefault();const status=$('#donationStatus');try{const r=await api('/api/savings/donations',{method:'POST',body:JSON.stringify({charity_name:$('#donationCharityName').value.trim(),recipient_email:$('#donationRecipientEmail').value.trim(),amount:+$('#donationAmount').value})});if(status)status.textContent=r.status==='planned'?'Donation request saved. No payment was completed.':r.message||`Donation status: ${r.status}.`;await renderStash();toast(r.status==='planned'?'Donation request saved.':'Donation submitted.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
 $('#debtPaymentForm')?.addEventListener('submit',async e=>{e.preventDefault();const id=Number($('#debtPaymentDebtId').value),status=$('#debtPaymentResult');try{const r=await api(`/api/debts/${id}/payments`,{method:'POST',body:JSON.stringify({amount:+$('#debtPaymentAmount').value,payment_date:$('#debtPaymentDate').value})});if(status)status.textContent=r.recorded?.paid_on_time?'Minimum payment recorded by the due day.':'Payment saved. It did not meet the minimum by the entered due day.';$('#debtPaymentDialog')?.close();await load();toast(r.recorded?.currency_awarded?`On-time payment recorded. Earned ${r.recorded.currency_awarded} shells.`:'Payment record saved.')}catch(e){if(status)status.textContent=cleanCopy(e.message);else toast(cleanCopy(e.message))}});
 $('#cancelDebtPayment')?.addEventListener('click',()=>$('#debtPaymentDialog')?.close());
@@ -392,7 +391,7 @@ $('#createSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();tr
 $('#loadLessonBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/lessons/next');currentLesson=r.lesson||null;if(!currentLesson){$('#lessonCard').innerHTML='<strong>Path complete.</strong><p>You finished the current Sage path.</p>';return}$('#lessonCard').innerHTML=`<strong>${escapeHtml(currentLesson.title)}</strong><p>${escapeHtml(currentLesson.description)}</p><p>${escapeHtml(r.prompt)}</p><div class="input-row"><input id="lessonAnswer" placeholder="Your answer"/><button class="primary" id="lessonSubmit">Check</button></div><p class="muted">A quick check helps apply this to your own plan.</p>`;$('#lessonSubmit').onclick=async()=>{try{const x=await api('/api/lessons/complete',{method:'POST',body:JSON.stringify({lesson_id:currentLesson.id,answer:$('#lessonAnswer').value})});$('#lessonCard').innerHTML=`<strong>Completed.</strong><p>Keep the useful idea in mind when reviewing your plan.</p>`;await load();}catch(e){toast(e.message)}}}catch(e){toast(e.message)}});
 $('#exportBtn')?.addEventListener('click',async()=>{try{const data=await api('/api/data/export');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='glim-data-export.json';a.click();URL.revokeObjectURL(a.href);$('#dataMsg').textContent='Export created.'}catch(e){toast(e.message)}});
 $('#deleteBtn')?.addEventListener('click',async()=>{if(!confirm('Delete all your Glim data? This cannot be undone.'))return;try{await api('/api/account',{method:'DELETE'});STATE=null;window.location.assign('/')}catch(e){toast(e.message)}});
-const APP_SECTIONS=['overview','plan','savings','settings','help'];
+const APP_SECTIONS=['overview','plan','savings','insights','settings','help'];
 function activeSectionFromPath(){const part=window.location.pathname.split('/').filter(Boolean).pop();return APP_SECTIONS.includes(part)?part:'overview'}
 function activateSection(section,{push=false,replace=false}={}){
   if(!APP_SECTIONS.includes(section))section='overview';
@@ -412,12 +411,12 @@ $('#settleWeekBtn')?.addEventListener('click',async()=>{const b=$('#settleWeekBt
 $('#reconcileBtn')?.addEventListener('click',async()=>{const b=$('#reconcileBtn'),out=$('#settlementActionResult');b.disabled=true;try{const r=await api('/api/drip/reconcile',{method:'POST'});out.textContent=`Payment status refreshed. ${Number(r.reconciled||0)} settlement(s) reconciled.`;await load()}catch(e){out.textContent=cleanCopy(e.message)}finally{b.disabled=false}});
 $('#joinSquadForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/squads/join',{method:'POST',body:JSON.stringify({invite_code:$('#squadInviteCode').value.trim()})});$('#squadActionNote').textContent='Joined group.';$('#squadInviteCode').value='';await load()}catch(error){$('#squadActionNote').textContent=error.message}});
 $('#leaveSquadBtn')?.addEventListener('click',async()=>{if(!confirm('Leave this group? Your shared progress and messages will be removed.'))return;try{await api('/api/squads/leave',{method:'POST'});await load();toast('Left group.')}catch(e){toast(e.message)}});
-$('#pushEnableBtn')?.addEventListener('click',async()=>{try{if(window.GlimStorage.mode==='localStorage')throw new Error('Browser alerts are not available right now.');if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error(cfg.reason||'Browser alerts are not available right now.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Browser alerts enabled.')}catch(e){toast(cleanCopy(e.message))}});
+$('#pushEnableBtn')?.addEventListener('click',async()=>{try{if(window.GlimStorage.mode==='indexedDB')throw new Error('Browser alerts are not available right now.');if(!('serviceWorker' in navigator))throw new Error('This browser does not support service workers.');const cfg=await api('/api/push/config');if(!cfg.enabled)throw new Error(cfg.reason||'Browser alerts are not available right now.');const reg=await navigator.serviceWorker.register('/sw.js');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Browser notifications were not granted.');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(cfg.public_key)});await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});toast('Browser alerts enabled.')}catch(e){toast(cleanCopy(e.message))}});
 function urlBase64ToUint8Array(base64){const pad='='.repeat((4-base64.length%4)%4);const raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
 
 
 async function setIntegrationStatus(){
- const localMode=window.GlimStorage?.mode==='localStorage';
+ const localMode=window.GlimStorage?.mode==='indexedDB';
  const mode=$('#integrationModeStatus'), funding=$('#paypalIntegrationStatus');
  const connect=$('#paypalConnectBtn'),disconnect=$('#paypalDisconnectBtn'),scopeHost=$('#paypalScopes'),approvalHost=$('#paypalApprovalLink'),pushBtn=$('#pushEnableBtn'),external=$('#externalNotificationStatus'),privacy=$('#privacyStorageStatus');
  if(localMode){
@@ -459,7 +458,7 @@ async function setIntegrationStatus(){
 
 function settlementLabel(status){return ({accrued:'Approved, waiting to be sent',awaiting_approval:'Needs your approval',creating_order:'Preparing transfer',capture_pending:'Confirmation pending',capture_unknown:'Checking payment status',capture_failed:'Transfer not completed',payout_error:'Needs attention',payout_failed:'Transfer not completed',creating_payout:'Sending transfer',completed:'Complete',paid:'Complete',settled:'Complete',failed:'Not completed',cancelled:'Cancelled'})[String(status||'').toLowerCase()]||'Pending';}
 async function renderSettlements(){
- const host=$('#settlementList');if(!host)return;const localMode=window.GlimStorage?.mode==='localStorage';if(localMode){host.innerHTML='<p class="muted">Transfers are not connected. Nothing will be sent from this page.</p>';return;}
+ const host=$('#settlementList');if(!host)return;const localMode=window.GlimStorage?.mode==='indexedDB';if(localMode){host.innerHTML='<p class="muted">Transfers are not connected. Nothing will be sent from this page.</p>';return;}
  try{const rows=await api('/api/ledger');const pending=Array.isArray(STATE?.settlements)?STATE.settlements:[];const accrued=(rows||[]).filter(r=>r.status==='accrued');const details=pending.map(r=>`<article class="inbox-item"><strong>Transfer ${escapeHtml(r.reference)} · ${escapeHtml(settlementLabel(r.status))}</strong><p>${money(r.amount)} CAD${r.last_error?` · ${escapeHtml(cleanCopy(r.last_error))}`:''}</p>${r.status==='awaiting_approval'&&STATE?.paypal?.pending_settlement_approval_url?`<p><a class="text-link" href="${escapeHtml(STATE.paypal.pending_settlement_approval_url)}" rel="noopener">Continue secure approval</a></p>`:''}<div class="button-row"><button class="secondary" type="button" data-reconcile-ref="${escapeHtml(r.reference)}">Refresh status</button>${['creating_order','capture_pending','capture_unknown','capture_failed','payout_error','payout_failed','creating_payout'].includes(r.status)?`<button class="secondary" type="button" data-retry-ref="${escapeHtml(r.reference)}">Resolve issue</button>`:''}</div></article>`);
   if(accrued.length)details.unshift(`<p class="muted">${accrued.length} approved transfer(s), ${money(accrued.reduce((a,r)=>a+Number(r.amount||0),0))} CAD, waiting to be sent.</p>`);
   host.innerHTML=details.length?details.join(''):'<p class="muted">No pending transfers or unresolved payment issues.</p>';
@@ -468,11 +467,119 @@ async function renderSettlements(){
  }catch(e){host.innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;}
 }
 
-const WALKTHROUGH_KEY='glim.guide.completed.v5';
+
+let lastFinanceScenario = null;
+function localIsoDate(date = new Date()) { const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+function monthInputValue() { return localIsoDate().slice(0,7); }
+function activateInsightsPanel(name) {
+  $$('.insights-subtab').forEach(button=>{const active=button.dataset.insightsTab===name;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
+  $$('.insights-subpanel').forEach(panel=>{const active=panel.id===`insightsPanel${name[0].toUpperCase()}${name.slice(1)}`;panel.classList.toggle('hidden',!active);panel.classList.toggle('active',active);panel.hidden=!active;});
+  if(name==='calendar')renderFinancialCalendar();
+  if(name==='reports')renderFinancialReport();
+  if(name==='connections')renderBankConnection();
+}
+$$('[data-insights-tab]').forEach(button=>button.addEventListener('click',()=>activateInsightsPanel(button.dataset.insightsTab)));
+function csvParse(text) {
+  const rows=[];let row=[],field='',quoted=false;
+  for(let i=0;i<text.length;i++){const ch=text[i];if(ch==='"'&&quoted&&text[i+1]==='"'){field+='"';i++;}else if(ch==='"'){quoted=!quoted;}else if(ch===','&&!quoted){row.push(field.trim());field='';}else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(field.trim());field='';if(row.some(cell=>cell!==''))rows.push(row);row=[];}else field+=ch;}
+  row.push(field.trim());if(row.some(cell=>cell!==''))rows.push(row);if(rows.length<2)throw new Error('The CSV file needs a header row and at least one transaction.');
+  const key = value => String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const headers=rows.shift().map(key);const get=(cells,names)=>{const i=headers.findIndex(h=>names.includes(h));return i>=0?String(cells[i]||'').trim():'';};
+  return rows.map(cells=>{
+    const dateRaw=get(cells,['date','transactiondate','posteddate','txn date','valuedate']);
+    let date=dateRaw.slice(0,10);
+    if(/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(dateRaw)){const parts=dateRaw.split(/[/-]/).map(Number);let [a,b,c]=parts;if(c<100)c+=2000;date=`${c}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;}
+    const description=get(cells,['description','transactiondescription','merchant','name','payee','details']);
+    const typeRaw=get(cells,['type','transactiontype','debitcredit','direction']).toLowerCase();
+    const debitRaw=get(cells,['debit','withdrawal','withdrawals','charge']);const creditRaw=get(cells,['credit','deposit','deposits']);
+    const amountRaw=get(cells,['amount','transactionamount','value']);
+    const cleanNumber=value=>Number(String(value||'').replace(/[$,\s]/g,'').replace(/[()]/g,'-'));
+    let amount, type;
+    if(debitRaw!==''&&creditRaw!==''){const debit=Math.abs(cleanNumber(debitRaw)||0),credit=Math.abs(cleanNumber(creditRaw)||0);if(credit>0){amount=credit;type='income';}else{amount=debit;type='expense';}}
+    else {amount=cleanNumber(amountRaw);if(!Number.isFinite(amount))amount=0;if(typeRaw.includes('income')||typeRaw.includes('credit')||typeRaw.includes('deposit'))type='income';else if(typeRaw.includes('transfer'))type='transfer';else if(typeRaw.includes('expense')||typeRaw.includes('debit')||typeRaw.includes('withdraw')||typeRaw.includes('payment'))type='expense';else type=amount<0?'income':'expense';}
+    const category=get(cells,['category','personalfinancecategory','transactioncategory'])||(/pay|salary|payroll/i.test(description)&&type==='income'?'Income':type==='transfer'?'Transfer':'Uncategorized');
+    return {date,description,amount:Math.abs(amount),type,category,source:'CSV import'};
+  }).filter(row=>row.date&&row.description&&row.amount>0);
+}
+function renderCashflowTransactions(transactions, month) {
+  const rows=(transactions||[]).filter(t=>String(t.date).slice(0,7)===month);
+  const sum=type=>rows.filter(t=>t.type===type).reduce((a,t)=>a+Number(t.amount||0),0);
+  const set=(selector,value)=>{const el=$(selector);if(el)el.textContent=value;};
+  set('#cashflowIncome',money(sum('income')));set('#cashflowExpenses',money(sum('expense')));set('#cashflowNet',money(sum('income')-sum('expense')));
+  const host=$('#cashflowTransactions');
+  if(host)host.innerHTML=rows.length?rows.slice(0,60).map(t=>`<article class="transaction-row"><div class="transaction-description"><strong>${escapeHtml(t.description)}</strong><span>${escapeHtml(t.category||'Uncategorized')}</span></div><div class="transaction-meta">${new Date(`${t.date}T12:00:00`).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})} · ${escapeHtml(t.source||'Manual')}</div><strong class="transaction-amount ${t.type==='income'?'income':'expense'}">${t.type==='income'?'+':t.type==='expense'?'−':''}${money(t.amount)}</strong></article>`).join(''):'<p class="muted">No transactions for this month. Add an entry or import a CSV statement.</p>';
+  const categories={};rows.filter(t=>t.type==='expense').forEach(t=>categories[t.category||'Uncategorized']=(categories[t.category||'Uncategorized']||0)+Number(t.amount||0));
+  const categoryHost=$('#spendingCategories'),list=Object.entries(categories).sort((a,b)=>b[1]-a[1]),max=Math.max(1,...list.map(([,v])=>v));
+  if(categoryHost)categoryHost.innerHTML=list.length?list.map(([name,amount])=>`<div class="category-row"><span>${escapeHtml(name)}</span><div class="category-track" role="progressbar" aria-label="${escapeHtml(name)} spending" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(amount/max*100)}"><span style="width:${amount/max*100}%"></span></div><strong>${money(amount)}</strong></div>`).join(''):'<p class="muted">No categorized spending has been recorded for this month.</p>';
+}
+async function loadFinanceTransactions() {
+  const transactions=await api('/api/finance/transactions');
+  renderCashflowTransactions(Array.isArray(transactions)?transactions:[],$('#cashflowMonth')?.value||monthInputValue());
+  return transactions;
+}
+async function renderFinancialCalendar() {
+  const month=$('#calendarMonth')?.value||monthInputValue(),host=$('#financialCalendarEvents');if(!host)return;
+  try{const items=await api(`/api/finance/calendar?month=${encodeURIComponent(month)}`);host.innerHTML=items.length?items.map(item=>`<article class="calendar-event"><div class="calendar-date">${new Date(`${item.date}T12:00:00`).toLocaleDateString('en-CA',{month:'short',day:'numeric'})}<span>${new Date(`${item.date}T12:00:00`).toLocaleDateString('en-CA',{weekday:'short'})}</span></div><div class="calendar-event-main"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail||'')}</span><span class="event-status">${escapeHtml(item.status||'upcoming')}</span></div><strong class="calendar-event-amount">${Number(item.amount||0)>0?money(item.amount):'—'}</strong></article>`).join(''):'<p class="muted">No scheduled events for this month.</p>';}catch(e){host.innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;}
+}
+function renderTrend(container, months, fields) {
+  const host=$(container);if(!host)return;
+  const max=Math.max(1,...months.flatMap(m=>fields.map(f=>Number(m[f.key]||0))));
+  host.innerHTML=months.map(m=>`<div class="trend-row"><span class="trend-month">${escapeHtml(new Date(`${m.month}-01T12:00:00`).toLocaleDateString('en-CA',{month:'short',year:'2-digit'}))}</span><div class="trend-bars">${fields.map(f=>`<span class="trend-bar ${f.className||''}" style="width:${Math.max(0,Math.min(100,Number(m[f.key]||0)/max*100))}%" title="${escapeHtml(f.label)}: ${money(m[f.key])}"></span>`).join('')}</div><span class="trend-value">${money(Number(m[fields[0].key]||0))}</span></div>`).join('');
+  const labels=fields.map(f=>`<span><i class="trend-key ${f.className||''}"></i>${escapeHtml(f.label)}</span>`).join(' ');
+  host.insertAdjacentHTML('beforeend',`<div class="trend-legend">${labels}</div>`);
+}
+async function renderFinancialReport() {
+  const month=$('#reportMonth')?.value||monthInputValue(),host=$('#financialReportSummary');if(!host)return;
+  try{const r=await api(`/api/finance/report?month=${encodeURIComponent(month)}`);const metrics=[['Net cash flow',money(r.net_cash_flow)],['Debt payments recorded',money(r.debt_payments)],['Savings contributions',money(r.savings_contributions)],['Estimated interest avoided',money(r.modeled_interest_avoided)]];host.innerHTML=metrics.map(([label,value])=>`<article class="report-summary-item"><span>${label}</span><strong>${value}</strong></article>`).join('');renderTrend('#cashflowTrend',r.months||[],[{key:'income',label:'Income'},{key:'expenses',label:'Expenses',className:'secondary'}]);renderTrend('#progressTrend',r.months||[],[{key:'debt_payments',label:'Debt payments'},{key:'savings_contributions',label:'Savings',className:'secondary'}]);const caveat=$('#reportCaveat');if(caveat)caveat.textContent=`Current balances: ${money(r.active_debt_balance)} active debt · ${money(r.savings_balance)} savings. Report values reflect entries and imports; historical lender balances are not inferred.`;}catch(e){host.innerHTML=`<p class="muted">${escapeHtml(cleanCopy(e.message))}</p>`;}
+}
+async function renderSavedScenarios() {
+  const host=$('#savedScenarios');if(!host)return;
+  try{const rows=await api('/api/finance/scenarios');host.innerHTML=rows.length?`<h3>Saved scenarios</h3>`+rows.slice().reverse().slice(0,8).map(r=>`<article class="saved-scenario-row"><div><strong>${escapeHtml(r.name||'Scenario')}</strong><span>${Number(r.projection?.months||0)} months · ${money(r.projection?.interest_paid||0)} interest · ${Number(r.months_saved||0)} months vs baseline</span></div><span>${new Date(r.created_at||Date.now()).toLocaleDateString('en-CA')}</span></article>`).join(''):'<p class="muted">Saved comparisons will appear here.</p>';}catch(e){host.textContent=cleanCopy(e.message);}
+}
+function renderScenarioResult(scenario) {
+  const host=$('#financeScenarioResult');if(!host)return;
+  host.innerHTML=`<div class="scenario-result-grid"><div class="scenario-result-metric"><span>Current-plan estimate</span><strong>${Number(scenario.baseline.months)>=600?'600+':scenario.baseline.months} months</strong><span>${money(scenario.baseline.interest_paid)} estimated interest</span></div><div class="scenario-result-metric"><span>What-if estimate</span><strong>${Number(scenario.projection.months)>=600?'600+':scenario.projection.months} months</strong><span>${money(scenario.projection.interest_paid)} estimated interest</span></div><div class="scenario-result-metric"><span>Change in interest</span><strong>${money(scenario.interest_saved)}</strong><span>${scenario.interest_saved>=0?'potentially avoided':'additional modeled interest'}</span></div></div><p class="scenario-difference">${scenario.months_saved>=0?`${scenario.months_saved} fewer modeled months to repay debt.`:`${Math.abs(scenario.months_saved)} more modeled months to repay debt.`} Estimated monthly surplus after the changes: ${money(scenario.available_monthly_surplus)}. Savings after the unexpected expense: ${money(scenario.savings_balance_after_unexpected_expense)}.${Number(scenario.unexpected_expense_from_debt)>0?` The remaining ${money(scenario.unexpected_expense_from_debt)} is modeled as added debt because it exceeds your current recorded savings.`:''}</p>`;
+}
+async function renderBankConnection() {
+  const title=$('#bankConnectionTitle'),copy=$('#bankConnectionCopy'),connect=$('#bankConnectBtn'),sync=$('#bankSyncBtn'),disconnect=$('#bankDisconnectBtn');
+  if(!title)return;
+  try{
+    const status=await api('/api/bank/status');title.textContent=status.connected?'Canadian bank connected':'Bank connection status';
+    copy.textContent=status.connected?'A connected institution is ready to sync transactions. Liability details appear only when the institution provides them.':status.configured?'Connect a supported Canadian institution to import available transaction data.':'Manual CSV import is ready. Direct bank connection is not enabled for this account.';
+    connect?.classList.toggle('hidden',!status.configured||status.connected);sync?.classList.toggle('hidden',!status.connected);disconnect?.classList.toggle('hidden',!status.connected);
+    const panel=$('#bankLiabilitiesPanel'),list=$('#bankLiabilitiesList');
+    const liabilities=status.connected?await api('/api/bank/liabilities'):[];
+    if(panel)panel.classList.toggle('hidden',!liabilities.length);
+    if(list)list.innerHTML=liabilities.map((row,index)=>`<article class="bank-liability-row"><div class="bank-liability-detail"><strong>${escapeHtml(row.account_name)}</strong><span>${escapeHtml(row.institution_name)} · ${escapeHtml(row.account_type||'Account')}</span><div class="bank-liability-values"><span>Balance: ${row.reported_balance==null?'Not provided':money(row.reported_balance)}</span><span>APR: ${row.reported_apr==null?'Not provided':`${Number(row.reported_apr).toFixed(2)}%`}</span><span>Minimum: ${row.reported_minimum==null?'Not provided':money(row.reported_minimum)}</span></div><span>Observed ${new Date(row.observed_at||Date.now()).toLocaleDateString('en-CA')}</span></div><div class="bank-liability-action"><label>Match to a tracked debt<select data-liability-select="${index}"><option value="">Choose a debt</option>${(STATE?.debts||[]).filter(d=>d.status==='active').map(d=>`<option value="${Number(d.id)}">${escapeHtml(d.name)}</option>`).join('')}</select></label><button type="button" class="secondary" data-liability-use="${index}">Review statement</button></div></article>`).join('');
+    if(list)list.querySelectorAll('[data-liability-use]').forEach(button=>button.addEventListener('click',()=>{const index=Number(button.dataset.liabilityUse),row=liabilities[index],chosen=list.querySelector(`[data-liability-select="${index}"]`)?.value;if(!chosen){toast('Choose the tracked debt to compare with this account.');return;}$('#reconcileDebtId').value=chosen;if(row.reported_balance!=null)$('#reconcileBalance').value=Number(row.reported_balance).toFixed(2);if(row.reported_apr!=null)$('#reconcileApr').value=Number(row.reported_apr).toFixed(2);if(row.reported_minimum!=null)$('#reconcileMinimum').value=Number(row.reported_minimum).toFixed(2);if(row.next_due_date){$('#reconcileDate').value=String(row.next_due_date).slice(0,10);$('#reconcileDueDay').value=Number(String(row.next_due_date).slice(8,10));}$('#reconcileApplyChanges').checked=false;activateInsightsPanel('connections');$('#reconcileBalance').focus();toast('Review the imported account details before applying any updates.');}));
+  }catch{title.textContent='Manual statement import';copy.textContent='Use CSV statements and lender reconciliation to keep your records current.';connect?.classList.add('hidden');sync?.classList.add('hidden');disconnect?.classList.add('hidden');}
+}
+async function initFinanceInsights() {
+  const today=localIsoDate(),month=monthInputValue();
+  for(const id of ['cashflowMonth','calendarMonth','reportMonth']){const input=$('#'+id);if(input&&!input.value)input.value=month;}
+  if($('#cashTxnDate')&&!$('#cashTxnDate').value)$('#cashTxnDate').value=today;
+  if($('#reconcileDate')&&!$('#reconcileDate').value)$('#reconcileDate').value=today;
+  await Promise.all([loadFinanceTransactions().catch(()=>{}),renderSavedScenarios(),renderFinancialCalendar(),renderFinancialReport(),renderBankConnection()]);
+  const debtSelect=$('#reconcileDebtId');if(debtSelect){const old=debtSelect.value;debtSelect.innerHTML='<option value="">Choose a debt</option>'+((STATE?.debts||[]).map(d=>`<option value="${Number(d.id)}">${escapeHtml(d.name)} (${money(d.balance)})</option>`).join(''));if(old)debtSelect.value=old;}
+}
+$('#cashTransactionForm')?.addEventListener('submit',async e=>{e.preventDefault();const button=e.submitter||$('#cashTransactionForm button[type="submit"]');if(button)button.disabled=true;try{await api('/api/finance/transactions',{method:'POST',body:JSON.stringify({date:$('#cashTxnDate').value,type:$('#cashTxnType').value,description:$('#cashTxnDescription').value.trim(),category:$('#cashTxnCategory').value,amount:Number($('#cashTxnAmount').value),source:'manual'})});$('#cashTransactionForm').reset();$('#cashTxnDate').value=localIsoDate();await loadFinanceTransactions();await renderFinancialReport();toast('Transaction added.');}catch(error){toast(cleanCopy(error.message));}finally{if(button)button.disabled=false;}});
+$('#cashflowMonth')?.addEventListener('change',()=>loadFinanceTransactions().catch(e=>toast(cleanCopy(e.message))));
+$('#calendarMonth')?.addEventListener('change',()=>renderFinancialCalendar());
+$('#reportMonth')?.addEventListener('change',()=>renderFinancialReport());
+$('#financeScenarioForm')?.addEventListener('submit',async e=>{e.preventDefault();const button=$('#runScenarioBtn');button.disabled=true;try{const payload={name:$('#scenarioName').value.trim()||'My scenario',extra_monthly_payment:Number($('#scenarioExtraPayment').value||0),income_delta:Number($('#scenarioIncomeDelta').value||0),expense_delta:Number($('#scenarioExpenseDelta').value||0),unexpected_expense:Number($('#scenarioUnexpectedExpense').value||0),lump_sum_payment:Number($('#scenarioLumpSum').value||0),apr_delta:Number($('#scenarioAprDelta').value||0),save:false};lastFinanceScenario=await api('/api/finance/scenarios',{method:'POST',body:JSON.stringify(payload)});renderScenarioResult(lastFinanceScenario);$('#saveScenarioBtn').disabled=false;}catch(error){$('#financeScenarioResult').textContent=cleanCopy(error.message);$('#saveScenarioBtn').disabled=true;}finally{button.disabled=false;}});
+$('#saveScenarioBtn')?.addEventListener('click',async()=>{if(!lastFinanceScenario)return;const button=$('#saveScenarioBtn');button.disabled=true;try{const payload={name:lastFinanceScenario.name,...(lastFinanceScenario.inputs||{}),save:true};const saved=await api('/api/finance/scenarios',{method:'POST',body:JSON.stringify(payload)});lastFinanceScenario=saved;await renderSavedScenarios();toast('Scenario saved.');}catch(error){toast(cleanCopy(error.message));}finally{button.disabled=false;}});
+$('#transactionImportForm')?.addEventListener('submit',async e=>{e.preventDefault();const file=$('#transactionCsvFile')?.files?.[0],status=$('#transactionImportStatus'),button=e.submitter||$('#transactionImportForm button[type="submit"]');if(!file)return;if(button)button.disabled=true;if(status)status.textContent='';try{const rows=csvParse(await file.text());const result=await api('/api/finance/import',{method:'POST',body:JSON.stringify({rows})});if(status)status.textContent=`Imported ${result.imported} transactions; skipped ${result.skipped} duplicate or invalid rows.`;await Promise.all([loadFinanceTransactions(),renderFinancialReport()]);$('#transactionCsvFile').value='';toast('Statement imported.');}catch(error){if(status)status.textContent=cleanCopy(error.message);}finally{if(button)button.disabled=false;}});
+$('#debtReconcileForm')?.addEventListener('submit',async e=>{e.preventDefault();const output=$('#debtReconciliationResults'),debtId=Number($('#reconcileDebtId').value);if(!debtId){output.textContent='Choose a debt to reconcile.';return;}const rows=[{debt_id:debtId,statement_balance:Number($('#reconcileBalance').value),statement_date:$('#reconcileDate').value,apr:$('#reconcileApr').value,minimum_payment:$('#reconcileMinimum').value,due_day:$('#reconcileDueDay').value}];try{const r=await api('/api/finance/reconcile-debts',{method:'POST',body:JSON.stringify({rows,apply_changes:$('#reconcileApplyChanges').checked})});output.innerHTML=r.results.map(x=>`<article class="reconciliation-row"><div><strong>${escapeHtml(x.name)}</strong><p>Tracked: ${money(x.tracked_balance)} · Statement: ${money(x.statement_balance)} · ${x.applied?'Statement values applied':'Review only'}</p></div><strong class="${x.variance>0?'positive-variance':''}">${x.variance>0?'+':''}${money(x.variance)}</strong></article>`).join('');if(r.applied)await load();toast(r.applied?'Statement reconciled and tracked debt updated.':'Statement comparison saved.');}catch(error){output.textContent=cleanCopy(error.message);}});
+async function loadPlaidScript(){if(window.Plaid?.create)return;await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js';script.onload=resolve;script.onerror=()=>reject(new Error('The secure bank connection could not be loaded.'));document.head.appendChild(script);});}
+$('#bankConnectBtn')?.addEventListener('click',async()=>{const button=$('#bankConnectBtn'),status=$('#bankActionStatus');button.disabled=true;try{await loadPlaidScript();const token=await api('/api/bank/link-token',{method:'POST',body:JSON.stringify({})});const handler=window.Plaid.create({token:token.link_token,onSuccess:async(publicToken,metadata)=>{try{await api('/api/bank/exchange',{method:'POST',body:JSON.stringify({public_token:publicToken,institution_name:metadata?.institution?.name||'Canadian bank'})});status.textContent='Bank connected. Syncing available transactions.';await api('/api/bank/sync',{method:'POST',body:JSON.stringify({})});await initFinanceInsights();}catch(error){status.textContent=cleanCopy(error.message);}},onExit:()=>{button.disabled=false;}});handler.open();}catch(error){status.textContent=cleanCopy(error.message);button.disabled=false;}});
+$('#bankSyncBtn')?.addEventListener('click',async()=>{const button=$('#bankSyncBtn'),status=$('#bankActionStatus');button.disabled=true;try{const r=await api('/api/bank/sync',{method:'POST',body:JSON.stringify({})});status.textContent=`Imported ${Number(r.imported||0)} transactions; ${Number(r.updated||0)} updated.`;await Promise.all([loadFinanceTransactions(),renderFinancialReport(),renderBankConnection()]);}catch(error){status.textContent=cleanCopy(error.message);}finally{button.disabled=false;}});
+$('#bankDisconnectBtn')?.addEventListener('click',async()=>{if(!confirm('Disconnect the linked bank account? Existing imported transactions will remain in your plan.'))return;try{await api('/api/bank/disconnect',{method:'POST',body:JSON.stringify({})});await renderBankConnection();$('#bankActionStatus').textContent='Bank disconnected.';}catch(error){$('#bankActionStatus').textContent=cleanCopy(error.message);}});
+
 const WALKTHROUGH_STEPS=[
   {section:'overview',title:'Overview',copy:'Review current debt, savings, and your on-time payment streak.'},
   {section:'plan',title:'Debt plan',copy:'Add debts, compare repayment strategies, and record payments you have made.'},
   {section:'savings',title:'Savings',copy:'Set savings goals, apply Smart Strategy to your budget, and track contributions.'},
+  {section:'insights',title:'Insights',copy:'Track cash flow, compare repayment scenarios, import statements, and review your financial calendar.'},
   {section:'settings',title:'Settings',copy:'Choose your reminder tone, quiet hours, and budget rules.'},
   {section:'help',title:'Help',copy:'Find answers and reopen the walkthrough whenever you need it.'}
 ];
@@ -487,24 +594,26 @@ function showWalkthroughStep(){
   $('#walkthroughBackBtn').disabled=walkthroughIndex===0;
   $('#walkthroughNextBtn').textContent=walkthroughIndex===WALKTHROUGH_STEPS.length-1?'Finish':'Next';
 }
-function startWalkthrough(force=false){
-  if(!force && localStorage.getItem(WALKTHROUGH_KEY))return;
+async function startWalkthrough(force=false){
+  await (window.GlimPreferencesReady || Promise.resolve());
+  if(!force && await window.GlimPreferences?.get('guideCompleted'))return;
   walkthroughReturnSection=activeSectionFromPath();walkthroughIndex=0;
   $('#walkthroughOverlay')?.classList.remove('hidden');
   if($('#walkthroughOverlay'))$('#walkthroughOverlay').setAttribute('aria-hidden','false');
   showWalkthroughStep();$('#walkthroughNextBtn')?.focus();
 }
-function closeWalkthrough(){
+async function closeWalkthrough(){
   $('#walkthroughOverlay')?.classList.add('hidden');
   if($('#walkthroughOverlay'))$('#walkthroughOverlay').setAttribute('aria-hidden','true');
-  try{localStorage.setItem(WALKTHROUGH_KEY,'1')}catch{}
+  try{await window.GlimPreferences?.set('guideCompleted',true)}catch{}
   activateSection(walkthroughReturnSection,{replace:true});
 }
 function maybeStartWalkthrough(){
   if(!$('#walkthroughOverlay')||!STATE||!profileIsReady(STATE.profile))return;
-  if(!localStorage.getItem(WALKTHROUGH_KEY))startWalkthrough();
+  if(!window.__glimGuideStarted){window.__glimGuideStarted=true;startWalkthrough();}
 }
-$('#startWalkthroughBtn')?.addEventListener('click',()=>startWalkthrough(true));
+$$('[data-start-walkthrough]').forEach(button=>button.addEventListener('click',()=>startWalkthrough(true)));
+window.addEventListener('glim-preferences-ready',()=>{if(STATE&&profileIsReady(STATE.profile))maybeStartWalkthrough();});
 $('#walkthroughNextBtn')?.addEventListener('click',()=>{if(walkthroughIndex>=WALKTHROUGH_STEPS.length-1){closeWalkthrough();return}walkthroughIndex++;showWalkthroughStep()});
 $('#walkthroughBackBtn')?.addEventListener('click',()=>{if(walkthroughIndex>0){walkthroughIndex--;showWalkthroughStep()}});
 $('#walkthroughSkipBtn')?.addEventListener('click',closeWalkthrough);

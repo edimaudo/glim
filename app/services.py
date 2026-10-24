@@ -155,6 +155,34 @@ class DB:
                   income_pct REAL NOT NULL DEFAULT 0, duration_months INTEGER NOT NULL DEFAULT 6,
                   goal_id INTEGER, start_month TEXT
                 );
+                CREATE TABLE IF NOT EXISTS cash_transactions (
+                  id TEXT PRIMARY KEY, txn_date TEXT NOT NULL, description TEXT NOT NULL,
+                  category TEXT NOT NULL DEFAULT 'Uncategorized', txn_type TEXT NOT NULL,
+                  amount REAL NOT NULL, source TEXT NOT NULL DEFAULT 'manual',
+                  source_reference TEXT, created_at TEXT NOT NULL,
+                  UNIQUE(source, source_reference)
+                );
+                CREATE INDEX IF NOT EXISTS idx_cash_transactions_date ON cash_transactions(txn_date);
+                CREATE TABLE IF NOT EXISTS saved_financial_scenarios (
+                  id TEXT PRIMARY KEY, name TEXT NOT NULL, scenario_json TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS debt_reconciliations (
+                  id TEXT PRIMARY KEY, debt_id INTEGER NOT NULL, details_json TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS bank_connections (
+                  item_id TEXT PRIMARY KEY, institution_name TEXT NOT NULL,
+                  access_token_enc TEXT NOT NULL, sync_cursor TEXT, created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS bank_liabilities (
+                  id TEXT PRIMARY KEY, item_id TEXT NOT NULL, account_id TEXT NOT NULL,
+                  institution_name TEXT NOT NULL, account_name TEXT NOT NULL,
+                  account_type TEXT NOT NULL DEFAULT '', reported_balance REAL,
+                  reported_apr REAL, reported_minimum REAL, next_due_date TEXT,
+                  raw_json TEXT NOT NULL, observed_at TEXT NOT NULL,
+                  UNIQUE(item_id, account_id)
+                );
                 CREATE TABLE IF NOT EXISTS debt_payment_events (
                   id INTEGER PRIMARY KEY AUTOINCREMENT, debt_id INTEGER NOT NULL,
                   payment_date TEXT NOT NULL, amount REAL NOT NULL, created_at TEXT NOT NULL
@@ -504,7 +532,7 @@ class PayPalSandbox:
 
 
 def default_state():
-    return {"profile":{},"paypal":{"status":"disconnected","mode":"sandbox","country":"CA","currency":"CAD","scopes":[]},"stash":{"balance":0.0,"shield_threshold":1000.0,"goals":[]},"game":{"streak":0,"freezes":1,"points":0,"level":1,"evolution_stage":"Revolver","otter_equipped_id":None},"plan":{},"paused":False,"notifications":{"quiet_start":"22:00","quiet_end":"08:00","daily_cap":3,"channel":"in_app","consecutive_ignores":0,"debt_reminder_tone":"zen"},"pending_redirect":None}
+    return {"profile":{},"paypal":{"status":"disconnected","mode":"sandbox","country":"CA","currency":"CAD","scopes":[]},"stash":{"balance":0.0,"shield_threshold":1000.0,"goals":[]},"game":{"streak":0,"last_drip_date":None,"points":0,"level":1},"plan":{},"paused":False,"notifications":{"quiet_start":"22:00","quiet_end":"08:00","daily_cap":3,"channel":"in_app","consecutive_ignores":0,"debt_reminder_tone":"zen"},"pending_redirect":None}
 
 
 def public_paypal_state(paypal_state):
@@ -520,29 +548,24 @@ def get_state(db):
         state = default_state()
     else:
         state = {"profile":json.loads(row["profile_json"]), "paypal":json.loads(row["paypal_json"]), "stash":json.loads(row["stash_json"]), "game":json.loads(row["game_json"]), "plan":json.loads(row["plan_json"]), "paused":bool(row["paused"]), "notifications":json.loads(row["notifications_json"] or "{}"), "pending_redirect":json.loads(row["pending_redirect_json"] or "null")}
-    state.setdefault("game", {})
-    state["game"].setdefault("last_drip_date", None)
-    state["game"].setdefault("otter_equipped_id", None)
+    game = state.get("game") or {}
+    # Only the consistency streak remains in Glim. Drop reward points, levels, freezes,
+    # cosmetics, and evolution state from both new and older account data.
+    state["game"] = {"streak": max(0, int(game.get("streak", 0) or 0)), "last_drip_date": game.get("last_drip_date"), "points": int(game.get("points", 0) or 0), "level": max(1, int(game.get("level", 1) or 1))}
     state.setdefault("notifications", {}).setdefault("debt_reminder_tone", (state.get("profile") or {}).get("debt_reminder_tone", "zen"))
-    state["game"].setdefault("otter_equipped_id", None)
-    state.setdefault("notifications", {}).setdefault("debt_reminder_tone", (state.get("profile") or {}).get("debt_reminder_tone", "zen"))
-    state["game"].setdefault("freeze_used_month", None)
-    state["game"].setdefault("freeze_applied_date", None)
-    # A freeze is replenished at the start of each user-local calendar month, but it
-    # cannot be stockpiled. The persisted marker prevents repeated use within a month.
-    zone = _profile_zone(state)
-    current_month = datetime.now(zone).strftime("%Y-%m")
-    state["game"]["freezes"] = 0 if state["game"].get("freeze_used_month") == current_month else 1
     return state
 
 
 def write_state(db,state):
+    game=state.get("game") or {}
+    clean_game={"streak":max(0,int(game.get("streak",0) or 0)),"last_drip_date":game.get("last_drip_date"),"points":int(game.get("points",0) or 0),"level":max(1,int(game.get("level",1) or 1))}
+    state["game"]=clean_game
     with db.connect() as c:
-        c.execute("INSERT INTO app_state(id,profile_json,paypal_json,stash_json,game_json,plan_json,paused,notifications_json,pending_redirect_json) VALUES(1,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET profile_json=excluded.profile_json,paypal_json=excluded.paypal_json,stash_json=excluded.stash_json,game_json=excluded.game_json,plan_json=excluded.plan_json,paused=excluded.paused,notifications_json=excluded.notifications_json,pending_redirect_json=excluded.pending_redirect_json",(json.dumps(state.get("profile",{})),json.dumps(state.get("paypal",{})),json.dumps(state.get("stash",{})),json.dumps(state.get("game",{})),json.dumps(state.get("plan",{})),int(state.get("paused",False)),json.dumps(state.get("notifications",{})),json.dumps(state.get("pending_redirect"))))
+        c.execute("INSERT INTO app_state(id,profile_json,paypal_json,stash_json,game_json,plan_json,paused,notifications_json,pending_redirect_json) VALUES(1,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET profile_json=excluded.profile_json,paypal_json=excluded.paypal_json,stash_json=excluded.stash_json,game_json=excluded.game_json,plan_json=excluded.plan_json,paused=excluded.paused,notifications_json=excluded.notifications_json,pending_redirect_json=excluded.pending_redirect_json",(json.dumps(state.get("profile",{})),json.dumps(state.get("paypal",{})),json.dumps(state.get("stash",{})),json.dumps(clean_game),json.dumps(state.get("plan",{})),int(state.get("paused",False)),json.dumps(state.get("notifications",{})),json.dumps(state.get("pending_redirect"))))
 
 
 def seed_persona(db, persona, average_expenses):
-    db.reset(); state=default_state(); state["profile"]={"name":persona["name"],"persona":persona["key"],"income_range":persona["income_range"],"monthly_income":persona["monthly_income"],"savings_pct":persona["savings_pct"],"approval_mode":"each","weekly_cap":60.0,"floor_balance":persona["floor_balance"],"average_monthly_expenses":average_expenses,"quiet_start":"22:00","quiet_end":"08:00","notification_cap":3,"notification_channel":"in_app"}; state["stash"]={"balance":260.0 if persona["key"]=="riley" else 145.0,"shield_threshold":persona["debt"]["minimum"],"goals":[]}; state["game"]={"streak":6 if persona["key"]=="riley" else 3,"freezes":1,"points":180 if persona["key"]=="riley" else 90,"level":3 if persona["key"]=="riley" else 2,"evolution_stage":"Sprout"}; state["notifications"]={"quiet_start":"22:00","quiet_end":"08:00","daily_cap":3,"channel":"in_app","consecutive_ignores":0}; write_state(db,state)
+    db.reset(); state=default_state(); state["profile"]={"name":persona["name"],"persona":persona["key"],"income_range":persona["income_range"],"monthly_income":persona["monthly_income"],"savings_pct":persona["savings_pct"],"approval_mode":"each","weekly_cap":60.0,"floor_balance":persona["floor_balance"],"average_monthly_expenses":average_expenses,"quiet_start":"22:00","quiet_end":"08:00","notification_cap":3,"notification_channel":"in_app"}; state["stash"]={"balance":260.0 if persona["key"]=="riley" else 145.0,"shield_threshold":persona["debt"]["minimum"],"goals":[]}; state["game"]={"streak":6 if persona["key"]=="riley" else 3,"last_drip_date":None}; state["notifications"]={"quiet_start":"22:00","quiet_end":"08:00","daily_cap":3,"channel":"in_app","consecutive_ignores":0}; write_state(db,state)
     with db.connect() as c:
         d=persona["debt"]; c.execute("INSERT INTO debts(name,type,balance,apr,minimum,due_day,status) VALUES(?,?,?,?,?,?,?)",(d["name"],d["type"],d["balance"],d["apr"],d["minimum"],d["due_day"],"active"))
         for tx in persona["paypal_transactions"]: c.execute("INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,debt_id,status,settlement_id) VALUES(?,?,?,?,?,?,?,?)",(tx["date"],"source_transaction",abs(tx["amount"]),0,0,None,tx["category"],None))
@@ -604,22 +627,17 @@ def record_debt_payment(db, debt_id, amount, payment_date):
         on_time=total_by_due+0.001>=float(debt["minimum"] or 0)
         old_balance=float(debt["balance"] or 0); new_balance=round(max(0,old_balance-value),2); new_status="defeated" if new_balance<=0.01 else "active"
         c.execute("UPDATE debts SET balance=?,status=? WHERE id=?",(0 if new_status=="defeated" else new_balance,new_status,int(debt_id)))
-    state=get_state(db); awarded=0
-    if on_time and prior+0.001<float(debt["minimum"] or 0) and paid_date.day<=due_day:
-        awarded=20;state["game"]["points"]=int(state["game"].get("points",0))+awarded
-        with db.connect() as c:c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",(f"on-time-debt:{debt_id}:{month}",awarded,now_iso()))
+    state=get_state(db)
     if new_status=="defeated": state["pending_redirect"]={"debt_name":debt["name"],"freed_payment":float(debt["minimum"] or 0),"debt_id":int(debt_id),"user_reported":True}
     write_state(db,state)
-    log_action(db,"Glim","debt_payment_recorded",{"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat()},"Record a payment reported by the user; update the tracked balance and check minimum due date.","User-reported; not independently verified",{"paid_on_time":on_time,"currency_awarded":awarded})
-    result=get_debt_progress(db);result["recorded"]={"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat(),"paid_on_time":on_time,"currency_awarded":awarded,"balance_after":0 if new_status=="defeated" else new_balance}
+    log_action(db,"Glim","debt_payment_recorded",{"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat()},"Record a payment reported by the user; update the tracked balance and check minimum due date.","User-reported; not independently verified",{"paid_on_time":on_time})
+    result=get_debt_progress(db);result["recorded"]={"debt_id":int(debt_id),"amount":value,"payment_date":paid_date.isoformat(),"paid_on_time":on_time,"balance_after":0 if new_status=="defeated" else new_balance}
     return result
 
 def get_debt_progress(db):
     state=get_state(db); now_local=datetime.now(_profile_zone(state)).date(); debts=[d for d in get_debts(db) if d["status"]=="active"]
     with db.connect() as c:
         events=[dict(r) for r in c.execute("SELECT debt_id,payment_date,amount FROM debt_payment_events ORDER BY payment_date,id").fetchall()]
-        owned={int(r[0]) for r in c.execute("SELECT cosmetic_id FROM user_cosmetics").fetchall()}
-        cosmetics=[dict(r) for r in c.execute("SELECT * FROM cosmetics WHERE id>=101 ORDER BY id").fetchall()]
     summaries={}
     for event in events:
         key=(int(event["debt_id"]),str(event["payment_date"])[:7]); summaries.setdefault(key,{"total":0,"by_due":0})["total"]+=float(event["amount"] or 0)
@@ -645,18 +663,13 @@ def get_debt_progress(db):
         status="paid" if paid else ("due" if now_local.day>=due_day else "upcoming")
         rows.append({"id":int(debt["id"]),"name":debt["name"],"type":debt["type"],"due_day":due_day,"minimum":float(debt["minimum"] or 0),"paid_this_month":round(float(current.get("total",0)),2),"paid_on_time_this_month":paid,"payment_status":status,"streak":count})
     streak=min(streaks,default=0)
-    stage,label=("grown","Grown otter") if streak>=12 else (("confident","Confident otter") if streak>=6 else (("young","Growing otter") if streak>=3 else ("pup","Otter pup")))
-    items=[]
-    for item in cosmetics:
-        item.update({"owned":int(item["id"]) in owned,"equipped":int(state["game"].get("otter_equipped_id") or 0)==int(item["id"])})
-        items.append({k:item[k] for k in ("id","name","description","cost","icon","owned","equipped")})
     next_due=None
     for debt in debts:
-        due_day=min(28,int(debt.get("due_day") or 15)); due=date(now_local.year,now_local.month,due_day)
+        due_day=min(28,int(debt.get("due_day") or 15));due=date(now_local.year,now_local.month,due_day)
         if due<now_local:
             y,m=_month_shift(now_local.year,now_local.month,1);due=date(y,m,due_day)
         next_due=due if next_due is None or due<next_due else next_due
-    return {"on_time_streak":streak,"stage":stage,"stage_label":label,"currency":int(state["game"].get("points",0)),"equipped_id":state["game"].get("otter_equipped_id"),"debts":rows,"items":items,"next_due_date":next_due.isoformat() if next_due else None,"estimated_monthly_interest":round(sum(float(d["balance"] or 0)*float(d["apr"] or 0)/1200 for d in debts),2)}
+    return {"on_time_streak":streak,"debts":rows,"next_due_date":next_due.isoformat() if next_due else None,"estimated_monthly_interest":round(sum(float(d["balance"] or 0)*float(d["apr"] or 0)/1200 for d in debts),2)}
 
 def buy_otter_item(db,item_id):
     state=get_state(db)
@@ -696,7 +709,7 @@ def get_savings_progress(db):
                 streak+=1
             streaks.append(streak)
         goal_rows.append({"id":int(goal["id"]),"name":goal["name"],"target_amount":float(goal["target_amount"]),"saved_amount":float(goal["saved_amount"]),"monthly_target":target,"status":goal["status"],"monthly_streak":streak,"current_month_contribution":round(totals.get((int(goal["id"]),today.strftime("%Y-%m")),0),2)})
-    return {"balance":round(float(state.get("stash",{}).get("balance",0)),2),"currency":int(state["game"].get("points",0)),"savings_streak":max(streaks,default=0),"goals":goal_rows,"contributions":events[-12:][::-1]}
+    return {"balance":round(float(state.get("stash",{}).get("balance",0)),2),"savings_streak":max(streaks,default=0),"goals":goal_rows,"contributions":events[-12:][::-1]}
 
 def record_savings_contribution(db,amount,contribution_date,goal_id=None):
     contrib_date=contribution_date if isinstance(contribution_date,date) else date.fromisoformat(str(contribution_date));value=round(float(amount),2)
@@ -706,7 +719,7 @@ def record_savings_contribution(db,amount,contribution_date,goal_id=None):
         with db.connect() as c:row=c.execute("SELECT * FROM stash_goals WHERE id=? AND status='active'",(int(goal_id),)).fetchone()
         if not row:raise ValueError("Choose an active savings goal.")
         goal=dict(row)
-    state.setdefault("stash",{})["balance"]=round(float(state["stash"].get("balance",0))+value,2);awarded=0
+    state.setdefault("stash",{})["balance"]=round(float(state["stash"].get("balance",0))+value,2);monthly_target_met=False
     with db.connect() as c:
         if goal:
             saved=round(float(goal["saved_amount"] or 0)+value,2);status="completed" if saved+0.001>=float(goal["target_amount"]) else "active"
@@ -714,12 +727,10 @@ def record_savings_contribution(db,amount,contribution_date,goal_id=None):
         c.execute("INSERT INTO savings_goal_events(goal_id,contribution_date,amount,source,created_at) VALUES(?,?,?,?,?)",(int(goal_id) if goal_id is not None else None,contrib_date.isoformat(),value,"self_reported",now_iso()))
         if goal and float(goal.get("monthly_target") or 0)>0:
             total=c.execute("SELECT COALESCE(SUM(amount),0) FROM savings_goal_events WHERE goal_id=? AND substr(contribution_date,1,7)=?",(int(goal_id),contrib_date.strftime("%Y-%m"))).fetchone()[0]
-            reason=f"savings-target:{goal_id}:{contrib_date.strftime('%Y-%m')}";seen=c.execute("SELECT 1 FROM points_events WHERE reason=?",(reason,)).fetchone()
-            if float(total or 0)+0.001>=float(goal["monthly_target"]) and not seen:
-                awarded=15;state["game"]["points"]=int(state["game"].get("points",0))+awarded;c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",(reason,awarded,now_iso()))
+            monthly_target_met=float(total or 0)+0.001>=float(goal["monthly_target"])
         c.execute("INSERT INTO ledger_entries(created_at,kind,amount,stash_share,debt_share,status) VALUES(?,?,?,?,?,?)",(now_iso(),"savings_contribution_reported",value,value,0,"self_reported"))
-    write_state(db,state);log_action(db,"Glim","savings_contribution_recorded",{"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat()},"Record a savings contribution reported by the user.","User-reported; no money moved",{"currency_awarded":awarded})
-    result=get_savings_progress(db);result["recorded"]={"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat(),"points_awarded":awarded};return result
+    write_state(db,state);log_action(db,"Glim","savings_contribution_recorded",{"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat()},"Record a savings contribution reported by the user.","User-reported; no money moved",{"monthly_target_met":monthly_target_met})
+    result=get_savings_progress(db);result["recorded"]={"amount":value,"goal_id":goal_id,"contribution_date":contrib_date.isoformat(),"monthly_target_met":monthly_target_met};return result
 
 def _list_donations(db):
     with db.connect() as c: rows=c.execute("SELECT id,charity_name,recipient_email,amount,status,last_error,created_at,updated_at FROM savings_donations ORDER BY id DESC LIMIT 12").fetchall()
@@ -1218,9 +1229,7 @@ def approve_drip(db, approved, email=None, shared_db=None):
             raise
         ledger_id = cur.lastrowid
 
-    # Habit points reward an approved daily step. A streak only grows on consecutive
-    # local-calendar days, or when the user explicitly spent this month's freeze to cover
-    # exactly one missed day. Gaps larger than one day restart the streak honestly.
+    # A streak grows on consecutive local-calendar days. A missed day restarts it.
     state = get_state(db)
     game = state["game"]
     previous = game.get("last_drip_date")
@@ -1234,23 +1243,14 @@ def approve_drip(db, approved, email=None, shared_db=None):
         game["streak"] = 1
     elif day_gap == 1:
         game["streak"] = int(game.get("streak", 0)) + 1
-    elif day_gap == 2 and game.get("freeze_applied_date") == today:
-        game["streak"] = int(game.get("streak", 0)) + 1
-        game["freeze_applied_date"] = None
     else:
         game["streak"] = 1
     game["last_drip_date"] = today
-    game["points"] = int(game.get("points", 0)) + 20
-    update_evolution(state, db)
     write_state(db, state)
-    with db.connect() as c:
-        c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)", ("daily drip", 20, now_iso()))
-    if email:
-        record_squad_goal_event(db, email, shared_db=shared_db)
     result = {
         "status": "approved", "amount": amount, "stash_share": stash_share,
         "debt_share": debt_share, "ledger_id": ledger_id, "date": today,
-        "streak": state["game"]["streak"], "points": state["game"]["points"],
+        "streak": state["game"]["streak"],
         "debt_defeated": None, "settlement_status": "accrued_not_yet_settled",
     }
     log_action(
@@ -2326,7 +2326,7 @@ def _agent_tool_handlers(db):
         "evaluate_what_if": lambda text: what_if(db, str(text)),
         "inspect_scout_activity": lambda: run_scout(db),
         "get_sage_lesson": lambda: next_lesson(db),
-        "get_habit_progress": lambda: {"streak": get_state(db)["game"].get("streak", 0), "points": get_state(db)["game"].get("points", 0), "stage": get_state(db)["game"].get("evolution_stage", "Revolver")},
+        "get_habit_progress": lambda: {"streak": get_state(db)["game"].get("streak", 0)},
         "get_chipper_checkin": chipper_checkin,
         "get_banker_status": status,
     }
@@ -2367,9 +2367,9 @@ def chat(db, message):
     if any(k in lower for k in ["payment", "paypal", "settlement", "banker"]):
         result = _agent_tool_handlers(db)["get_banker_status"]()
         return {"agent": "Glim → Banker", "message": f"PayPal connection is {result['connection']}; practice/payment pause is {'on' if result['paused'] else 'off'}. I did not initiate or change a payment.", "tool": "get_banker_status", "result": result}
-    if any(k in lower for k in ["points", "streak", "progress", "stage"]):
+    if any(k in lower for k in ["streak", "consistency"]):
         progress = _agent_tool_handlers(db)["get_habit_progress"]()
-        return {"agent": "Glim", "message": f"You have {progress['points']} points, a {progress['streak']}-day streak and the {progress['stage']} stage. Consistency, not the money amount, earns points.", "tool": "get_habit_progress", "result": progress}
+        return {"agent": "Glim", "message": f"Your current consistency streak is {progress['streak']} day(s).", "tool": "get_habit_progress", "result": progress}
     plan = state.get("plan") or (build_plan(db) if get_debts(db) else {})
     return {"agent": "Glim → Chipper", "message": f"Your current plan is {plan.get('strategy', 'not set')}. I can explain your inputs, compare payoff strategies, inspect verified PayPal findings, or calculate a what-if. The payment controls remain separate from chat."}
 
@@ -2381,8 +2381,6 @@ def redirect_freed_payment(db,destination):
     if not pending:raise ValueError("No freed payment is waiting for a redirect decision.")
     if destination=="stash":
         state["notifications"]["consecutive_ignores"]=0; state["stash"]["goals"].append({"name":"Freed payment","monthly":pending["freed_payment"]})
-        state["game"]["points"]+=30
-        with db.connect() as c: c.execute("INSERT INTO points_events(reason,points,created_at) VALUES(?,?,?)",("freed payment redirect",30,now_iso()))
     else:
         with db.connect() as c:
             d=c.execute("SELECT * FROM debts WHERE id=? AND status='active'",(destination,)).fetchone()
@@ -3021,10 +3019,9 @@ def monthly_recap(db,month=None):
     if mon<1 or mon>12:raise ValueError("Month must use YYYY-MM format.")
     with db.connect() as c:
         rows=c.execute("SELECT created_at,amount,stash_share,debt_share,status FROM ledger_entries WHERE kind='drip' AND substr(created_at,1,7)=? ORDER BY created_at",(month,)).fetchall()
-        points=c.execute("SELECT COALESCE(SUM(points),0) FROM points_events WHERE substr(created_at,1,7)=?",(month,)).fetchone()[0]
         finished=c.execute("SELECT COUNT(*) FROM stash_goals WHERE status='completed' AND substr(COALESCE(completed_at,''),1,7)=?",(month,)).fetchone()[0]
     active_days=len({str(r["created_at"])[:10] for r in rows})
     amount=sum(float(r["amount"] or 0) for r in rows); stash=sum(float(r["stash_share"] or 0) for r in rows); debt=sum(float(r["debt_share"] or 0) for r in rows)
     state=get_state(db); debts=get_debts(db)
     current_debt=sum(float(d["balance"]) for d in debts if d["status"]=="active")
-    return {"month":month,"currency":"CAD","drip_count":len(rows),"active_days":active_days,"total_moved":round(amount,2),"stash_contribution":round(stash,2),"debt_contribution":round(debt,2),"points_earned":int(points),"goals_completed":int(finished),"current_stash_balance":round(float(state.get("stash",{}).get("balance",0)),2),"current_active_debt":round(current_debt,2),"streak":int(state.get("game",{}).get("streak",0)),"bars":{"stash_pct":round(stash/amount*100,1) if amount else 0,"debt_pct":round(debt/amount*100,1) if amount else 0},"note":"Flow totals count recorded drips in the selected month. Current balances and streak are as of now, not month-end snapshots."}
+    return {"month":month,"currency":"CAD","drip_count":len(rows),"active_days":active_days,"total_moved":round(amount,2),"stash_contribution":round(stash,2),"debt_contribution":round(debt,2),"goals_completed":int(finished),"current_stash_balance":round(float(state.get("stash",{}).get("balance",0)),2),"current_active_debt":round(current_debt,2),"streak":int(state.get("game",{}).get("streak",0)),"bars":{"stash_pct":round(stash/amount*100,1) if amount else 0,"debt_pct":round(debt/amount*100,1) if amount else 0},"note":"Flow totals count recorded drips in the selected month. Current balances and streak are as of now, not month-end snapshots."}

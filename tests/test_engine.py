@@ -49,7 +49,7 @@ def test_approval_records_ledger_but_balances_wait_for_confirmed_settlement():
         after=get_state(db)
         assert result['status']=='approved'
         assert after['stash']['balance'] == before['stash']['balance'], 'approval is not proof of settlement'
-        assert after['game']['points'] > before['game']['points']
+        assert isinstance(after['game']['streak'], int)  # payment streak is retained
         get_debts = __import__('app.services',fromlist=['get_debts']).get_debts
         assert get_debts(db)[0]['balance'] == before_debt
         with db.connect() as c:
@@ -81,7 +81,7 @@ def test_daily_approval_is_idempotent():
         assert second['status']=='already_recorded'
         with db.connect() as c:
             assert c.execute("SELECT COUNT(*) FROM ledger_entries WHERE kind='drip'").fetchone()[0] == 1
-        assert get_state(db)['game']['points'] == before + 20
+        assert get_state(db)['game']['points'] == before  # no reward currency
 
 
 def test_settlement_does_not_begin_without_paypal_credentials(monkeypatch, tmp_path):

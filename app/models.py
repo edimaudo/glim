@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 class Profile(BaseModel):
     name: str = ""
+    country: Literal["CA"] = "CA"
+    currency: Literal["CAD"] = "CAD"
     persona: Literal["custom", "riley", "sam"] = "custom"
     monthly_income: float = Field(gt=0)
     average_monthly_expenses: float | None = Field(default=None, ge=0)

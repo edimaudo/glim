@@ -1,47 +1,78 @@
 <section id="tab-insights" class="tab-panel {{ 'active' if active_section == 'insights' else 'hidden' }}">
-  <div class="page-heading">
-    <div><h1>Smart Strategy</h1><p>Get a repayment recommendation, understand why it was chosen, and review available payment activity.</p></div>
+  <div class="page-heading"><div><h1>Financial insights</h1><p>Track cash flow, compare repayment scenarios, and review upcoming obligations.</p></div><span class="region-label">Canada · CAD</span></div>
+  <nav class="insights-subtabs" role="tablist" aria-label="Financial insights views">
+    <button type="button" class="insights-subtab active" id="insightsTabCashflow" data-insights-tab="cashflow" role="tab" aria-selected="true" aria-controls="insightsPanelCashflow">Cash flow</button>
+    <button type="button" class="insights-subtab" id="insightsTabScenarios" data-insights-tab="scenarios" role="tab" aria-selected="false" aria-controls="insightsPanelScenarios">What-if planner</button>
+    <button type="button" class="insights-subtab" id="insightsTabCalendar" data-insights-tab="calendar" role="tab" aria-selected="false" aria-controls="insightsPanelCalendar">Calendar</button>
+    <button type="button" class="insights-subtab" id="insightsTabReports" data-insights-tab="reports" role="tab" aria-selected="false" aria-controls="insightsPanelReports">Reports</button>
+    <button type="button" class="insights-subtab" id="insightsTabConnections" data-insights-tab="connections" role="tab" aria-selected="false" aria-controls="insightsPanelConnections">Import & reconcile</button>
+  </nav>
+
+  <div class="insights-subpanel active" id="insightsPanelCashflow" role="tabpanel" aria-labelledby="insightsTabCashflow">
+    <div class="insight-metric-grid" aria-label="Selected month cash flow">
+      <article class="insight-metric"><span>Income recorded</span><strong id="cashflowIncome">$0.00</strong></article>
+      <article class="insight-metric"><span>Spending recorded</span><strong id="cashflowExpenses">$0.00</strong></article>
+      <article class="insight-metric"><span>Net cash flow</span><strong id="cashflowNet">$0.00</strong></article>
+    </div>
+    <section class="insights-card">
+      <div class="section-title-row"><div><h2>Monthly cash flow</h2><p class="muted">Enter transactions or import a statement to categorize income and expenses.</p></div><label class="month-control">Month<input type="month" id="cashflowMonth"/></label></div>
+      <form id="cashTransactionForm" class="compact-form cash-transaction-form">
+        <label>Date<input id="cashTxnDate" type="date" required/></label>
+        <label>Type<select id="cashTxnType"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option></select></label>
+        <label>Description<input id="cashTxnDescription" maxlength="160" placeholder="Groceries, paycheque…" required/></label>
+        <label>Category<select id="cashTxnCategory"><option>Housing</option><option>Groceries</option><option>Transport</option><option>Utilities</option><option>Debt payment</option><option>Health</option><option>Entertainment</option><option>Shopping</option><option>Income</option><option>Transfer</option><option>Other</option></select></label>
+        <label>Amount (CAD)<input id="cashTxnAmount" type="number" min="0.01" step="0.01" required/></label>
+        <button class="primary" type="submit">Add transaction</button>
+      </form>
+      <div id="cashflowTransactions" class="transaction-list" aria-live="polite"></div>
+    </section>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Spending by category</h2><p class="muted">Based on expenses entered or imported for the selected month.</p></div></div><div id="spendingCategories" class="category-breakdown"></div></section>
   </div>
 
-  <section class="insights-section" aria-labelledby="smartStrategyTitle">
-    <div class="section-title-row">
-      <div><h2 id="smartStrategyTitle">Your repayment recommendation</h2><p class="muted">Compares repayment approaches using your debt balances, interest rates, minimum payments, and the amount your budget may support.</p></div>
-      <button class="primary" type="button" id="runSmartAnalysisBtn">Run Smart Strategy</button>
-    </div>
-    <div class="insight-summary" aria-live="polite">
-      <div class="insight-summary-main"><strong id="insightStrategyStatus">Waiting for debt details</strong><p id="insightStrategyCopy">Add at least one debt in Debt plan to see a recommendation. The calculated estimate is reviewed before any payment action.</p></div>
-      <a class="secondary insight-action-link" href="/app/plan" data-tab="plan">Open debt plan</a>
-    </div>
-    <p id="smartAgentExplanation" class="agent-explanation hidden" aria-live="polite"></p>
-    <p id="smartAnalysisActivity" class="form-help hidden" aria-live="polite"></p>
-    <div class="agent-method-grid" aria-label="How Glim analyzes your information">
-      <article class="agent-method-card"><h3>Debt analysis</h3><p>Compares highest-interest-first, smallest-balance-first, and balanced repayment approaches. The calculator supplies the payoff and interest estimates.</p></article>
-      <article class="agent-method-card"><h3>Plan guidance</h3><p>Answers questions using your current plan and explains the assumptions behind a recommendation.</p></article>
-      <article class="agent-method-card"><h3>Payment activity review</h3><p>When a supported account connection is configured, reviews available transaction history for recurring charges and possible debt payments. You confirm details before adding a debt.</p></article>
-    </div>
-  </section>
+  <div class="insights-subpanel hidden" id="insightsPanelScenarios" role="tabpanel" aria-labelledby="insightsTabScenarios" hidden>
+    <section class="insights-card">
+      <div class="section-title-row"><div><h2>Model a change before you make it</h2><p class="muted">Compare estimated payoff time and interest against your current entered plan. These are projections, not lender quotes.</p></div></div>
+      <form id="financeScenarioForm" class="settings-grid scenario-grid">
+        <label>Scenario name<input id="scenarioName" maxlength="80" value="My what-if scenario"/></label>
+        <label>Extra monthly debt payment (CAD)<input id="scenarioExtraPayment" type="number" min="0" step="10" value="0"/></label>
+        <label>Monthly income change (CAD)<input id="scenarioIncomeDelta" type="number" step="25" value="0"/></label>
+        <label>Monthly expense change (CAD)<input id="scenarioExpenseDelta" type="number" step="25" value="0"/></label>
+        <label>One-time unexpected expense (CAD)<input id="scenarioUnexpectedExpense" type="number" min="0" step="25" value="0"/></label>
+        <label>One-time lump-sum debt payment (CAD)<input id="scenarioLumpSum" type="number" min="0" step="25" value="0"/></label>
+        <label>APR change (%)<input id="scenarioAprDelta" type="number" min="-100" max="100" step="0.25" value="0"/></label>
+        <div class="button-row full-width"><button class="primary" type="submit" id="runScenarioBtn">Compare scenario</button><button class="secondary" type="button" id="saveScenarioBtn" disabled>Save scenario</button></div>
+      </form>
+      <div id="financeScenarioResult" class="scenario-result" aria-live="polite"><p class="muted">Enter a change and compare it with the current repayment projection.</p></div>
+      <div id="savedScenarios" class="saved-scenarios"></div>
+    </section>
+  </div>
 
-  <section class="insights-section" aria-labelledby="planGuideTitle">
-    <div class="section-title-row"><div><h2 id="planGuideTitle">Ask about your plan</h2><p class="muted">Use the guidance assistant to understand a recommendation or your savings and debt estimates.</p></div></div>
-    <div class="question-suggestions" aria-label="Suggested questions">
-      <button type="button" class="question-suggestion" data-question="Why does Smart Strategy recommend this repayment order?">Explain my repayment order</button>
-      <button type="button" class="question-suggestion" data-question="How much should I keep in my savings buffer?">Review my savings buffer</button>
-      <button type="button" class="question-suggestion" data-question="What payment activity can you review?">What payment activity is available?</button>
-    </div>
-    <form id="chatForm" class="chat-form">
-      <div id="chatWindow" class="chat-window" aria-live="polite"><div class="bubble"><strong>Plan guidance</strong><br>Ask a question about the numbers or recommendations in your current plan.</div></div>
-      <div class="input-row"><input id="chatInput" aria-label="Ask a question about your plan" placeholder="Ask about your debt, savings or recommendation" required/><button class="primary" id="chatBtn" type="submit">Ask</button></div>
-    </form>
-    <p id="assistantAvailabilityNote" class="form-help">Guidance uses the information available to this Glim session. If connected account activity is unavailable, it will say so rather than infer transactions.</p>
-  </section>
+  <div class="insights-subpanel hidden" id="insightsPanelCalendar" role="tabpanel" aria-labelledby="insightsTabCalendar" hidden>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Financial calendar</h2><p class="muted">Payment due dates, scheduled savings contributions, and monthly review reminders.</p></div><label class="month-control">Month<input id="calendarMonth" type="month"/></label></div><div id="financialCalendarEvents" class="calendar-list" aria-live="polite"></div></section>
+  </div>
 
-  <section class="insights-section payment-review-section" aria-labelledby="paymentReviewTitle">
-    <div class="section-title-row"><div><h2 id="paymentReviewTitle">Payment activity</h2><p class="muted">Review recurring payments from a connected account. Account connection and transaction access depend on the deployment configuration.</p></div></div>
-    <div class="activity-connection-card">
-      <div class="activity-connection-copy"><strong id="insightsConnectionStatus">Checking account connection…</strong><p id="insightsConnectionNote" class="muted">Your debt plan can still be calculated without payment activity.</p></div>
-      <div class="button-row activity-connection-actions"><button class="primary" type="button" id="connectActivityBtn">Connect account</button><button class="secondary hidden" type="button" id="disconnectActivityBtn">Disconnect</button><button class="secondary" type="button" id="insightsActivityRefreshBtn">Review activity</button></div>
-    </div>
-    <div class="activity-results-section"><h3>Recurring payments and findings</h3><div id="scoutResults" class="activity-results" aria-live="polite"><p class="muted">Choose Review activity to check the transactions available to this session.</p></div><div id="scoutDebtSuggestions" class="activity-findings" aria-live="polite"></div></div>
-    <p class="form-help">This version’s connected transaction workflow uses test-mode data, not live personal account history or real-money transfers. Live activity review requires a separate production connection.</p>
-  </section>
+  <div class="insights-subpanel hidden" id="insightsPanelReports" role="tabpanel" aria-labelledby="insightsTabReports" hidden>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Monthly progress</h2><p class="muted">Trends use recorded and imported transactions, payments, and savings contributions.</p></div><label class="month-control">Month<input id="reportMonth" type="month"/></label></div>
+      <div id="financialReportSummary" class="report-summary" aria-live="polite"></div>
+      <div class="report-chart-block"><h3>Six-month cash flow</h3><div id="cashflowTrend" class="trend-chart"></div></div>
+      <div class="report-chart-block"><h3>Recorded debt and savings progress</h3><div id="progressTrend" class="trend-chart"></div></div>
+      <div id="reportCaveat" class="muted report-caveat">Debt payments and savings contributions are based on records you enter or import. Interest avoided is a modeled estimate.</div>
+    </section>
+  </div>
+
+  <div class="insights-subpanel hidden" id="insightsPanelConnections" role="tabpanel" aria-labelledby="insightsTabConnections" hidden>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Connect a Canadian bank</h2><p class="muted">A secure bank connection can import account transactions where the institution and product are supported. CSV import remains available for statements and lenders.</p></div></div>
+      <div class="bank-connection-row"><div><strong id="bankConnectionTitle">Checking bank connection</strong><p id="bankConnectionCopy" class="muted">Bank connections require an enabled provider account.</p></div><div class="button-row"><button type="button" id="bankConnectBtn" class="primary">Connect bank</button><button type="button" id="bankSyncBtn" class="secondary hidden">Sync transactions</button><button type="button" id="bankDisconnectBtn" class="secondary danger hidden">Disconnect</button></div></div>
+      <div id="bankActionStatus" class="muted" aria-live="polite"></div>
+      <div id="bankLiabilitiesPanel" class="bank-liabilities-panel hidden"><h3>Available lender details</h3><p class="muted">If the institution supports liability data, review the imported balance and APR before reconciling it with a tracked debt.</p><div id="bankLiabilitiesList" class="bank-liabilities-list"></div></div>
+    </section>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Import a transaction CSV</h2><p class="muted">Use a CSV with date, description, amount, and optionally type and category columns. Amounts are interpreted as positive values; mark each row as income, expense, or transfer.</p></div></div>
+      <form id="transactionImportForm" class="import-form"><label>CSV statement<input id="transactionCsvFile" type="file" accept=".csv,text/csv" required/></label><button type="submit" class="primary">Preview and import</button></form>
+      <p class="form-help">Common headers such as Date, Description, Merchant, Amount, Type, Category, and Transaction Date are supported. No bank login credentials are requested.</p><div id="transactionImportStatus" class="muted" aria-live="polite"></div>
+    </section>
+    <section class="insights-card"><div class="section-title-row"><div><h2>Reconcile a lender statement</h2><p class="muted">Compare statement balances with your tracked debts. Glim only updates a balance if you explicitly confirm the changes.</p></div></div>
+      <form id="debtReconcileForm" class="compact-form reconcile-form"><label>Debt<select id="reconcileDebtId" required><option value="">Choose a debt</option></select></label><label>Statement balance (CAD)<input id="reconcileBalance" type="number" min="0" step="0.01" required/></label><label>Statement date<input id="reconcileDate" type="date" required/></label><label>APR (%)<input id="reconcileApr" type="number" min="0" max="100" step="0.01"/></label><label>Minimum payment (CAD)<input id="reconcileMinimum" type="number" min="0.01" step="0.01"/></label><label>Due day<input id="reconcileDueDay" type="number" min="1" max="31"/></label><label class="check-label full-width"><input id="reconcileApplyChanges" type="checkbox"/> Update my tracked debt using these statement values</label><button type="submit" class="primary">Reconcile statement</button></form>
+      <div id="debtReconciliationResults" class="reconciliation-list" aria-live="polite"></div>
+    </section>
+  </div>
 </section>

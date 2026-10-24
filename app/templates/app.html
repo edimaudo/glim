@@ -9,6 +9,7 @@
       <a class="tab {{ 'active' if active_section == 'overview' else '' }}" href="/app/overview" data-tab="overview" {% if active_section == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a class="tab {{ 'active' if active_section == 'plan' else '' }}" href="/app/plan" data-tab="plan" {% if active_section == 'plan' %}aria-current="page"{% endif %}>Debt plan</a>
       <a class="tab {{ 'active' if active_section == 'savings' else '' }}" href="/app/savings" data-tab="savings" {% if active_section == 'savings' %}aria-current="page"{% endif %}>Savings</a>
+      <a class="tab {{ 'active' if active_section == 'insights' else '' }}" href="/app/insights" data-tab="insights" {% if active_section == 'insights' %}aria-current="page"{% endif %}>Insights</a>
       <a class="tab {{ 'active' if active_section == 'settings' else '' }}" href="/app/settings" data-tab="settings" {% if active_section == 'settings' %}aria-current="page"{% endif %}>Settings</a>
       <a class="tab {{ 'active' if active_section == 'help' else '' }}" href="/app/help" data-tab="help" {% if active_section == 'help' %}aria-current="page"{% endif %}>Help</a>
     </nav>
@@ -16,6 +17,7 @@
     {% include "partials/overview.html" %}
     {% include "partials/plan.html" %}
     {% include "partials/savings.html" %}
+    {% include "partials/insights.html" %}
     {% include "partials/settings.html" %}
     {% include "partials/help.html" %}
   </section>
@@ -24,15 +26,15 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="walkthroughOverlay" class="walkthrough-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="walkthroughTitle" aria-describedby="walkthroughCopy" aria-hidden="true">
   <div class="walkthrough-dialog">
-    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 5</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
+    <div class="walkthrough-progress"><span id="walkthroughStepLabel">Step 1 of 6</span><button id="walkthroughSkipBtn" type="button" class="text-button">Close guide</button></div>
     <h2 id="walkthroughTitle">Quick guide</h2>
-    <p id="walkthroughCopy">Five tabs for managing debt, savings, reminders, and progress.</p>
+    <p id="walkthroughCopy">Six destinations for debt, savings, cash flow, reminders, and support.</p>
     <div class="walkthrough-actions"><button type="button" class="secondary" id="walkthroughBackBtn" disabled>Back</button><button type="button" class="primary" id="walkthroughNextBtn">Next</button></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="/storage-config.js"></script>
-<script src="/static/storage.js?v=20261023sharedsmart"></script>
-<script src="/static/app.js?v=20261023sharedsmart"></script>
+<script src="/static/storage.js?v=20261024idbfinance"></script>
+<script src="/static/app.js?v=20261024idbfinance"></script>
 {% endblock %}
