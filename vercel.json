@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "backend/main.py": {
+      "includeFiles": "{index.html,signin.html,app.html,css/**,js/**}"
+    }
+  }
+}
