@@ -6,8 +6,7 @@ SYSTEM_GUIDANCE = """You are Glim, a calm, practical financial education coach f
 Use plain language, no shame, and short actionable explanations. This is general financial
 education, not individualized professional advice. Do not promise outcomes or claim to be a
 licensed advisor. Never invent current interest rates, fees, eligibility requirements, product
-terms, or government program details. If product information is not supplied from a verified
-source, say it must be checked with the provider. Do not suggest skipping required minimum
+terms, or government program details. When comparing user-entered product terms, call them user-entered rather than verified; do not invent terms. Current rates, fees, eligibility, conditions, or product details must be checked with the provider. Do not suggest skipping required minimum
 payments, missing essential bills, taking on high-cost debt, or sacrificing essential needs to
 meet a goal. Do not ask for full card numbers, banking passwords, PINs, security answers, or
 other credentials. Do not execute transactions. If a question needs account-specific, legal,
@@ -33,6 +32,7 @@ def build_coach_input(question: str, context: dict[str, Any] | None, tone: str =
         "currency": "CAD",
         "debts": context.get("debts", []),
         "savings_goals": context.get("savings_goals", []),
+        "user_entered_product_options": context.get("user_entered_product_options", [])[:10],
         "monthly_debt_budget": context.get("monthly_debt_budget"),
         "selected_plan_summary": context.get("selected_plan_summary"),
     }
@@ -58,7 +58,7 @@ def local_coach_fallback(question: str, context: dict[str, Any] | None) -> str:
         return (
             f"A useful first step is to protect every required minimum payment, then direct any extra amount toward one chosen debt. "
             f"The avalanche method targets the highest APR first and often reduces total interest; the snowball method targets the smallest balance first and can create earlier wins. "
-            f"Your current tracked sample debt is ${total_debt:,.2f}, with ${minimums:,.2f} in entered monthly minimums. "
+            f"Your current tracked debt is ${total_debt:,.2f}, with ${minimums:,.2f} in entered monthly minimums. "
             "Those figures depend on the information entered and should be checked against your latest statements. "
             "Next step: choose a monthly amount that remains affordable after housing, food, utilities, transportation, and other essential costs."
         )

@@ -1,85 +1,69 @@
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
+PUBLIC = ROOT / "public"
 load_dotenv(ROOT / ".env")
-DATA_DIR = ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
-DB_PATH = Path(os.getenv("GLIM_DATABASE_PATH", str(DATA_DIR / "glim.sqlite3")))
 
 from .financial_calculator import PlanValidationError, compare_plans
 from .gemini_coach import get_coach_response
-from .paypal_rewards import PayPalConfigurationError, create_sandbox_payout
+from .paypal_rewards import PayPalConfigurationError, create_sandbox_payout, get_sandbox_payout_status
+from .financial_products import compare_product_terms
 from .qloo_personalization import get_reward_ideas
 
-DEFAULT_STATE: dict[str, Any] = {
-    "profile": {"name": "Alex", "email": ""},
-    "debts": [
-        {"id": "sample-visa", "name": "Rewards credit card", "type": "Credit card", "balance": 4200.0, "apr": 20.99, "minimum_payment": 126.0, "due_date": "2026-11-05", "sample": True},
-        {"id": "sample-loc", "name": "Personal line of credit", "type": "Line of credit", "balance": 2300.0, "apr": 11.5, "minimum_payment": 70.0, "due_date": "2026-11-12", "sample": True},
-    ],
-    "savingsGoals": [
-        {"id": "sample-emergency", "name": "Emergency fund", "target": 1000.0, "current": 680.0, "monthly_contribution": 50.0, "sample": True},
-        {"id": "sample-buffer", "name": "Monthly breathing room", "target": 500.0, "current": 0.0, "monthly_contribution": 25.0, "sample": True},
-    ],
-    "monthlyBudget": 500.0,
-    "strategy": "avalanche",
-    "lastPlan": None,
-    "milestones": [],
-    "claimedRewardMilestones": [],
-    "prefs": {"theme": "light", "fontSize": "medium", "reminderFrequency": "weekly", "coachTone": "balanced", "coachMode": "coach"},
-    "dismissedBanner": False,
-}
-
-
-def _connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DB_PATH, timeout=10)
-    connection.row_factory = sqlite3.Row
-    return connection
-
-
-def _init_db() -> None:
-    with _connect() as db:
-        db.execute("CREATE TABLE IF NOT EXISTS app_state (state_key TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-        row = db.execute("SELECT state_key FROM app_state WHERE state_key='demo' LIMIT 1").fetchone()
-        if row is None:
-            db.execute("INSERT INTO app_state (state_key, state_json) VALUES ('demo', ?)", (json.dumps(DEFAULT_STATE),))
-
-
-def _read_state() -> dict[str, Any]:
-    with _connect() as db:
-        row = db.execute("SELECT state_json FROM app_state WHERE state_key='demo'").fetchone()
-    return json.loads(row["state_json"]) if row else json.loads(json.dumps(DEFAULT_STATE))
-
-
-def _write_state(state: dict[str, Any]) -> None:
-    serialized = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
-    if len(serialized.encode("utf-8")) > 512_000:
-        raise HTTPException(status_code=413, detail="Saved demo state is too large.")
-    with _connect() as db:
-        db.execute(
-            "INSERT INTO app_state (state_key, state_json, updated_at) VALUES ('demo', ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(state_key) DO UPDATE SET state_json=excluded.state_json, updated_at=CURRENT_TIMESTAMP",
-            (serialized,),
-        )
-
-
-_init_db()
 app = FastAPI(title="Glim API", version="0.1.0", description="Hackathon prototype backend for Glim financial coaching.")
+SESSION_COOKIE = "glim_demo_session"
+SESSION_MAX_AGE = 60 * 60 * 8
+_SESSION_SECRET = os.getenv("GLIM_SESSION_SECRET", "").strip()
+if not _SESSION_SECRET:
+    # Convenient local-only default. Production deployments must set GLIM_SESSION_SECRET.
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("ENVIRONMENT", "").lower() == "production":
+        _SESSION_SECRET = ""
+    else:
+        _SESSION_SECRET = "glim-local-development-session-secret-change-before-deploying"
 
 
-class StatePayload(BaseModel):
-    state: dict[str, Any]
+def _session_serializer() -> URLSafeTimedSerializer:
+    if not _SESSION_SECRET:
+        raise HTTPException(status_code=503, detail="Set GLIM_SESSION_SECRET in the deployment environment before enabling sessions.")
+    return URLSafeTimedSerializer(_SESSION_SECRET, salt="glim-demo-session-v1")
+
+
+def _read_demo_session(request: Request) -> dict[str, str] | None:
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token or not _SESSION_SECRET:
+        return None
+    try:
+        payload = _session_serializer().loads(token, max_age=SESSION_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    name, email = payload.get("name"), payload.get("email")
+    if not isinstance(name, str) or not isinstance(email, str) or "@" not in email:
+        return None
+    return {"name": name[:80], "email": email[:254].lower()}
+
+
+def require_demo_session(request: Request) -> dict[str, str]:
+    profile = _read_demo_session(request)
+    if not profile:
+        raise HTTPException(status_code=401, detail="Sign in to your Glim demo session to use this endpoint.")
+    return profile
+
+
+class DemoSessionPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    email: str = Field(min_length=3, max_length=254)
 
 
 class DebtPlanPayload(BaseModel):
@@ -99,9 +83,35 @@ class RewardIdeasPayload(BaseModel):
     interest_tags: list[str] = Field(default_factory=list, max_length=8)
 
 
+SUPPORTED_REWARD_INTEREST_TAGS = {
+    "urn:tag:genre:media:nonfiction",
+    "urn:tag:genre:media:action",
+}
+
+
+class ProductOptionPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="", max_length=100)
+    annual_rate: float = Field(ge=0, le=100)
+    annual_fee: float = Field(default=0, ge=0, le=10_000)
+    monthly_fee: float = Field(default=0, ge=0, le=1_000)
+    promo_rate: float | None = Field(default=None, ge=0, le=100)
+    promo_months: int = Field(default=0, ge=0, le=12)
+    post_promo_rate: float | None = Field(default=None, ge=0, le=100)
+    product_url: str | None = Field(default=None, max_length=500)
+
+
+class ProductComparePayload(BaseModel):
+    category: str
+    balance: float = Field(ge=0, le=10_000_000)
+    products: list[ProductOptionPayload] = Field(min_length=2, max_length=10)
+
+
 class RewardClaimPayload(BaseModel):
-    milestone_key: str = "plan_created"
+    milestone_key: str
     recipient_email: str = Field(min_length=3, max_length=254)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    client_claim_id: str = Field(min_length=8, max_length=120)
 
 
 @app.get("/api/health")
@@ -109,22 +119,43 @@ async def health() -> dict[str, Any]:
     return {"status": "ok", "service": "glim-api", "mode": "prototype"}
 
 
-@app.get("/api/state")
-async def get_state() -> dict[str, Any]:
-    return {"state": _read_state()}
+@app.post("/api/session")
+async def create_demo_session(payload: DemoSessionPayload, response: Response) -> dict[str, Any]:
+    """Create an eight-hour signed demo session; this is not production authentication."""
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    if not name or "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(status_code=422, detail="Enter a name and a valid email address.")
+    token = _session_serializer().dumps({"name": name, "email": email})
+    production = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("ENVIRONMENT", "").lower() == "production")
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        secure=production,
+        samesite="lax",
+        path="/",
+    )
+    return {"profile": {"name": name, "email": email}, "session_type": "demo", "expires_in_seconds": SESSION_MAX_AGE}
 
 
-@app.put("/api/state")
-async def put_state(payload: StatePayload) -> dict[str, Any]:
-    state = payload.state
-    if not isinstance(state.get("debts", []), list) or not isinstance(state.get("savingsGoals", []), list):
-        raise HTTPException(status_code=422, detail="Debts and savings goals must be lists.")
-    _write_state(state)
-    return {"saved": True}
+@app.get("/api/session")
+async def current_demo_session(request: Request) -> dict[str, Any]:
+    profile = _read_demo_session(request)
+    if not profile:
+        raise HTTPException(status_code=401, detail="Your demo session has ended. Sign in again.")
+    return {"profile": profile, "session_type": "demo", "expires_in_seconds": SESSION_MAX_AGE}
+
+
+@app.delete("/api/session")
+async def delete_demo_session(response: Response) -> dict[str, str]:
+    response.delete_cookie(key=SESSION_COOKIE, httponly=True, secure=bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("ENVIRONMENT", "").lower() == "production"), samesite="lax", path="/")
+    return {"status": "signed_out"}
 
 
 @app.post("/api/debt/plan")
-async def debt_plan(payload: DebtPlanPayload) -> dict[str, Any]:
+async def debt_plan(payload: DebtPlanPayload, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
     try:
         return compare_plans(payload.debts, payload.monthly_budget, payload.selected_strategy)
     except PlanValidationError as exc:
@@ -132,7 +163,7 @@ async def debt_plan(payload: DebtPlanPayload) -> dict[str, Any]:
 
 
 @app.post("/api/coach")
-async def coach(payload: CoachPayload) -> dict[str, Any]:
+async def coach(payload: CoachPayload, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
     try:
         result = await get_coach_response(payload.question, payload.context, payload.tone, payload.mode)
         return result
@@ -141,34 +172,74 @@ async def coach(payload: CoachPayload) -> dict[str, Any]:
 
 
 @app.get("/api/integrations/status")
-async def integration_status() -> dict[str, Any]:
+async def integration_status(_profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
     return {
         "gemini": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
         "paypal_sandbox": bool(os.getenv("PAYPAL_CLIENT_ID", "").strip() and os.getenv("PAYPAL_CLIENT_SECRET", "").strip()) and os.getenv("PAYPAL_ENV", "sandbox").lower() == "sandbox",
         "qloo": bool(os.getenv("QLOO_API_KEY", "").strip()),
-        "database": "sqlite",
-        "auth": "demo-only",
+        "financial_data_storage": "browser IndexedDB",
+        "identity": "signed HTTP-only demo session cookie; not production authentication",
+        "server_financial_storage": False,
     }
 
 
 @app.post("/api/rewards/recommendations")
-async def reward_recommendations(payload: RewardIdeasPayload) -> dict[str, Any]:
+async def reward_recommendations(payload: RewardIdeasPayload, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
+    unsupported = [tag for tag in payload.interest_tags if tag not in SUPPORTED_REWARD_INTEREST_TAGS]
+    if unsupported:
+        raise HTTPException(status_code=422, detail="Choose one of the supported Glim reward interests.")
     try:
         return await get_reward_ideas(payload.interest_tags)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/rewards/claim")
-async def claim_reward(payload: RewardClaimPayload) -> dict[str, Any]:
-    state = _read_state()
-    if payload.milestone_key != "plan_created" or payload.milestone_key not in state.get("milestones", []):
-        raise HTTPException(status_code=409, detail="Calculate and review a debt plan before claiming this prototype milestone reward.")
-    if payload.milestone_key in state.get("claimedRewardMilestones", []):
-        raise HTTPException(status_code=409, detail="A reward request has already been submitted for this milestone in the demo.")
+@app.post("/api/products/compare")
+async def product_compare(payload: ProductComparePayload, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
     try:
-        result = await create_sandbox_payout(payload.recipient_email.strip(), "1.00")
+        return compare_product_terms(payload.category, payload.balance, [item.model_dump() for item in payload.products])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/rewards/claim")
+async def claim_reward(payload: RewardClaimPayload, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
+    """Submit a test payout only after validating an explicit sandbox milestone claim.
+
+    The evidence is entered in the browser and is not independently audited; this endpoint
+    deliberately only permits Sandbox credentials and must not be treated as production fraud control.
+    """
+    evidence = payload.evidence or {}
+    if payload.milestone_key == "savings_goal_reached":
+        target = _safe_amount(evidence.get("target"))
+        current = _safe_amount(evidence.get("current"))
+        if target <= 0 or current < target:
+            raise HTTPException(status_code=409, detail="The entered savings goal has not reached its target.")
+    elif payload.milestone_key == "debt_reduction_10":
+        baseline = _safe_amount(evidence.get("baseline_balance"))
+        current = _safe_amount(evidence.get("current_balance"))
+        if baseline <= 0 or current > baseline * 0.9:
+            raise HTTPException(status_code=409, detail="The entered debt balance has not decreased by at least 10% from its starting value.")
+    else:
+        raise HTTPException(status_code=422, detail="Unsupported milestone. Eligible demo milestones are a completed savings goal or a 10% reduction in tracked debt.")
+    try:
+        result = await create_sandbox_payout(payload.recipient_email.strip(), "1.00", payload.client_claim_id)
+    except PayPalConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    result["milestone_key"] = payload.milestone_key
+    result["evidence_review"] = "Client-entered demo data; not independently verified"
+    return result
+
+
+@app.get("/api/rewards/status/{payout_batch_id}")
+async def reward_payout_status(payout_batch_id: str, _profile: dict[str, str] = Depends(require_demo_session)) -> dict[str, Any]:
+    try:
+        return await get_sandbox_payout_status(payout_batch_id)
     except PayPalConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
@@ -176,31 +247,29 @@ async def claim_reward(payload: RewardClaimPayload) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    state.setdefault("claimedRewardMilestones", []).append(payload.milestone_key)
-    _write_state(state)
-    return result
+
+def _safe_amount(value: Any) -> float:
+    try:
+        amount = float(value)
+        return amount if 0 <= amount <= 10_000_000 else -1
+    except (TypeError, ValueError):
+        return -1
 
 
-@app.post("/api/reset-demo")
-async def reset_demo() -> dict[str, Any]:
-    _write_state(json.loads(json.dumps(DEFAULT_STATE)))
-    return {"reset": True, "state": _read_state()}
-
-
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def landing() -> FileResponse:
-    return FileResponse(ROOT / "index.html")
+    return FileResponse(PUBLIC / "index.html")
 
 
-@app.get("/signin.html")
+@app.get("/signin.html", include_in_schema=False)
 async def signin_page() -> FileResponse:
-    return FileResponse(ROOT / "signin.html")
+    return FileResponse(PUBLIC / "signin.html")
 
 
-@app.get("/app.html")
+@app.get("/app.html", include_in_schema=False)
 async def app_page() -> FileResponse:
-    return FileResponse(ROOT / "app.html")
+    return FileResponse(PUBLIC / "app.html")
 
 
-app.mount("/css", StaticFiles(directory=ROOT / "css"), name="css")
-app.mount("/js", StaticFiles(directory=ROOT / "js"), name="js")
+app.mount("/css", StaticFiles(directory=PUBLIC / "css"), name="css")
+app.mount("/js", StaticFiles(directory=PUBLIC / "js"), name="js")

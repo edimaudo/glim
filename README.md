@@ -1,139 +1,130 @@
 # Glim
 
-Glim is a Canadian financial-literacy and financial-planning prototype focused on a complete debt-to-savings journey. It uses plain HTML, CSS, and vanilla JavaScript in the browser, with a Python/FastAPI backend. Inter is the application font.
+Glim is a Canadian financial-coaching and literacy prototype focused on debt repayment, savings goals, and informed financial decisions. The frontend is plain HTML, CSS, and vanilla JavaScript using Inter. FastAPI serves the pages and provides stateless calculations and server-side integration calls. There is no frontend build step.
 
-> **Prototype notice:** This is a hackathon starter build, not a production financial service. Sign-in is demo-only, the SQLite state is shared by the local demo, and no financial institutions or real accounts are connected. Do not enter passwords, full card numbers, banking credentials, or other sensitive information. Financial projections are estimates. PayPal requests are hard-coded to Sandbox and must be configured before use.
+> **Prototype boundary:** Demo sign-in does not verify a person's identity. The signed session cookie only identifies the demo profile for up to eight hours; it is not production authentication. Financial records are stored in the browser using IndexedDB, not in SQLite or another server-side database. Browser storage is not encrypted by Glim and must only contain test or non-sensitive data. Do not enter full card numbers, banking credentials, passwords, PINs, or security answers. Projections are estimates, not issuer calculations or individualized professional financial advice.
 
-## Included in this build
+## Included
 
-- Landing page, demo sign-in, and authenticated-in-the-UI app shell.
-- Debt tracking for credit cards, lines of credit, loans, and other obligations.
-- Deterministic repayment estimates using avalanche and snowball strategies, with comparison metrics and a debt trajectory chart.
-- Savings goals, progress tracking, and contribution estimates.
-- Financial Literacy lessons, glossary-style content, a quick quiz, and an assessment flow inspired by the educational structure in [FinWise](https://github.com/edimaudo/finWise).
-- One shared coach interface across Glim sections. If Gemini credentials are absent, the backend uses an explicitly labelled local fallback; with credentials it calls the Gemini Interactions API.
-- Optional Qloo-based book suggestions; without Qloo credentials the app shows clearly labelled low-cost starter ideas.
-- Optional PayPal Payouts API flow limited to the PayPal Sandbox. The claim endpoint requires that a debt plan was calculated in the demo state.
-- Persisted user-interface settings, light/dark modes, global text-size scaling, and responsive layouts.
+- Landing page, demo sign-in, and responsive authenticated-in-the-UI application.
+- Inter typography, light/dark themes, and globally scaled small/medium/large text settings.
+- Browser IndexedDB profile state for debts, manual balance history, savings goals, preferences, coaching context, learning progress, product comparisons, and reward history.
+- Local JSON data export and a confirmation-protected reset for the current browser profile.
+- A signed, HTTP-only, eight-hour demo session cookie. All app API endpoints other than health and session creation require the cookie. This is a prototype boundary, not identity verification.
+- Debt entry, current-balance updates, CSV import, avalanche/snowball comparisons, deterministic payoff estimates, and accessible chart descriptions.
+- Savings goals and progress tracking.
+- Financial Literacy lessons, completion tracking, quiz progress, and a learning-focus assessment inspired by [FinWise](https://github.com/edimaudo/finWise).
+- One Gemini coach interface with shared cross-section context and a clear local fallback when Gemini is not configured.
+- Product comparison calculations based on terms entered by the user from official provider sources. Glim does not scrape providers or fabricate live product offers.
+- Optional Qloo-based non-financial reward ideas.
+- PayPal Sandbox payout submission and a batch-status refresh flow. Claims are based on client-entered demo evidence and are not independently audited.
+- Smart follow-ups based on entered due dates, savings progress, reminder preferences, snoozes, dismissals, coaching tone, and whether the user acts on a prompt.
 
-## Quick start
+## Local setup
 
-Requirements: Python 3.10+ (3.11+ recommended).
+Requirements: Python 3.11+ recommended.
 
 ```bash
-cd glim
 python -m venv .venv
 
 # macOS / Linux
 source .venv/bin/activate
 
 # Windows PowerShell
-# .venv\Scripts\Activate.ps1
+# .venv\\Scripts\\Activate.ps1
 
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn backend.main:app --reload
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). The server serves the HTML and static files directly; there is no frontend build step.
+Open `http://127.0.0.1:8000`. Enter any test name and email on the sign-in page. This is a demo identity flow only; it does not check passwords or verify that the email belongs to the person signing in.
 
-To sign in, use any test name and email address. It is a demo-only flow and does not validate identity. Example data is preloaded so the repayment planner can be demonstrated immediately.
+Local development uses a known, non-production session signing key only when `GLIM_SESSION_SECRET` is absent. Generate a local secret if you want to test with a custom value:
 
-## Environment configuration
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
-Copy `.env.example` to `.env`. Keep `.env` private and out of version control.
+Put that value in `.env` as `GLIM_SESSION_SECRET=...`. Never commit `.env` or put provider keys in frontend JavaScript.
 
-### Gemini
+## Vercel
 
-Set `GEMINI_API_KEY` from your Google AI Studio / Gemini API configuration. `GEMINI_MODEL` defaults to `gemini-3.8-flash`; change it to a model available to your account if necessary. The key is used only by FastAPI and is never sent to the browser. The app uses the Gemini Interactions API by default at `https://generativelanguage.googleapis.com/v1beta/interactions`.
+The FastAPI app is defined in `backend/main.py`. `pyproject.toml` specifies the custom Vercel entrypoint as `backend.main:app`, so the project does not need a separate root-level `main.py` shim. `vercel.json` only specifies that `public/**` assets must be included with the Python function; it does not set the project URL or introduce a rewrite to API documentation. Vercel assigns the deployment URL. See [Vercel's FastAPI deployment guide](https://vercel.com/docs/frameworks/backend/fastapi).
+
+Before deploying, configure `GLIM_SESSION_SECRET` as a Vercel environment variable using a newly generated random value. Do not use the local fallback in production. Add provider secrets in Vercel Project Settings → Environment Variables. The app has no SQLite usage and does not write user state to the server filesystem.
+
+## Storage and session behavior
+
+- **Financial data:** Stored per entered email profile in browser IndexedDB (`glim-finance`). It stays in that browser origin's storage and is not uploaded for persistence. Clearing browser data or changing browsers can remove or isolate it.
+- **Demo session:** An eight-hour, signed, HTTP-only cookie carries the name/email used to select the IndexedDB profile. The cookie is not encrypted, and signing only detects tampering; it does not establish identity. HTTPS deployments set the cookie's `Secure` attribute.
+- **Production gap:** A production release needs a real identity provider, verified account ownership, appropriate authorization and recovery, a privacy review, and protection/encryption appropriate to actual financial data.
+
+## Integrations
+
+### Gemini Flash
+
+Set `GEMINI_API_KEY`. `GEMINI_MODEL` defaults to `gemini-3.8-flash`; set another model ID if needed. `GEMINI_API_URL` defaults to the Gemini Interactions API endpoint. The API key stays on the FastAPI server. Without a key, Glim returns an explicitly labelled demo fallback. The calculation engine remains authoritative for numeric repayment outcomes.
 
 ### PayPal Sandbox
 
-1. Create a REST app in the PayPal Developer Dashboard and use its Sandbox client ID and secret.
-2. Confirm the app has access to the Payouts API.
-3. Set `PAYPAL_ENV=sandbox`, `PAYPAL_CLIENT_ID`, and `PAYPAL_CLIENT_SECRET` in `.env`.
-4. Use an eligible Sandbox recipient account email.
-5. Calculate a debt plan in Glim, then use **Test reward payout** to submit a fixed CAD $1.00 Sandbox payout request.
-6. Check the returned payout batch ID/status in the PayPal Developer Dashboard.
-
-The integration calls the Sandbox OAuth endpoint and `/v1/payments/payouts`. The app deliberately refuses to run a live payout. PayPal may require additional account approval or configuration before Payouts is enabled. A request being accepted is not the same as an individual item being completed.
+Set `PAYPAL_ENV=sandbox`, `PAYPAL_CLIENT_ID`, and `PAYPAL_CLIENT_SECRET` using a PayPal Developer Sandbox REST app with Payouts enabled. Glim submits a fixed CAD $1.00 test payout after the user enters a milestone-eligible state in the browser. It stores the returned batch ID in IndexedDB and can request the current batch status from PayPal Sandbox. Live payouts are deliberately disabled. A submitted batch does not prove that the recipient received money, and the client-entered milestone is not an anti-fraud control.
 
 ### Qloo
 
-Set `QLOO_API_KEY` to enable the Qloo Insights request, and set `QLOO_API_BASE_URL` if your issued credentials use a different documented API host. The prototype requests book recommendations using an example nonfiction interest tag. Availability and accepted entity/tag IDs depend on the Qloo API account and current API schema. Results are discovery ideas, not financial-product recommendations. The interface tells users to check library availability before buying.
+Set `QLOO_API_KEY` for optional taste-based book suggestions. `QLOO_API_BASE_URL` defaults to `https://api.qloo.com`. Users can select a supported learning/non-fiction or action media-interest signal. Qloo is used only for non-financial personalization, never to decide whether a credit card or loan is suitable. When Qloo is unconfigured, Glim labels its general low-cost starter ideas as fallbacks.
 
-## Project structure
+### Financial product comparison
 
-```text
-glim/
-├── index.html
-├── signin.html
-├── app.html
-├── css/styles.css
-├── js/
-│   ├── api.js
-│   ├── main.js
-│   ├── signin.js
-│   ├── debt.js
-│   ├── savings.js
-│   ├── literacy.js
-│   └── settings.js
-├── backend/
-│   ├── main.py
-│   ├── financial_calculator.py
-│   ├── financial_safety.py
-│   ├── gemini_coach.py
-│   ├── paypal_rewards.py
-│   └── qloo_personalization.py
-├── tests/
-├── docs/
-├── data/              # local SQLite file; ignored by git
-├── .env.example
-├── requirements.txt
-└── README.md
-```
+Users enter rates, fees, and promotional periods from product providers' official sources. The backend compares an estimated year-one value/cost from those entered terms. This is not a live offer search, and the result does not consider every feature, issuer rule, eligibility criterion, or reward. The app tells users to verify the terms with providers.
 
-## API endpoints
+## CSV debt import
 
-| Method | Endpoint | Purpose |
+Import a CSV with these required headers: `name,balance,apr,minimum_payment`. Optional headers are `type,due_date`, with dates in `YYYY-MM-DD`. The file is read locally in the browser, limited to 2 MB and the first 100 data rows, then stored in IndexedDB. Seeded sample debts are removed on import; existing user-entered debts are retained and the imported rows are appended. If this is the first set of real debts, the tracked starting baseline is reset to the resulting portfolio so progress estimates are meaningful. Review each imported value against statements.
+
+## API routes
+
+| Method | Route | Purpose |
 |---|---|---|
-| GET | `/api/health` | Backend health check |
-| GET / PUT | `/api/state` | Read/save shared demo state |
-| POST | `/api/debt/plan` | Calculate and compare repayment plans |
-| POST | `/api/coach` | Generate a shared financial-coach response |
-| GET | `/api/integrations/status` | Report whether providers are configured |
-| POST | `/api/rewards/recommendations` | Ask Qloo for book ideas or return labelled starter ideas |
-| POST | `/api/rewards/claim` | Request a CAD $1.00 PayPal Sandbox milestone payout |
-| POST | `/api/reset-demo` | Reset the stored sample state |
+| GET | `/api/health` | Public service health check |
+| POST | `/api/session` | Issue a signed demo session cookie |
+| GET | `/api/session` | Read current demo session |
+| DELETE | `/api/session` | Sign out and clear the cookie |
+| POST | `/api/debt/plan` | Calculate repayment plan comparisons |
+| POST | `/api/coach` | Shared Gemini coach or labelled fallback |
+| GET | `/api/integrations/status` | Report configured integration keys (not a live health test) |
+| POST | `/api/rewards/recommendations` | Qloo suggestions or labelled fallback ideas |
+| POST | `/api/products/compare` | Compare user-entered financial product terms |
+| POST | `/api/rewards/claim` | Submit an eligible CAD $1.00 PayPal Sandbox payout request |
+| GET | `/api/rewards/status/{payout_batch_id}` | Refresh PayPal Sandbox batch status |
 
-FastAPI interactive API documentation is available at `/docs` while the server is running.
+The app does not expose `/api/state` or store financial state on the server. FastAPI's interactive API documentation is available at `/docs` in local development; this is API documentation, not the Glim deployment homepage.
 
 ## Tests
 
 ```bash
 pytest -q
+for f in public/js/*.js; do node --check "$f"; done
 ```
 
-The calculation tests cover repayment outcomes, strategy output, invalid budgets, and minimum-payment validation. Provider calls require credentials and should be validated in the respective provider Sandbox/developer account.
+The automated suite covers repayment calculations, product-comparison math/validation, page/static-asset serving, signed demo-session behavior, API session requirements, and selected endpoint flows. It does not call real Gemini, Qloo, or PayPal services. Those integrations require credentials and live provider-side verification.
 
-## Important limitations and production work
+## Remaining production work
 
-1. **Authentication and user isolation:** The current sign-in is intentionally a UI demo. The app stores one shared demo-state record. Before deployment, implement real authentication, per-user authorization, secure session management, rate limiting, and access controls for every user-specific endpoint.
-2. **Data protection:** This prototype stores user-entered data in a local SQLite database. A production version needs an appropriate privacy/security review, retention controls, encryption and access policies. Never accept card numbers or banking credentials for the current workflow.
-3. **Financial data:** Accounts are added manually. Institution connections are not implemented. Any future data connection must use a provider's supported authorization and consent flow.
-4. **Financial correctness:** The engine uses monthly APR/12 interest and entered minimum payments to create an estimate. Real issuers may calculate interest differently, and minimum payments may change. Add independent review and more edge-case testing before any consumer use.
-5. **Notifications:** Settings capture reminder preferences but there is no email, SMS, push, or scheduled reminder delivery yet.
-6. **Product comparisons:** Current account/credit-product offers are not implemented. Add verified, date-stamped provider terms before making comparisons.
-7. **PayPal milestones:** The prototype verifies that a plan was calculated, not that an actual debt balance decreased. The demo milestone is not a production eligibility rule. Production rewards require a trusted, auditable eligibility process and a defined funding source.
-8. **Qloo:** Book discovery is optional personalization. It does not select financial products or determine financial suitability.
-9. **Accessibility:** The implementation includes semantic headings, labels, keyboard focus states, reduced-motion handling, colour themes, global text scaling, and chart text descriptions. Run a full manual and automated WCAG 2.1 AA audit before release.
+1. Replace demo sign-in with production authentication and account recovery; demo cookie signing is not authentication.
+2. Move sensitive persistent financial data to a secured hosted database only if/when production requirements warrant it, with user isolation and retention rules. IndexedDB here is for this test prototype.
+3. For real account connections, integrate an appropriate Canadian financial-data provider using a supported consent/authorization flow. Credit-card numbers are not an account connection method.
+4. For reminders while the user is away from Glim, add an explicitly consented delivery mechanism (push, email, or SMS) and the necessary scheduling infrastructure. Current browser notifications and periodic rechecks operate only while Glim is open.
+5. For product discovery, add verified, date-stamped provider sources before showing live financial offers. Current comparisons use user-entered terms only.
+6. Add server-side verified milestone evidence, payout reconciliation, abuse controls, and an established funding source before treating rewards as a real incentive program.
+7. Complete a formal WCAG 2.1 AA review and security/privacy assessment before any production financial use.
 
-## External references
+## References
 
-- [Gemini API documentation](https://ai.google.dev/gemini-api/docs)
-- [Gemini models](https://ai.google.dev/gemini-api/docs/models)
-- [PayPal REST API authentication](https://developer.paypal.com/api/rest/authentication/)
+- [Gemini API models](https://ai.google.dev/gemini-api/docs/models)
+- [Gemini Interactions API](https://ai.google.dev/gemini-api/docs/interactions-overview)
+- [PayPal REST authentication](https://developer.paypal.com/api/rest/authentication/)
 - [PayPal Payouts overview](https://developer.paypal.com/payouts/overview/)
-- [PayPal Create Payout Request](https://developer.paypal.com/api/payments.payouts-batch/v1/definitions/create_payout_request/)
-- [Qloo public API documentation](https://github.com/qloo/docs-public)
-- [FinWise reference repository](https://github.com/edimaudo/finWise)
+- [Qloo API documentation](https://github.com/qloo/docs-public)
+- [Vercel FastAPI guide](https://vercel.com/docs/frameworks/backend/fastapi)
+- [FinWise source](https://github.com/edimaudo/finWise)
