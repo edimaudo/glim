@@ -1,6 +1,6 @@
 # Glim
 
-Glim is a Canadian financial-coaching prototype for debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
+Glim is a Canadian financial-coaching app for smarter debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
 
 ## Project structure
 
