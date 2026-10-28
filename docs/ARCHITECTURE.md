@@ -1,50 +1,53 @@
 # Glim architecture
 
-## Overview
+## Guiding structure
 
-Glim uses plain HTML, CSS, and vanilla JavaScript. FastAPI serves Jinja2 templates and handles JSON requests. There is one root application entrypoint (`app.py`), one API router (`api.py`), and small function-based service modules. No frontend framework, ORM, database, or domain class hierarchy is used.
+Glim uses HTML, CSS, and vanilla JavaScript. FastAPI serves Jinja templates and handles server-side actions. The design is deliberately small:
 
-## File responsibilities
+- `app.py` is the single backend entrypoint. It contains the page handlers, session handling, small input-validation helpers, and feature-action routes.
+- `templates/` contains the three pages and shared `base.html` shell.
+- `public/css/` and `public/js/` contain static browser assets.
+- `public/js/client.js` sends same-origin requests to the action routes.
+- `services/` contains small functions for repayment calculations, product comparisons, Gemini, PayPal, and Qloo.
+- Browser financial data remains in IndexedDB; the server does not persist it.
 
-- `app.py`: creates the FastAPI application, renders page templates, mounts CSS/JS locally, and includes the API router. Vercel detects this root-level entrypoint automatically.
-- `api.py`: defines `/api/*` JSON endpoints, request validation schemas, and the signed demo session flow.
-- `templates/base.html`: shared HTML document structure, Inter, and stylesheet reference.
-- `templates/index.html`, `signin.html`, `app.html`: the landing page, sign-in page, and authenticated-in-the-UI application.
-- `public/css` and `public/js`: static presentation and browser behavior. JavaScript uses IndexedDB for user financial data.
-- `services/financial_calculator.py`: deterministic debt calculations.
-- `services/financial_products.py`: comparison calculations for user-entered terms.
-- `services/financial_safety.py`: shared coach principles and local fallback.
-- `services/gemini_coach.py`: Gemini request adapter.
-- `services/paypal_rewards.py`: PayPal Sandbox payout and status adapters.
-- `services/qloo_personalization.py`: non-financial reward ideas.
+No `backend/` directory, separate `api.py`, ORM, or application-domain class hierarchy is used. Incoming JSON is validated by small functions in `app.py`; the implementation does not define a set of Pydantic request classes.
 
-The request schemas in `api.py` are Pydantic validation models, not application-domain classes. They define acceptable input shapes and limits for HTTP requests.
+## URLs
 
-## Page URLs versus API URLs
+HTML pages:
 
-The browser page URLs are `/`, `/signin`, and `/app`; each returns an HTML template. JavaScript calls `/api/*` endpoints when it needs server-side calculations or third-party integrations. Those endpoints return JSON and do not replace the pages. The interactive API documentation is at `/api/docs`, and its schema is at `/api/openapi.json`; neither is the application's root URL.
+- `/` renders `templates/index.html`.
+- `/signin` renders `templates/signin.html`.
+- `/app` renders `templates/app.html`.
+
+Server actions use descriptive same-origin paths with no `/api` prefix:
+
+- `/session`
+- `/debt/plan`
+- `/coach`
+- `/products/compare`
+- `/rewards/recommendations`
+- `/rewards/claim`
+- `/rewards/status/{payout_batch_id}`
+- `/integrations/status`
+- `/health`
+
+These paths return JSON for browser JavaScript operations. They are not the site's landing-page or deployment URLs. The public OpenAPI documentation and schema routes are disabled; `/docs`, `/redoc`, and `/openapi.json` are not served. The deployed root `/` renders Glim's landing page.
 
 ## Data flow
 
-1. The sign-in page posts a name and email to `/api/session`.
-2. The API signs the demo profile into an HTTP-only eight-hour cookie. This is a demo identifier, not production authentication.
-3. The browser opens an IndexedDB profile scoped by the email and stores balances, goals, preferences, reminders, learning progress, and payout history locally.
-4. When the user requests a repayment projection, JavaScript sends the minimum debt context to `/api/debt/plan`. The calculator validates it and returns estimates; it does not save the input.
-5. Coach requests send the current question and context to `/api/coach`. Gemini explains validated context or a clearly labelled local fallback responds when not configured.
-6. PayPal calls use Sandbox only. Reward eligibility evidence is browser-entered and is not independently verified in this prototype.
+1. The user enters a display name and email on `/signin`.
+2. The browser posts to `/session`, which sets a signed HTTP-only eight-hour demo cookie. This is only a demo identifier, not real authentication.
+3. The browser stores debt, savings, preferences, reminders, learning progress, and payout history in IndexedDB under that profile's email.
+4. Repayment requests send only current debt inputs and a monthly budget to `/debt/plan`; the deterministic calculator returns estimates and does not save the records.
+5. Coach requests send the current question and relevant user context to `/coach`. Gemini explains and coaches around the provided facts or a clearly labelled local fallback responds when the model is not configured.
+6. PayPal credentials remain server-side; the integration only permits Sandbox payout operations. Reward evidence is client-entered for the demo and is not independently verified.
 
-## Storage and security boundaries
+## Deployment
 
-- No SQLite database or server-side financial-profile storage exists.
-- IndexedDB is browser-local, not encrypted by Glim, and doesn't sync to another device.
-- Cookie signing detects tampering but doesn't verify a user's identity. The demo sign-in accepts user-supplied name/email.
-- Provider credentials stay on the server; none are shipped in frontend JavaScript.
-- Do not use full payment card numbers or banking credentials as input.
+`app.py` exports a FastAPI instance named `app` at the project root. Vercel serves `public/` static assets and bundles `templates/**` for server-side rendering. No URL rewrite is defined. The deployed root URL serves `templates/index.html`, not API documentation. The config has no OpenAPI schema reference and no route to documentation.
 
-## Vercel
+## Limitations
 
-Vercel detects the root-level `app.py` and the exported `app` object. `vercel.json` ensures `templates/**` are included in the function bundle. CSS and JavaScript files live under `public/`. No custom rewrite is configured, so the deployment URL resolves to `/` and renders `templates/index.html`.
-
-## Current limits
-
-This is a hackathon prototype. Production login, multi-device user data persistence, connected financial accounts, provider-verified product offers, scheduled background reminders, independently verified payout eligibility, and a formal accessibility/security audit remain future work.
+The prototype is not production authentication. Browser-local data is not encrypted by Glim and does not sync across devices. Production login, secure data synchronization, connected financial accounts, provider-verified offers, scheduled reminders, independently verified reward eligibility, and formal security/accessibility reviews remain future work.

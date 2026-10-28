@@ -21,7 +21,7 @@
       continueButton.disabled = true;
       continueButton.textContent = "Opening Glim…";
       try {
-        const result = await window.GlimAPI.createSession(name, email);
+        const result = await window.GlimClient.createSession(name, email);
         await window.GlimStorage.getState(email, result.profile);
         window.location.href = "/app";
       } catch (error) {

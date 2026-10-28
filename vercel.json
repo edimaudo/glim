@@ -1,4 +1,5 @@
 {
+  "framework": "fastapi",
   "functions": {
     "app.py": {
       "includeFiles": "templates/**"

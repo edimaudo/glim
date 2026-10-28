@@ -91,7 +91,7 @@
     if (button) { button.disabled = true; button.textContent = "Calculating…"; }
     if (message) { message.textContent = "Checking the numbers…"; message.className = "form-message"; }
     try {
-      const result = await window.GlimAPI.calculatePlan(window.GlimApp.state.debts || [], monthlyBudget, strategy);
+      const result = await window.GlimClient.calculatePlan(window.GlimApp.state.debts || [], monthlyBudget, strategy);
       const state = window.GlimApp.state;
       state.monthlyBudget = monthlyBudget;
       state.strategy = strategy;
@@ -184,7 +184,7 @@
       return;
     }
     try {
-      const result = await window.GlimAPI.calculatePlan(state.debts, state.monthlyBudget || 500, state.strategy || "avalanche");
+      const result = await window.GlimClient.calculatePlan(state.debts, state.monthlyBudget || 500, state.strategy || "avalanche");
       window.GlimApp.drawScheduleChart("debt-chart", result.selected.schedule, "debt-chart-description");
       window.GlimApp.renderOverview(result.selected);
     } catch (error) {

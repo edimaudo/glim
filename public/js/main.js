@@ -17,7 +17,7 @@
     if (button) { button.disabled = true; button.textContent = "Refreshing…"; }
     if (message) message.textContent = "Checking PayPal Sandbox…";
     try {
-      const result = await window.GlimAPI.payoutStatus(batchId);
+      const result = await window.GlimClient.payoutStatus(batchId);
       const state = app.state;
       const index = (state.rewardPayouts || []).findIndex((item) => item.payout_batch_id === batchId);
       if (index >= 0) state.rewardPayouts[index] = { ...state.rewardPayouts[index], batch_status: result.batch_status, item_status_counts: result.item_status_counts, refreshed_at: new Date().toISOString(), notice: result.notice };
@@ -206,7 +206,7 @@
       selected_plan_summary: app.state.lastPlan ? { strategy: app.state.lastPlan.strategy, starting_debt: app.state.lastPlan.starting_debt, total_interest: app.state.lastPlan.total_interest, payoff_months: app.state.lastPlan.payoff_months, warning: app.state.lastPlan.warning } : null,
     };
     try {
-      const result = await window.GlimAPI.askCoach(text, context, prefs.coachTone || "balanced", prefs.coachMode || "coach");
+      const result = await window.GlimClient.askCoach(text, context, prefs.coachTone || "balanced", prefs.coachMode || "coach");
       if (response) {
         response.textContent = result.reply + (result.notice ? `\n\n${result.notice}` : "");
         response.hidden = false;
@@ -225,7 +225,7 @@
 
   async function updateIntegrationStatus() {
     try {
-      const status = await window.GlimAPI.integrationStatus();
+      const status = await window.GlimClient.integrationStatus();
       if ($("coach-status")) $("coach-status").textContent = status.gemini ? "Gemini connected" : "Demo coach";
       if ($("settings-gemini-status")) $("settings-gemini-status").textContent = status.gemini ? `Configured · ${status.gemini_model}` : "Demo fallback (key not set)";
       if ($("settings-paypal-status")) $("settings-paypal-status").textContent = status.paypal_sandbox ? "Sandbox configured" : "Sandbox not configured";
@@ -243,7 +243,7 @@
     try {
       // Use the selected interest signal. Recommendations are optional and should not encourage spending.
       const selectedInterest = $("reward-interest")?.value || "urn:tag:genre:media:nonfiction";
-      const result = await window.GlimAPI.rewardIdeas([selectedInterest]);
+      const result = await window.GlimClient.rewardIdeas([selectedInterest]);
       const cards = (result.ideas || []).map((idea) => `<article class="reward-idea"><strong>${escapeHtml(idea.name)}</strong><p>${escapeHtml(idea.description)}</p></article>`).join("");
       output.innerHTML = `<strong>${result.provider === "qloo" ? "Personalized ideas" : "Low-cost reward ideas"}</strong><p>${escapeHtml(result.notice || "Start with a reward that does not add pressure to your budget.")}</p>${cards ? `<div class="reward-ideas-list">${cards}</div>` : "<p>No ideas returned. Try again after checking the Qloo configuration.</p>"}`;
     } catch (error) {
@@ -297,7 +297,7 @@
       const claimId = app.state.rewardClaimRequests?.[milestone.key] || (window.crypto?.randomUUID ? window.crypto.randomUUID() : `claim-${Date.now()}-${Math.random().toString(16).slice(2)}`);
       app.state.rewardClaimRequests = { ...(app.state.rewardClaimRequests || {}), [milestone.key]: claimId };
       await app.saveState();
-      const result = await window.GlimAPI.claimReward(milestone.apiKey, email, milestone.evidence, claimId);
+      const result = await window.GlimClient.claimReward(milestone.apiKey, email, milestone.evidence, claimId);
       app.state.claimedRewardMilestones = [...new Set([...(app.state.claimedRewardMilestones || []), milestone.key])];
       app.state.rewardPayouts = [...(app.state.rewardPayouts || []).filter((item) => item.payout_batch_id !== result.payout_batch_id), {
         claim_key: milestone.key, milestone_label: milestone.label, payout_batch_id: result.payout_batch_id || null,
@@ -415,7 +415,7 @@
     document.querySelectorAll(".prompt-chips [data-prompt]").forEach((button) => button.addEventListener("click", () => askCoach(button.dataset.prompt)));
     $("signout-button")?.addEventListener("click", async () => {
       const button = $("signout-button"); if (button) button.disabled = true;
-      try { await window.GlimAPI.deleteSession(); } catch (_) { /* Expired demo cookies are harmless; continue to sign-in. */ }
+      try { await window.GlimClient.deleteSession(); } catch (_) { /* Expired demo cookies are harmless; continue to sign-in. */ }
       window.location.href = "/signin";
     });
     $("mobile-menu-button")?.addEventListener("click", () => {
@@ -461,7 +461,7 @@
   async function initialize() {
     if (!document.getElementById("app-shell")) return;
     let profile;
-    try { profile = (await window.GlimAPI.currentSession()).profile; }
+    try { profile = (await window.GlimClient.currentSession()).profile; }
     catch (_) { window.location.replace("/signin"); return; }
     if (!profile?.email) { window.location.replace("/signin"); return; }
 
