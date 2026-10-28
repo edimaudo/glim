@@ -16,6 +16,7 @@
 
   window.GlimClient = {
     health: () => request("/health"),
+    sessionStatus: () => request("/session/status"),
     createSession: (name, email) => request("/session", { method: "POST", body: JSON.stringify({ name, email }) }),
     currentSession: () => request("/session"),
     deleteSession: () => request("/session", { method: "DELETE" }),

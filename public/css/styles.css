@@ -618,3 +618,13 @@ html[data-theme="dark"] .highlight { color: #8dd1a9; }
 .app-page .setting-row p, .app-page .setting-field p, .app-page .setting-preview p { font-size: .75rem; }
 .app-page .settings-about .about-row, .app-page .settings-about .about-row strong { font-size: .78rem; }
 .app-page .button { border-radius: 8px; }
+
+
+/* Branded not-found page. Keep layout simple and use the shared theme tokens. */
+.not-found-page { min-height: 100vh; background: var(--page, #fafbf8); color: var(--text-strong, #25352c); }
+.not-found { min-height: min(680px, calc(100vh - 100px)); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding-top: 48px; padding-bottom: 88px; }
+.not-found-code { margin: 0 0 16px; color: var(--green, #23674f); font-size: clamp(4.5rem, 15vw, 8rem); font-weight: 600; letter-spacing: -.09em; line-height: .9; }
+.not-found h1 { max-width: 720px; margin: 0 0 14px; color: var(--text-strong, #1b3025); font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 600; letter-spacing: -.065em; line-height: 1.1; }
+.not-found > p:not(.not-found-code) { max-width: 540px; margin: 0; color: var(--muted, #66756b); font-size: 1rem; line-height: 1.75; }
+.not-found-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; margin-top: 28px; }
+@media (max-width: 520px) { .not-found { min-height: calc(100vh - 80px); padding-top: 32px; padding-bottom: 56px; } .not-found-actions { align-items: flex-start; flex-direction: column; gap: 16px; } }

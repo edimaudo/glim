@@ -12,3 +12,12 @@ The current `app.py` makes local static mounting an explicit opt-in. It register
 4. Verify `/`, `/css/styles.css`, and `/js/main.js` on the newly deployed URL.
 
 Vercel's current FastAPI documentation says project-root `public/` files are served by its CDN and should not be mounted with `app.mount()` in the deployed application: https://vercel.com/docs/frameworks/backend/fastapi
+
+
+## Demo sign-in configuration
+
+A Vercel deployment must have `GLIM_SESSION_SECRET` set in Project Settings → Environment Variables. If it is missing, `/session/status` reports that sessions are unavailable, the sign-in button is disabled, and the page explains how the site owner can configure it. This is intentional: the application does not use a predictable signing key in production. Generate a new secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`; add that value directly to Vercel and redeploy. Keep the secret out of source control.
+
+## Branded 404 page
+
+Unknown paths render `templates/404.html` and return HTTP 404. The route is registered after the page/action handlers and optional local static mounts so it cannot shadow valid routes or local assets.

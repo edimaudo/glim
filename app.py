@@ -61,7 +61,7 @@ SUPPORTED_STRATEGIES = {"avalanche", "snowball"}
 
 def _session_serializer() -> URLSafeTimedSerializer:
     if not _SESSION_SECRET:
-        raise HTTPException(status_code=503, detail="Set GLIM_SESSION_SECRET in the deployment environment before enabling sessions.")
+        raise HTTPException(status_code=503, detail="Demo sign-in is not configured on this deployment. The site owner must add GLIM_SESSION_SECRET in the Vercel project environment variables and redeploy.")
     return URLSafeTimedSerializer(_SESSION_SECRET, salt="glim-demo-session-v1")
 
 
@@ -180,6 +180,16 @@ async def app_page(request: Request):
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {"status": "ok", "service": "glim", "mode": "prototype"}
+
+
+@app.get("/session/status")
+async def demo_session_status() -> dict[str, Any]:
+    """Expose whether the demo session feature is configured, not the secret itself."""
+    return {
+        "available": bool(_SESSION_SECRET),
+        "session_type": "demo",
+        "requires_deployment_configuration": not bool(_SESSION_SECRET),
+    }
 
 
 @app.post("/session")
@@ -359,3 +369,15 @@ if os.getenv("GLIM_LOCAL_STATIC") == "1" and not IS_VERCEL:
         app.mount("/css", StaticFiles(directory=str(css_dir)), name="css")
     if js_dir.is_dir():
         app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
+
+# Keep the HTML not-found handler last so real pages, action routes, and local
+# CSS/JS mounts are matched first. Unknown browser page URLs get a branded 404.
+@app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], response_class=HTMLResponse, include_in_schema=False)
+async def not_found_page(request: Request, path: str):
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="404.html",
+        context={"requested_path": "/" + path},
+        status_code=404,
+    )
+
