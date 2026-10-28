@@ -347,6 +347,14 @@ async def reward_payout_status(payout_batch_id: str, _profile: dict[str, str] = 
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-# Local development serves these same assets. Vercel serves public/ through its CDN.
-app.mount("/css", StaticFiles(directory=PUBLIC / "css"), name="css")
-app.mount("/js", StaticFiles(directory=PUBLIC / "js"), name="js")
+# Local development can serve assets through Starlette. On Vercel, files under
+# public/ are served by Vercel's CDN and are not guaranteed to exist in the
+# serverless function bundle. Do not mount a directory that may be absent.
+IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+if not IS_VERCEL:
+    css_dir = PUBLIC / "css"
+    js_dir = PUBLIC / "js"
+    if css_dir.is_dir():
+        app.mount("/css", StaticFiles(directory=str(css_dir)), name="css")
+    if js_dir.is_dir():
+        app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")

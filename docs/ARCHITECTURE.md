@@ -44,9 +44,13 @@ These paths return JSON for browser JavaScript operations. They are not the site
 5. Coach requests send the current question and relevant user context to `/coach`. Gemini explains and coaches around the provided facts or a clearly labelled local fallback responds when the model is not configured.
 6. PayPal credentials remain server-side; the integration only permits Sandbox payout operations. Reward evidence is client-entered for the demo and is not independently verified.
 
+## Static assets
+
+Local development mounts `/css` and `/js` through `StaticFiles` only if the corresponding directories exist. On Vercel, no mount is registered: files under `public/` are delivered by the Vercel CDN. This avoids importing the application with a mount pointed at `/var/task/public/css`, which may not exist in the serverless function bundle.
+
 ## Deployment
 
-`app.py` exports a FastAPI instance named `app` at the project root. Vercel serves `public/` static assets and bundles `templates/**` for server-side rendering. No URL rewrite is defined. The deployed root URL serves `templates/index.html`, not API documentation. The config has no OpenAPI schema reference and no route to documentation.
+`app.py` exports a FastAPI instance named `app` at the project root. Vercel serves files under `public/` directly through its CDN and bundles `templates/**` for server-side rendering. FastAPI mounts `/css` and `/js` only during local development and only when each directory exists. On Vercel the app does not try to mount these directories, because they are not guaranteed to be present in the function bundle. No URL rewrite is defined. The deployed root URL serves `templates/index.html`, not API documentation. The config has no OpenAPI schema reference and no route to documentation.
 
 ## Limitations
 

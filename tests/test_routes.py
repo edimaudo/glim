@@ -127,3 +127,30 @@ def test_qloo_recommendations_have_local_fallback_and_allowlist(monkeypatch):
         assert response.json()["configured"] is False
         invalid = client.post("/rewards/recommendations", json={"interest_tags": ["urn:tag:person:real-person"]})
         assert invalid.status_code == 422
+
+
+def test_vercel_entrypoint_does_not_require_public_asset_directories(tmp_path):
+    """Vercel serves public/ through its CDN; the function bundle may omit it."""
+    import os
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[1]
+    shutil.copy2(project_root / "app.py", tmp_path / "app.py")
+    shutil.copytree(project_root / "services", tmp_path / "services")
+    shutil.copytree(project_root / "templates", tmp_path / "templates")
+    # Intentionally do not copy public/.
+    env = os.environ.copy()
+    env["VERCEL"] = "1"
+    env["PYTHONPATH"] = str(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c", "import app; assert app.app is not None"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

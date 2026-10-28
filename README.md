@@ -67,6 +67,10 @@ These action routes are needed because API secrets must stay on the server. The 
 - Users can export a local JSON backup and reset the current browser profile.
 - The browser submits only the context needed for each calculation or coach response. The backend does not save the user's financial profile.
 
+## Design pass
+
+The interface uses Inter throughout with a restrained neutral surface palette and a consistent green accent. Redundant all-caps eyebrow labels and decorative number/icon treatments were removed, hero dashboard decoration was simplified, gradients and shadows were reduced, and secondary text was raised for readability. The mobile overview places two headline metrics side by side and the monthly budget on its own row to avoid cramped labels. Light remains the default; dark mode uses charcoal-neutral surfaces rather than a green-tinted page.
+
 ## Main features
 
 - Debt entry, CSV import, manual balance updates, balance history, and avalanche/snowball repayment estimates.
@@ -105,8 +109,8 @@ For local demo sessions, a development signing-key fallback is used if `GLIM_SES
 
 - The root-level `app.py` exports the FastAPI instance named `app`.
 - The deployment URL opens `/`, which renders the landing page. No rewrite directs it to docs or a JSON schema.
-- The `vercel.json` file selects the FastAPI framework and includes `templates/**` in the function bundle.
-- Vercel serves files under `public/` as static assets. Local development mounts the same CSS and JavaScript paths in FastAPI.
+- Vercel detects the root `app.py` FastAPI app. The minimal `vercel.json` includes `templates/**` in the function bundle for Jinja rendering.
+- Vercel serves files under `public/` through its CDN. FastAPI does not mount those directories on Vercel because they may not be present in the function bundle. Local development mounts the directories only when they exist.
 - Set secrets in Vercel Project Settings → Environment Variables. Do not commit `.env` or put provider keys in JavaScript.
 
 ## External integrations
