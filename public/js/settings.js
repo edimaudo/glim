@@ -61,7 +61,8 @@
       return true;
     } catch (error) {
       const output = document.getElementById("settings-message");
-      if (output) { output.textContent = error.message; output.className = "form-message is-error"; }
+      console.error("Glim preferences save failed", error);
+      if (output) { output.textContent = "Your preferences could not be saved. Please try again."; output.className = "form-message is-error"; }
       return false;
     }
   }
@@ -70,7 +71,7 @@
     applyTheme(theme);
     if (window.GlimApp && window.GlimApp.state) {
       window.GlimApp.state.prefs = { ...(window.GlimApp.state.prefs || {}), theme };
-      try { await window.GlimApp.saveState(); } catch (error) { window.GlimApp.toast(`Could not save theme: ${error.message}`); }
+      try { await window.GlimApp.saveState(); } catch (error) { console.error("Glim theme preference save failed", error); window.GlimApp.toast("Your theme preference could not be saved."); }
     }
   }
 
@@ -78,7 +79,7 @@
     applyFontSize(size);
     if (window.GlimApp && window.GlimApp.state) {
       window.GlimApp.state.prefs = { ...(window.GlimApp.state.prefs || {}), fontSize: size };
-      try { await window.GlimApp.saveState(); } catch (error) { window.GlimApp.toast(`Could not save text size: ${error.message}`); }
+      try { await window.GlimApp.saveState(); } catch (error) { console.error("Glim text size preference save failed", error); window.GlimApp.toast("Your text size preference could not be saved."); }
     }
   }
 
@@ -94,13 +95,13 @@
       const output = document.getElementById("reset-message");
       try {
         const state = window.GlimApp?.state;
-        if (!state?.profile?.email) throw new Error("The demo profile is not available. Sign in again.");
+        if (!state?.profile?.email) throw new Error("Your profile is not available. Please sign in again.");
         const backup = {
           product: "Glim",
           format_version: 1,
           exported_at: new Date().toISOString(),
-          storage: "browser IndexedDB",
-          notice: "Contains demo or user-entered financial data. Keep this backup private; it is not encrypted.",
+          storage: "this browser",
+          notice: "Contains your saved financial information. Keep this backup private; it is not encrypted.",
           state,
         };
         const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
@@ -115,12 +116,12 @@
         URL.revokeObjectURL(url);
         if (output) { output.textContent = "Data backup downloaded. The JSON file is not encrypted; store it somewhere private."; output.className = "form-message is-success"; }
       } catch (error) {
-        if (output) { output.textContent = error.message || "Could not export the profile."; output.className = "form-message is-error"; }
+        if (output) { console.error("Glim profile export failed", error); output.textContent = "Your data backup could not be prepared. Please try again."; output.className = "form-message is-error"; }
       }
     });
-    document.getElementById("reset-demo-data")?.addEventListener("click", async () => {
+    document.getElementById("reset-profile-data")?.addEventListener("click", async () => {
       const output = document.getElementById("reset-message");
-      const confirmed = window.confirm("Reset all Glim data saved for this demo profile in this browser? This removes tracked debts, savings goals, repayment history, product comparisons, learning progress, settings, and reward history. Download a backup first if you need it.");
+      const confirmed = window.confirm("Reset all Glim information saved for this profile in this browser? This removes tracked debts, savings goals, repayment history, product comparisons, learning progress, settings, and reward history. Download a backup first if you need it.");
       if (!confirmed) {
         if (output) { output.textContent = "Reset cancelled. No saved data was changed."; output.className = "form-message"; }
         return;
@@ -128,15 +129,16 @@
       if (output) { output.textContent = "Resetting…"; output.className = "form-message"; }
       try {
         const profile = window.GlimApp?.state?.profile;
-        if (!profile?.email) throw new Error("The demo session is not available. Sign in again.");
+        if (!profile?.email) throw new Error("Your session is no longer available. Please sign in again.");
         const state = await window.GlimStorage.resetState(profile.email, profile);
         window.GlimApp.setState(state);
         applyPreferences(state.prefs);
         window.GlimApp.renderAll();
-        if (output) { output.textContent = "Profile reset. The sample plan is ready to use."; output.className = "form-message is-success"; }
-        window.GlimApp.toast("This browser profile has been reset to sample data.");
+        if (output) { output.textContent = "Your profile has been reset."; output.className = "form-message is-success"; }
+        window.GlimApp.toast("Your browser profile has been reset.");
       } catch (error) {
-        if (output) { output.textContent = error.message; output.className = "form-message is-error"; }
+        console.error("Glim profile reset failed", error);
+        if (output) { output.textContent = "Your profile could not be reset. Please try again."; output.className = "form-message is-error"; }
       }
     });
   }

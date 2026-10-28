@@ -1,6 +1,6 @@
 # Glim
 
-Glim is a Canadian financial-coaching prototype for debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
+Glim is a Canadian financial-coaching web app for debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
 
 ## Project structure
 
@@ -40,7 +40,7 @@ Page navigation returns HTML:
 | URL | Purpose |
 |---|---|
 | `/` | Landing page |
-| `/signin` | Demo sign-in |
+| `/signin` | Sign-in |
 | `/app` | Main application |
 | `/{unknown-page}` | Branded 404 template with HTTP 404 status |
 
@@ -49,7 +49,7 @@ JavaScript calls the following same-origin server action routes when a trusted b
 | URL | Purpose |
 |---|---|
 | `/health` | Health check |
-| `/session` | Create, inspect, or clear the signed demo session |
+| `/session` | Create, inspect, or clear the signed browser session |
 | `/debt/plan` | Calculate debt repayment scenarios |
 | `/coach` | Gemini coach or labelled local fallback |
 | `/products/compare` | Compare user-entered financial-product terms |
@@ -62,7 +62,7 @@ These action routes are needed because API secrets must stay on the server. The 
 
 ## Data and session boundaries
 
-- Financial records live in browser IndexedDB, scoped by demo email. Glim does not use SQLite or persist financial records on the server.
+- Financial records live in browser IndexedDB, scoped by the email entered at sign-in. Glim does not use SQLite or persist financial records on the server.
 - Demo sign-in creates a signed, HTTP-only, eight-hour cookie. It identifies a demo profile but is not production authentication or identity verification.
 - IndexedDB is not encrypted by Glim and does not sync between browsers/devices. Use test information only. Never enter passwords, full card numbers, PINs, bank credentials, or security answers.
 - Users can export a local JSON backup and reset the current browser profile.
@@ -74,10 +74,10 @@ The interface uses Inter throughout with a restrained neutral surface palette an
 
 ## Main features
 
-- Debt entry, CSV import, manual balance updates, balance history, and avalanche/snowball repayment estimates.
-- Savings goals, contribution tracking, learning and quiz progress.
+- Starts with an empty financial profile, then supports debt entry, CSV import, manual balance updates, a projected payoff-path chart, and avalanche/snowball repayment estimates.
+- Savings goals and contribution tracking, a FinWise-aligned knowledge assessment, beginner/intermediate/advanced practice quizzes with answer explanations, and a searchable/filterable financial glossary.
 - Browser IndexedDB schema recovery: older local databases are upgraded if the `profiles` object store is missing, and versioned asset URLs prevent stale cached sign-in scripts from sticking around. Browser storage failures are logged for debugging but displayed as a generic, user-friendly message.
-- One financial coach interface shared by Debt, Savings, and Financial Literacy.
+- One contextual Glim coach available from Overview, Debt, Savings, Financial Literacy, and Settings.
 - Comparisons calculated from financial-product terms entered by the user. Glim does not fabricate live rates or offers.
 - Optional Qloo-based non-financial reward ideas.
 - PayPal Sandbox payout request and status refresh. Reward evidence is entered in the browser and is not independently verified.
@@ -100,12 +100,12 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
-python -m uvicorn app:app --reload
+./run.sh
 ```
 
-Open `http://127.0.0.1:8000`. The landing page is `/`. There is no OpenAPI documentation route in this prototype.
+Open `http://127.0.0.1:8000`. The landing page is `/`. `run.sh` enables local-only static asset serving; Vercel serves `public/` directly from its CDN.
 
-For local demo sessions, a development signing-key fallback is used if `GLIM_SESSION_SECRET` is absent. On Vercel, sessions deliberately fail closed if this secret is missing; the application will not silently use a predictable key. To configure it, generate a secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, add it as `GLIM_SESSION_SECRET` under Vercel Project Settings → Environment Variables for the Production environment (and Preview if needed), then redeploy. Do not commit the value or send it in source code. Session configuration diagnostics remain in server logs. The sign-in page displays a generic, user-friendly message if a demo session cannot be created and never exposes environment-variable names or deployment instructions.
+For local sign-in sessions, a development signing-key fallback is used if `GLIM_SESSION_SECRET` is absent. On Vercel, sessions deliberately fail closed if this secret is missing; the application will not silently use a predictable key. To configure it, generate a secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, add it as `GLIM_SESSION_SECRET` under Vercel Project Settings → Environment Variables for the Production environment (and Preview if needed), then redeploy. Do not commit the value or send it in source code. Session configuration diagnostics remain in server logs. The sign-in page displays a generic, user-friendly message if a demo session cannot be created and never exposes environment-variable names or deployment instructions.
 
 ## Vercel deployment
 

@@ -40,7 +40,7 @@
         const apr = `${Number(debt.apr || 0).toFixed(2)}% APR`;
         const minimum = `${money(debt.minimum_payment ?? debt.min_payment)} / mo minimum`;
         const due = debt.due_date ? ` · Due ${new Date(`${debt.due_date}T12:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : "";
-        meta.textContent = `${debt.type || "Debt"} · ${apr} · ${minimum}${due}${debt.sample ? " · Sample" : ""}`;
+        meta.textContent = `${debt.type || "Debt"} · ${apr} · ${minimum}${due}`;
         detail.append(title, meta);
         const amount = document.createElement("div"); amount.className = "debt-item-amount";
         const value = document.createElement("strong"); value.textContent = money(debt.balance);
@@ -55,12 +55,17 @@
       });
     }
     const total = totalBalance(debts); const minimums = totalMinimums(debts);
+    if (!state.lastPlan) {
+      window.GlimApp.drawScheduleChart("debt-chart", [], "debt-chart-description");
+      window.GlimApp.renderDebtCheckpoints(null);
+      if ($("debt-chart-description")) $("debt-chart-description").textContent = debts.length ? "Calculate a repayment plan to see how your projected balance changes month by month." : "Add a debt and calculate a plan to see your projected payoff path.";
+    }
     if ($("debt-total")) $("debt-total").textContent = money(total);
     if ($("debt-minimums")) $("debt-minimums").textContent = money(minimums);
     if ($("debt-budget-summary")) $("debt-budget-summary").textContent = money(state.monthlyBudget || 0);
     if ($("debt-budget-note")) $("debt-budget-note").textContent = (state.monthlyBudget || 0) >= minimums ? "Available for debt payments" : "Below entered minimums — review this budget";
     if ($("debt-count-tag")) $("debt-count-tag").textContent = `${debts.length} ${debts.length === 1 ? "account" : "accounts"}`;
-    if ($("monthly-budget") && document.activeElement !== $("monthly-budget")) $("monthly-budget").value = state.monthlyBudget || 500;
+    if ($("monthly-budget") && document.activeElement !== $("monthly-budget")) $("monthly-budget").value = Number(state.monthlyBudget) > 0 ? state.monthlyBudget : "";
   }
 
   function renderPlanResult(result) {
@@ -101,6 +106,7 @@
       renderPlanResult(result);
       renderDebts();
       window.GlimApp.drawScheduleChart("debt-chart", result.selected.schedule, "debt-chart-description");
+      window.GlimApp.renderDebtCheckpoints(result.selected);
       window.GlimApp.renderOverview(result.selected);
       if (message) { message.textContent = "Plan calculated and saved. Review the assumptions before acting."; message.className = "form-message is-success"; }
       window.GlimApp.toast("Your repayment estimate is ready.");
@@ -153,7 +159,7 @@
   async function removeDebt(debtId) {
     const debt = (window.GlimApp.state.debts || []).find((item) => item.id === debtId);
     if (!debt) return;
-    if (!window.confirm(`Remove “${debt.name}” from this demo plan?`)) return;
+    if (!window.confirm(`Remove “${debt.name}” from your plan?`)) return;
     window.GlimApp.state.debts = window.GlimApp.state.debts.filter((item) => item.id !== debtId);
     // Removing an account from tracking is not proof that it was repaid. Reset the reward
     // baseline so deletion alone cannot qualify as debt reduction.
@@ -175,22 +181,17 @@
     if (state.lastPlan?.schedule?.length) {
       renderPlanResult(state.lastPlanComparison || { selected: state.lastPlan, avalanche: state.lastPlan, snowball: state.lastPlan });
       window.GlimApp.drawScheduleChart("debt-chart", state.lastPlan.schedule, "debt-chart-description");
+      window.GlimApp.renderDebtCheckpoints(state.lastPlan);
       window.GlimApp.renderOverview(state.lastPlan);
       return;
     }
-    if (!state.debts?.length) {
-      window.GlimApp.renderOverview(null);
-      window.GlimApp.drawScheduleChart("debt-chart", [], "debt-chart-description");
-      return;
-    }
-    try {
-      const result = await window.GlimClient.calculatePlan(state.debts, state.monthlyBudget || 500, state.strategy || "avalanche");
-      window.GlimApp.drawScheduleChart("debt-chart", result.selected.schedule, "debt-chart-description");
-      window.GlimApp.renderOverview(result.selected);
-    } catch (error) {
-      window.GlimApp.renderOverview(null);
-      const desc = $("debt-chart-description"); if (desc) desc.textContent = error.message;
-    }
+    window.GlimApp.renderOverview(null);
+    window.GlimApp.drawScheduleChart("debt-chart", [], "debt-chart-description");
+    window.GlimApp.renderDebtCheckpoints(null);
+    const desc = $("debt-chart-description");
+    if (desc) desc.textContent = state.debts?.length
+      ? "Calculate a repayment plan to see how your projected balance changes month by month."
+      : "Add a debt and calculate a plan to see your projected payoff path.";
   }
 
   function recordDebtSnapshot(source = "user-confirmed balance update") {
@@ -286,13 +287,13 @@
       // Seed records are examples, not real user accounts. Remove them on the first import,
       // including when the user has already added a real account alongside the examples.
       state.debts = [...userDebts, ...imported];
-      if (sampleDebts.length || existing.length === 0) state.balanceHistory = [];
+      if (previousExampleDebts.length || existing.length === 0) state.balanceHistory = [];
       state.baselineDebt = totalBalance(state.debts);
       state.lastPlan = null; state.lastPlanComparison = null;
       recordDebtSnapshot("CSV-imported balances; user-provided");
       await window.GlimApp.saveState();
       renderDebts(); window.GlimApp.renderOverview(null); if ($("plan-results")) $("plan-results").hidden = true;
-      report(`Imported ${imported.length} debt ${imported.length === 1 ? "row" : "rows"} into this browser.${sampleDebts.length ? " Seeded sample debts were removed." : ""}${rejected.length ? ` Skipped invalid rows: ${rejected.join(", ")}.` : ""}${lines.length - 1 > rowsToProcess ? ` Only the first ${rowsToProcess} CSV data rows were reviewed.` : ""} Data remains in IndexedDB.`);
+      report(`Imported ${imported.length} debt ${imported.length === 1 ? "row" : "rows"}. Review the balances, rates, and minimum payments before calculating a plan.${rejected.length ? ` Skipped invalid rows: ${rejected.join(", ")}.` : ""}${lines.length - 1 > rowsToProcess ? ` Only the first ${rowsToProcess} CSV data rows were reviewed.` : ""}`);
       window.GlimApp.toast(`${imported.length} debt entries imported. Verify all figures against your statements.`);
     } catch (error) { report(error.message || "Could not read this CSV file.", true); }
   }

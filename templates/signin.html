@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Sign in — Glim{% endblock %}
-{% block meta_description %}<meta name="description" content="Open your Glim financial-coaching demo.">{% endblock %}
+{% block meta_description %}<meta name="description" content="Open your Glim financial-coaching workspace.">{% endblock %}
 {% block html_attributes %}{% endblock %}
 {% block body_class %}signin-page{% endblock %}
 
@@ -10,16 +10,14 @@
   <main class="signin-layout shell">
     <section class="signin-intro"><h1>A calmer way to work on your money.</h1><p>Debt, savings, and financial know-how — connected by one coach and a plan that respects your life.</p><div class="signin-quote"><p>You don't need to fix everything today. You just need a next step that makes sense.</p></div></section>
     <section class="signin-card" aria-labelledby="signin-title">
-      <div class="card-mark">g</div><h2 id="signin-title">Welcome to Glim</h2><p class="subtle-copy">Enter a name and email to open a temporary demo session.</p>
+      <div class="card-mark">g</div><h2 id="signin-title">Welcome to Glim</h2><p class="subtle-copy">Enter your name and email to continue.</p>
       <form id="signin-form" class="form-stack">
         <label for="display-name">Your name</label><input id="display-name" name="displayName" autocomplete="name" maxlength="60" placeholder="Alex Morgan" required>
         <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="alex@example.com" required>
         <button class="button button-primary button-full" type="submit">Continue to Glim <span aria-hidden="true">→</span></button>
         <p id="signin-error" class="form-message" role="status" aria-live="polite"></p>
       </form>
-      <div class="demo-notice"><span aria-hidden="true">ⓘ</span><p><strong>Prototype sign-in</strong><br>This build does not yet provide production authentication. Use test information only. Do not enter a password or real financial account credentials.</p></div>
-      <p class="signin-footnote">By continuing, you'll enter a demo experience with sample financial data.</p>
     </section>
   </main>
-  <script src="/js/storage.js?v=20261028-idb-repair-2" defer></script><script src="/js/client.js?v=20261028-idb-repair-2" defer></script><script src="/js/signin.js?v=20261028-idb-repair-2" defer></script>
+  <script src="/js/storage.js?v=20261028-glim-design-cleanup-7" defer></script><script src="/js/client.js?v=20261028-glim-design-cleanup-7" defer></script><script src="/js/signin.js?v=20261028-glim-design-cleanup-7" defer></script>
 {% endblock %}

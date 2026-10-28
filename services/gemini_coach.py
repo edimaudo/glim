@@ -12,10 +12,10 @@ async def get_coach_response(question: str, context: dict | None = None, tone: s
     if not api_key:
         return {
             "reply": local_coach_fallback(question, context),
-            "provider": "demo-fallback",
+            "provider": "local-guidance",
             "model": None,
             "configured": False,
-            "notice": "Gemini is not configured. This is a local demo response; add GEMINI_API_KEY to enable live Gemini coaching.",
+            "notice": "This response uses Glim’s built-in guidance. Confirm current rates, fees, eligibility, and product terms with the provider before making a decision.",
         }
 
     prompt = build_coach_input(question, context, tone, mode)

@@ -28,7 +28,7 @@ def _extract_books(data: dict) -> list[dict]:
 async def get_reward_ideas(tags: list[str] | None = None) -> dict:
     api_key = os.getenv("QLOO_API_KEY", "").strip()
     if not api_key:
-        return {"provider": "starter-ideas", "configured": False, "ideas": STARTER_IDEAS, "notice": "Qloo is not configured. These are general low-cost starter ideas, not Qloo recommendations."}
+        return {"provider": "starter-ideas", "configured": False, "ideas": STARTER_IDEAS, "notice": "Choose rewards that fit your interests without adding pressure to your budget. Check for free or library options before spending."}
     tags = [tag.strip() for tag in (tags or []) if tag.strip()][:8]
     if not tags:
         return {"provider": "qloo", "configured": True, "ideas": [], "notice": "Choose one or more supported Qloo interest-tag IDs to request personalized book ideas."}

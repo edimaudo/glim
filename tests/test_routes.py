@@ -200,5 +200,185 @@ def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors(
     assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
 
     # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
-    assert "/js/storage.js?v=20261028-idb-repair-2" in signin_template
-    assert "/js/storage.js?v=20261028-idb-repair-2" in app_template
+    assert "/js/storage.js?v=20261028-glim-design-cleanup-7" in signin_template
+    assert "/js/storage.js?v=20261028-glim-design-cleanup-7" in app_template
+
+
+def test_signed_in_interface_removes_demo_banners_and_import_instructions():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    signin_template = (root / "templates/signin.html").read_text()
+    storage = (root / "public/js/storage.js").read_text()
+
+    assert "Demo mode" not in app_template
+    assert "Prototype with sample data" not in app_template
+    assert "No real accounts are connected" not in app_template
+    assert "CSV columns:" not in app_template
+    assert "temporary demo session" not in signin_template
+    assert "sample financial data" not in signin_template
+    assert "debts: []," in storage
+    assert "savingsGoals: []," in storage
+    assert "previousDebts.filter((item) => !item.sample)" in storage
+    assert "previousGoals.filter((item) => !item.sample)" in storage
+
+
+def test_finwise_literacy_experience_has_assessment_level_quiz_and_searchable_glossary():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    literacy_js = (root / "public/js/literacy.js").read_text()
+
+    assert "Learn at your pace" not in app_template
+    assert "quick check-in" not in app_template.lower()
+    assert "Learning paths" not in app_template
+    assert "Quick knowledge check" not in app_template
+    for element in ("assessment-panel", "quiz-level", "practice-quiz-panel", "glossary-search", "glossary-results"):
+        assert element in app_template
+    for level in ("novice", "intermediate", "advanced"):
+        assert f'{level}:' in literacy_js
+    assert "startAssessment" in literacy_js
+    assert "submitPracticeQuiz" in literacy_js
+    assert "TFSA" in literacy_js and "RRSP" in literacy_js and "FHSA" in literacy_js
+
+
+def test_shared_contextual_coach_is_available_in_every_app_section():
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    for view in ("debt", "savings", "literacy", "settings"):
+        match = re.search(rf'<section class="app-view"[^>]*data-view-panel="{view}"[\s\S]*?(?=<section class="app-view"|<\/main>)', app_template)
+        assert match, f"Missing section {view}"
+        assert "data-open-coach" in match.group(0), f"Missing contextual coach in {view}"
+    assert 'id="coach-dialog"' in app_template
+    assert 'active_section: app.activeView || "overview"' in (root / "public/js/main.js").read_text()
+
+
+def test_projected_payoff_chart_is_explained_and_no_confusing_history_chart_remains():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    main_js = (root / "public/js/main.js").read_text()
+    debt_js = (root / "public/js/debt.js").read_text()
+
+    assert "Projected payoff path" in app_template
+    assert "Monthly balance projection" in app_template
+    assert 'id="debt-chart-checkpoints"' in app_template
+    assert "debt-history-chart" not in app_template
+    assert "renderDebtCheckpoints" in main_js
+    assert "Today" in main_js and "months" in main_js
+    assert "Calculate a repayment plan to see how your projected balance changes month by month." in debt_js
+
+
+def test_dashboard_defaults_are_blank_and_obsolete_demo_copy_is_removed():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    settings = (root / "public/js/settings.js").read_text()
+    main = (root / "public/js/main.js").read_text()
+    storage = (root / "public/js/storage.js").read_text()
+
+    assert '<strong id="savings-total">$0</strong>' in app_template
+    assert "reset-profile-data" in app_template and "reset-demo-data" not in app_template
+    assert "Prototype with sample data" not in app_template
+    assert "manually entered demo data" not in app_template
+    assert "sample plan is ready" not in settings
+    assert "reset to sample data" not in settings
+    assert 'state.monthlyBudget = 0' in storage
+    assert "Projected payoff path" in app_template
+    assert "renderDebtCheckpoints" in main
+
+
+def test_no_fabricated_financial_values_or_storage_implementation_copy_in_ui():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    landing = (root / "templates/index.html").read_text()
+    debt_js = (root / "public/js/debt.js").read_text()
+    savings_js = (root / "public/js/savings.js").read_text()
+
+    assert '$680' not in app_template
+    assert '$1,240' not in landing
+    assert '+12%' not in landing
+    assert '· Sample' not in debt_js and '· Sample' not in savings_js
+    assert 'Data remains in IndexedDB.' not in debt_js
+    assert 'Glim stores your financial records in this browser using IndexedDB.' not in app_template
+    assert 'Download a backup before resetting your profile' in app_template
+    # The landing preview should describe capabilities rather than fabricated results.
+    assert 'Compare payoff strategies' in landing
+    assert 'Choose a realistic contribution' in landing
+
+
+def test_landing_page_keeps_navigation_targets_and_avoids_fabricated_financial_results():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    landing = (root / "templates/index.html").read_text()
+    assert 'id="how-it-works"' in landing
+    assert 'href="#how-it-works"' in landing
+    assert 'id="built-for-real-life"' in landing
+    assert 'value-strip' in landing and 'how-cards' in landing
+    assert '$1,240' not in landing and '+12%' not in landing
+    assert 'literacy-tool-number' not in (root / "templates/app.html").read_text()
+
+
+def test_unplanned_charts_show_a_clear_empty_state_instead_of_blank_axes():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    main = (root / "public/js/main.js").read_text()
+    css = (root / "public/css/styles.css").read_text()
+    assert 'canvas.hidden = !hasProjection' in main
+    assert 'classList.toggle("is-empty", !hasProjection)' in main
+    assert '.chart-wrap.is-empty { min-height: 0; }' in css
+    assert 'No projection yet' not in main
+
+
+def test_financial_coach_and_rewards_keep_provider_setup_details_out_of_user_copy(monkeypatch):
+    from pathlib import Path
+    import asyncio
+    from services.gemini_coach import get_coach_response
+    from services.qloo_personalization import get_reward_ideas
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("QLOO_API_KEY", raising=False)
+    coach = asyncio.run(get_coach_response("How should I approach debt repayment?", {"debts": []}))
+    rewards = asyncio.run(get_reward_ideas(["urn:tag:genre:media:nonfiction"]))
+    assert "demo" not in coach["reply"].lower()
+    assert "GEMINI_API_KEY" not in coach["notice"]
+    assert "configured" not in coach["notice"].lower()
+    assert "Qloo is not configured" not in rewards["notice"]
+    assert "QLOO_API_KEY" not in rewards["notice"]
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    main = (root / "public/js/main.js").read_text()
+    safety = (root / "services/financial_safety.py").read_text()
+    assert "Glim does not connect to your card issuer" not in app_template
+    assert "Reward payouts are optional and require a configured PayPal Sandbox" not in app_template
+    assert "This response uses Glim’s built-in guidance." in (root / "services/gemini_coach.py").read_text()
+    assert "Reward ideas are unavailable right now. Please try again later." in main
+    assert "user-entered/sample data" not in safety
+
+
+def test_contextual_glim_coach_exists_on_overview_and_each_section():
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    for view in ("overview", "debt", "savings", "literacy", "settings"):
+        match = re.search(rf'<section class="app-view[^>]*data-view-panel="{view}"[\s\S]*?(?=<section class="app-view"|</main>)', app_template)
+        assert match, f"Missing section {view}"
+        content = match.group(0)
+        assert "data-open-coach" in content or 'id="coach-form"' in content, f"Missing coach in {view}"
+    main = (root / "public/js/main.js").read_text()
+    assert 'active_section: app.activeView || "overview"' in main
+    assert 'button.closest("[data-view-panel]")?.dataset.viewPanel' in main

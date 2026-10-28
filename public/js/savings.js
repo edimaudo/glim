@@ -31,7 +31,7 @@
       const card = document.createElement("article");
       card.className = "goal-card";
       card.innerHTML = `
-        <div class="goal-card-header"><div><div class="goal-card-icon" aria-hidden="true">${goal.name.toLowerCase().includes("emergency") ? "◉" : "✳"}</div><h2>${escapeHtml(goal.name)}</h2><p>${contribution > 0 ? `${money(contribution)} planned per month` : "No monthly contribution set"}${goal.sample ? " · Sample" : ""}</p></div><span class="soft-tag">${pct}%</span></div>
+        <div class="goal-card-header"><div><div class="goal-card-icon" aria-hidden="true">${goal.name.toLowerCase().includes("emergency") ? "◉" : "✳"}</div><h2>${escapeHtml(goal.name)}</h2><p>${contribution > 0 ? `${money(contribution)} planned per month` : "No monthly contribution set"}</p></div><span class="soft-tag">${pct}%</span></div>
         <div class="goal-card-amount"><strong>${money(current)}</strong><span>of ${money(goalTarget)}</span></div>
         <div class="goal-progress-track" role="progressbar" aria-label="${escapeHtml(goal.name)} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
         <div class="goal-card-footer"><span>${needed <= 0 ? "Goal reached" : months === null ? `${money(needed)} remaining` : `About ${months} ${months === 1 ? "month" : "months"} at this pace`}</span><button type="button" data-goal-edit="${escapeHtml(goal.id)}">Update progress</button></div>

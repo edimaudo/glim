@@ -39,14 +39,14 @@ def build_coach_input(question: str, context: dict[str, Any] | None, tone: str =
     import json
     return (
         f"{SYSTEM_GUIDANCE}\n\n{tone_map.get(tone, tone_map['balanced'])}\n{mode_map.get(mode, mode_map['coach'])}\n\n"
-        f"User's current Glim context (user-entered/sample data, not verified account data):\n"
+        f"User's current Glim context (user-entered, not verified account data):\n"
         f"{json.dumps(safe_context, ensure_ascii=False)}\n\nUser question: {question.strip()}\n\n"
         "Answer with a brief explanation, a practical next step, and one important assumption or caution when relevant."
     )
 
 
 def local_coach_fallback(question: str, context: dict[str, Any] | None) -> str:
-    """Transparent fallback for a runnable demo when no Gemini key is configured."""
+    """Built-in educational guidance used when the hosted coach is unavailable."""
     q = question.lower()
     debts = (context or {}).get("debts", [])
     goals = (context or {}).get("savings_goals", [])
@@ -64,7 +64,7 @@ def local_coach_fallback(question: str, context: dict[str, Any] | None) -> str:
         )
     if any(word in q for word in ["saving", "savings", "emergency fund", "save"]):
         return (
-            f"Start with a repeatable contribution that leaves room for essentials and required debt payments. Your tracked goals currently show ${total_saved:,.2f} saved in this demo. "
+            f"Start with a repeatable contribution that leaves room for essentials and required debt payments. Your tracked goals currently show ${total_saved:,.2f} saved. "
             "An emergency fund can help prevent an unexpected expense from turning into new high-interest debt. There is no single right target for everyone. "
             "Next step: pick a small amount you can sustain for a few months, then review it when your income or expenses change."
         )
@@ -76,6 +76,6 @@ def local_coach_fallback(question: str, context: dict[str, Any] | None) -> str:
         )
     return (
         "Let's break this into one manageable decision. First, protect essential expenses and required minimum debt payments. Then use the numbers you can verify to compare options, "
-        "including what each option costs and how flexible it leaves your cash flow. I can help explain the trade-offs, but any result based on sample or manually entered data is only an estimate. "
+        "including what each option costs and how flexible it leaves your cash flow. I can help explain the trade-offs, but any result based on manually entered data is only an estimate. "
         "What matters most right now: lowering interest, getting an early win, or making your month-to-month budget feel more stable?"
     )

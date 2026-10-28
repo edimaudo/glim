@@ -26,13 +26,15 @@
       const refreshedMessage = $("payout-refresh-message");
       if (refreshedMessage) refreshedMessage.textContent = `${result.notice} Latest batch status: ${result.batch_status}.`;
     } catch (error) {
-      if (message) { message.textContent = error.message; message.className = "form-message is-error"; }
+      console.error("Glim could not refresh payout status", error);
+      if (message) { message.textContent = "We couldn’t refresh the reward status right now. Please try again later."; message.className = "form-message is-error"; }
       if (button) { button.disabled = false; button.textContent = "Retry status"; }
     }
   }
 
   const app = {
     state: null,
+    activeView: "overview",
     saveQueue: Promise.resolve(),
     async saveState() {
       if (!this.state || !this.state.profile?.email) return;
@@ -61,6 +63,7 @@
     navigate(view) {
       const validViews = ["overview", "debt", "savings", "literacy", "settings"];
       if (!validViews.includes(view)) return;
+      this.activeView = view;
       document.querySelectorAll("[data-view-panel]").forEach((panel) => {
         const active = panel.dataset.viewPanel === view;
         panel.hidden = !active;
@@ -117,19 +120,23 @@
       if (window.GlimSavings) window.GlimSavings.render();
       this.renderOverview(this.state.lastPlan || null);
       renderPayoutHistory();
-      const history = (this.state.balanceHistory || []).map((entry, index) => ({ month: index, balance: Math.max(0, Number(entry.total) || 0), label: String(entry.date || "").slice(5) }));
-      this.drawScheduleChart("debt-history-chart", history, "debt-history-description");
-      if ($("debt-history-description")) {
-        const first = history[0]; const last = history[history.length - 1];
-        $("debt-history-description").textContent = first && last ? `Manually recorded tracked debt moved from ${money(first.balance)} on ${first.label} to ${money(last.balance)} on ${last.label}.` : "Update a balance after checking your statement to build a history.";
-      }
-      const banner = document.querySelector(".prototype-banner");
-      if (banner) banner.hidden = Boolean(this.state.dismissedBanner);
     },
     drawScheduleChart(canvasId, schedule, descriptionId) {
       const canvas = $(canvasId);
       if (!canvas) return;
       const description = $(descriptionId);
+      const hasProjection = Array.isArray(schedule) && schedule.length >= 2;
+      const chartWrap = canvas.closest(".chart-wrap");
+      canvas.hidden = !hasProjection;
+      chartWrap?.classList.toggle("is-empty", !hasProjection);
+      if (!hasProjection) {
+        if (description) {
+          description.hidden = false;
+          if (!description.textContent) description.textContent = "Calculate a repayment plan to see the projected balance.";
+        }
+        return;
+      }
+      if (description) description.hidden = false;
       const cssHeight = canvasId === "debt-chart" ? 235 : 175;
       const width = Math.max(240, canvas.clientWidth || canvas.parentElement?.clientWidth || 400);
       const ratio = Math.max(1, window.devicePixelRatio || 1);
@@ -147,12 +154,6 @@
       const plotW = width - pad.left - pad.right;
       const plotH = cssHeight - pad.top - pad.bottom;
       ctx.clearRect(0, 0, width, cssHeight);
-      if (!Array.isArray(schedule) || schedule.length < 2) {
-        ctx.fillStyle = text; ctx.font = "12px Inter, sans-serif"; ctx.textAlign = "center";
-        ctx.fillText("No projection yet", width / 2, cssHeight / 2);
-        if (description && !description.textContent) description.textContent = "Calculate a repayment plan to draw this estimate.";
-        return;
-      }
       const points = schedule.map((item, i) => ({ month: Number(item.month ?? i), balance: Math.max(0, Number(item.balance) || 0), label: item.label || null }));
       const maxBalance = Math.max(1, ...points.map((point) => point.balance));
       const x = (index) => pad.left + (index / (points.length - 1)) * plotW;
@@ -175,21 +176,55 @@
       const showCount = Math.min(6, points.length);
       const indices = [...new Set(Array.from({ length: showCount }, (_, i) => Math.round(i * (points.length - 1) / Math.max(1, showCount - 1))))];
       ctx.fillStyle = text; ctx.font = "10px Inter, sans-serif"; ctx.textAlign = "center";
-      indices.forEach((index) => ctx.fillText(points[index].label || (points[index].month === 0 ? "Now" : `M${points[index].month}`), x(index), cssHeight - 8));
+      indices.forEach((index) => ctx.fillText(points[index].label || (points[index].month === 0 ? "Today" : `${points[index].month} mo`), x(index), cssHeight - 8));
       ctx.fillStyle = line;
       const last = points[points.length - 1]; ctx.beginPath(); ctx.arc(x(points.length - 1), y(last.balance), 3.5, 0, Math.PI * 2); ctx.fill();
       canvas.setAttribute("aria-label", last.label ? `Recorded tracked debt starts at ${money(points[0].balance)} on ${points[0].label} and ends at ${money(last.balance)} on ${last.label}.` : `Estimated debt balance starts at ${money(points[0].balance)} and ends at ${money(last.balance)} after ${last.month} months.`);
       if (description && !description.textContent) description.textContent = `Estimated balance from ${money(points[0].balance)} to ${money(last.balance)}.`;
     },
+    renderDebtCheckpoints(plan) {
+      const target = $("debt-chart-checkpoints");
+      if (!target) return;
+      const schedule = plan?.schedule;
+      if (!Array.isArray(schedule) || !schedule.length) { target.innerHTML = ""; target.hidden = true; return; }
+      target.hidden = false;
+      const last = schedule[schedule.length - 1];
+      const endMonth = Number(last.month || 0);
+      const months = [...new Set([0, 3, 6, 12].filter((month) => month <= endMonth))];
+      if (endMonth > 0 && !months.includes(endMonth)) months.push(endMonth);
+      const byMonth = new Map(schedule.map((item) => [Number(item.month || 0), Number(item.balance || 0)]));
+      target.innerHTML = months.map((month) => {
+        const point = byMonth.get(month) ?? Number(schedule.filter((item) => Number(item.month || 0) <= month).slice(-1)[0]?.balance || 0);
+        const label = month === 0 ? "Today" : (month === endMonth && Number(last.balance || 0) <= 0.005 ? "Payoff" : `${month} months`);
+        return `<div class="chart-checkpoint"><span>${label}</span><strong>${money(point)}</strong></div>`;
+      }).join("");
+    },
   };
 
-  async function askCoach(question) {
-    const input = $("coach-question");
-    const response = $("coach-response");
-    const status = $("coach-status");
-    const button = document.querySelector('#coach-form button[type="submit"]');
+  function openCoachDialog(button) {
+    const dialog = $("coach-dialog");
+    if (!dialog) return;
+    const section = button.closest("[data-view-panel]")?.dataset.viewPanel || app.activeView || "overview";
+    app.activeView = section;
+    const labels = { overview: "Overview", debt: "Debt management", savings: "Savings", literacy: "Financial literacy", settings: "Settings" };
+    if ($("coach-dialog-title")) $("coach-dialog-title").textContent = `Ask Glim about ${labels[section] || "your plan"}`;
+    if ($("coach-dialog-context")) $("coach-dialog-context").textContent = `Using your ${String(labels[section] || "financial plan").toLowerCase()} context, current balances and goals where relevant.`;
+    if ($("coach-dialog-question")) { $("coach-dialog-question").value = button.dataset.coachPrompt || "Help me decide on a practical next step."; }
+    if ($("coach-dialog-response")) { $("coach-dialog-response").hidden = true; $("coach-dialog-response").textContent = ""; }
+    if ($("coach-dialog-status")) $("coach-dialog-status").textContent = "Ready to help";
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "open");
+    $("coach-dialog-question")?.focus();
+  }
+
+  async function askCoach(question, surface = "overview") {
+    const inDialog = surface === "dialog";
+    const input = $(inDialog ? "coach-dialog-question" : "coach-question");
+    const response = $(inDialog ? "coach-dialog-response" : "coach-response");
+    const status = $(inDialog ? "coach-dialog-status" : "coach-status");
+    const button = document.querySelector(inDialog ? '#coach-dialog-form button[type="submit"]' : '#coach-form button[type="submit"]');
     const text = (question ?? input?.value ?? "").trim();
-    if (text.length < 2) { app.toast("Enter a question for your coach."); input?.focus(); return; }
+    if (text.length < 2) { app.toast("Add a question for Glim."); input?.focus(); return; }
     if (input) input.value = text;
     if (button) { button.disabled = true; button.textContent = "Thinking…"; }
     if (status) status.textContent = "Thinking…";
@@ -204,6 +239,8 @@
       user_entered_product_options: (app.state.productComparisons || []).slice(-10).map((item) => ({ category: item.category, name: item.name, provider: item.provider, annual_rate: item.annual_rate, annual_fee: item.annual_fee, monthly_fee: item.monthly_fee, promo_rate: item.promo_rate, promo_months: item.promo_months, post_promo_rate: item.post_promo_rate, product_url: item.product_url })),
       monthly_debt_budget: app.state.monthlyBudget,
       selected_plan_summary: app.state.lastPlan ? { strategy: app.state.lastPlan.strategy, starting_debt: app.state.lastPlan.starting_debt, total_interest: app.state.lastPlan.total_interest, payoff_months: app.state.lastPlan.payoff_months, warning: app.state.lastPlan.warning } : null,
+      active_section: app.activeView || "overview",
+      financial_literacy: { level: app.state.literacyLevel || null, assessment_score: app.state.literacyAssessmentScore ?? null, last_quiz_score: app.state.quizLastScore ?? null, last_quiz_level: app.state.quizLastLevel || null },
     };
     try {
       const result = await window.GlimClient.askCoach(text, context, prefs.coachTone || "balanced", prefs.coachMode || "coach");
@@ -211,13 +248,12 @@
         response.textContent = result.reply + (result.notice ? `\n\n${result.notice}` : "");
         response.hidden = false;
       }
-      if (status) status.textContent = result.configured ? "Gemini connected" : "Demo coach";
+      if (status) status.textContent = result.configured ? "Ready" : "Ready to help";
       await app.saveState();
-      if (result.provider === "demo-fallback") app.toast("Showing a local demo response. Configure Gemini to enable live coaching.");
     } catch (error) {
-      if (response) { response.textContent = error.message; response.hidden = false; }
-      if (status) status.textContent = "Coach unavailable";
-      app.toast("The coach could not respond. Check the configuration and try again.");
+      console.error("Glim coach request failed", error);
+      if (response) { response.textContent = "I couldn't prepare a response just now. Please try again."; response.hidden = false; }
+      if (status) status.textContent = "Try again";
     } finally {
       if (button) { button.disabled = false; button.innerHTML = 'Ask Glim <span aria-hidden="true">↑</span>'; }
     }
@@ -226,11 +262,11 @@
   async function updateIntegrationStatus() {
     try {
       const status = await window.GlimClient.integrationStatus();
-      if ($("coach-status")) $("coach-status").textContent = status.gemini ? "Gemini connected" : "Demo coach";
-      if ($("settings-gemini-status")) $("settings-gemini-status").textContent = status.gemini ? `Configured · ${status.gemini_model}` : "Demo fallback (key not set)";
-      if ($("settings-paypal-status")) $("settings-paypal-status").textContent = status.paypal_sandbox ? "Sandbox configured" : "Sandbox not configured";
-      if ($("settings-qloo-status")) $("settings-qloo-status").textContent = status.qloo ? "API key configured" : "Starter ideas (key not set)";
-    } catch (_) { /* A status display should not block the local prototype. */ }
+      if ($("coach-status")) $("coach-status").textContent = "Ready to help";
+      if ($("settings-gemini-status")) $("settings-gemini-status").textContent = status.gemini ? "AI coaching available" : "Built-in guidance available";
+      if ($("settings-paypal-status")) $("settings-paypal-status").textContent = status.paypal_sandbox ? "Reward testing available" : "Reward payouts unavailable";
+      if ($("settings-qloo-status")) $("settings-qloo-status").textContent = status.qloo ? "Personalized ideas available" : "General suggestions available";
+    } catch (_) { /* A status display should not block the workspace. */ }
   }
 
   async function showRewardIdeas() {
@@ -245,9 +281,10 @@
       const selectedInterest = $("reward-interest")?.value || "urn:tag:genre:media:nonfiction";
       const result = await window.GlimClient.rewardIdeas([selectedInterest]);
       const cards = (result.ideas || []).map((idea) => `<article class="reward-idea"><strong>${escapeHtml(idea.name)}</strong><p>${escapeHtml(idea.description)}</p></article>`).join("");
-      output.innerHTML = `<strong>${result.provider === "qloo" ? "Personalized ideas" : "Low-cost reward ideas"}</strong><p>${escapeHtml(result.notice || "Start with a reward that does not add pressure to your budget.")}</p>${cards ? `<div class="reward-ideas-list">${cards}</div>` : "<p>No ideas returned. Try again after checking the Qloo configuration.</p>"}`;
+      output.innerHTML = `<strong>${result.provider === "qloo" ? "Personalized ideas" : "Low-cost reward ideas"}</strong><p>${escapeHtml(result.notice || "Choose a reward that fits your interests without adding pressure to your budget.")}</p>${cards ? `<div class="reward-ideas-list">${cards}</div>` : "<p>No ideas are available right now. Try again later.</p>"}`;
     } catch (error) {
-      output.textContent = error.message;
+      console.error("Glim could not load reward ideas", error);
+      output.textContent = "Reward ideas are unavailable right now. Please try again later.";
     } finally {
       if (button) { button.disabled = false; button.textContent = "Find reward ideas"; }
     }
@@ -271,12 +308,12 @@
   function openRewardDialog() {
     const eligible = getEligibleReward();
     if (!eligible) {
-      app.toast("To test a reward, reach a savings goal or record a 10% reduction from your tracked starting debt. The Sandbox uses manually entered demo data.");
+      app.toast("A reward becomes available when you reach a savings goal or record a 10% reduction in tracked debt.");
       app.navigate("savings"); return;
     }
     app.pendingReward = eligible;
     if ($("reward-dialog-title")) $("reward-dialog-title").textContent = eligible.label;
-    if ($("reward-dialog-description")) $("reward-dialog-description").textContent = `This requests a CAD $1.00 payout to a PayPal Sandbox recipient for: ${eligible.label}. It uses manually entered demo data and does not independently verify a real financial account.`;
+    if ($("reward-dialog-description")) $("reward-dialog-description").textContent = `This requests a CAD $1.00 payout to a PayPal Sandbox recipient for: ${eligible.label}. Sandbox transactions do not transfer real money. Glim cannot independently verify financial account activity.`;
     if ($("reward-email") && app.state.profile?.email) $("reward-email").value = app.state.profile.email;
     if ($("reward-dialog-message")) { $("reward-dialog-message").textContent = ""; $("reward-dialog-message").className = "form-message"; }
     const dialog = $("reward-dialog");
@@ -309,9 +346,10 @@
       app.toast("PayPal Sandbox accepted the payout request.");
       await app.saveState();
     } catch (error) {
-      if (message) { message.textContent = error.message; message.className = "form-message is-error"; }
+      console.error("Glim could not submit reward request", error);
+      if (message) { message.textContent = "We couldn’t submit this reward right now. Please try again later."; message.className = "form-message is-error"; }
     } finally {
-      if (formButton) { formButton.disabled = false; formButton.textContent = "Submit Sandbox request"; }
+      if (formButton) { formButton.disabled = false; formButton.textContent = "Claim reward"; }
     }
   }
 
@@ -407,12 +445,16 @@
       }
     }));
     document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => {
+      if (button.closest(".prompt-chips")) return;
       const question = $("coach-question");
       app.navigate("overview");
       if (question) { question.value = button.dataset.prompt; question.focus(); }
     }));
-    $("coach-form")?.addEventListener("submit", (event) => { event.preventDefault(); askCoach(); });
-    document.querySelectorAll(".prompt-chips [data-prompt]").forEach((button) => button.addEventListener("click", () => askCoach(button.dataset.prompt)));
+    $("coach-form")?.addEventListener("submit", (event) => { event.preventDefault(); askCoach(undefined, "overview"); });
+    $("coach-dialog-form")?.addEventListener("submit", (event) => { event.preventDefault(); askCoach(undefined, "dialog"); });
+    $("close-coach-dialog")?.addEventListener("click", () => $("coach-dialog")?.close());
+    document.querySelectorAll("[data-open-coach]").forEach((button) => button.addEventListener("click", () => openCoachDialog(button)));
+    document.querySelectorAll(".prompt-chips [data-prompt]").forEach((button) => button.addEventListener("click", () => askCoach(button.dataset.prompt, "overview")));
     $("signout-button")?.addEventListener("click", async () => {
       const button = $("signout-button"); if (button) button.disabled = true;
       try { await window.GlimClient.deleteSession(); } catch (_) { /* Expired demo cookies are harmless; continue to sign-in. */ }
@@ -422,12 +464,6 @@
       const sidebar = $("sidebar"); const open = !sidebar.classList.contains("is-open");
       sidebar.classList.toggle("is-open", open); $("mobile-menu-button").setAttribute("aria-expanded", String(open));
       $("mobile-menu-button").setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
-    });
-    $("dismiss-banner")?.addEventListener("click", async () => {
-      if (!app.state) return;
-      app.state.dismissedBanner = true;
-      const banner = document.querySelector(".prototype-banner"); if (banner) banner.hidden = true;
-      try { await app.saveState(); } catch (error) { app.toast(`Could not save preference: ${error.message}`); }
     });
     $("load-rewards")?.addEventListener("click", showRewardIdeas);
     $("smart-followup-dismiss")?.addEventListener("click", () => dismissSmartFollowup(false));
@@ -491,8 +527,6 @@
       // Keep low-level browser database exceptions out of the rendered interface.
       console.error("Glim could not initialize browser-local data", error);
       app.toast("Glim couldn't open your saved information. Please refresh the page and try again.");
-      const banner = document.querySelector(".prototype-banner");
-      if (banner) banner.textContent = "Glim couldn't open your saved information. Please refresh the page and try again.";
     }
   }
 

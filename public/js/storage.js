@@ -124,31 +124,21 @@
 
   function profileKey(email) {
     const normalized = String(email || "").trim().toLowerCase();
-    if (!normalized || !normalized.includes("@")) throw new Error("A valid demo email is required to select local Glim data.");
+    if (!normalized || !normalized.includes("@")) throw new Error("A valid email is required to select Glim data.");
     return normalized;
   }
 
   function defaultState(profile = {}) {
-    const daysFromNow = (days) => {
-      const date = new Date(); date.setDate(date.getDate() + days);
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    };
     return {
       profile: { name: profile.name || "Glim member", email: profile.email || "" },
-      debts: [
-        { id: "sample-visa", name: "Rewards credit card", type: "Credit card", balance: 4200, apr: 20.99, minimum_payment: 126, due_date: daysFromNow(9), sample: true },
-        { id: "sample-loc", name: "Personal line of credit", type: "Line of credit", balance: 2300, apr: 11.5, minimum_payment: 70, due_date: daysFromNow(16), sample: true }
-      ],
-      savingsGoals: [
-        { id: "sample-emergency", name: "Emergency fund", target: 1000, current: 680, monthly_contribution: 50, sample: true },
-        { id: "sample-buffer", name: "Monthly breathing room", target: 500, current: 0, monthly_contribution: 25, sample: true }
-      ],
-      monthlyBudget: 500,
+      debts: [],
+      savingsGoals: [],
+      monthlyBudget: 0,
       strategy: "avalanche",
       lastPlan: null,
       lastPlanComparison: null,
-      baselineDebt: 6500,
-      balanceHistory: [{ date: new Date().toISOString().slice(0, 10), total: 6500, source: "starting sample" }],
+      baselineDebt: 0,
+      balanceHistory: [],
       milestones: [],
       claimedRewardMilestones: [],
       rewardClaimRequests: {},
@@ -157,16 +147,21 @@
       reminderEvents: [],
       coachInteractions: 0,
       prefs: { theme: "light", fontSize: "medium", reminderFrequency: "weekly", coachTone: "balanced", coachMode: "coach", browserNotifications: false },
-      dismissedBanner: false,
       lastCoachQuestion: null,
       lastCoachAt: null,
       lastReminderAt: null,
       reminderDismissals: 0,
       snoozedReminderUntil: null,
       completedLessonIds: [],
-      quizBestScore: null,
+      quizBestScore: 0,
       quizAttempts: 0,
       quizLastCorrect: null,
+      quizLastScore: null,
+      quizLastLevel: null,
+      quizHistory: [],
+      literacyLevel: null,
+      literacyAssessmentScore: null,
+      literacyAssessmentAt: null,
       assessmentTopics: []
     };
   }
@@ -187,6 +182,27 @@
       if (record?.state) {
         const state = record.state;
         state.profile = { ...(state.profile || {}), ...profile, email: key };
+        // Remove the seeded balances shipped by earlier demo builds. They were examples,
+        // not user-entered accounts, and should not appear as a signed-in person's finances.
+        const previousDebts = Array.isArray(state.debts) ? state.debts : [];
+        const previousGoals = Array.isArray(state.savingsGoals) ? state.savingsGoals : [];
+        const hadSeededRecords = previousDebts.some((item) => item.sample) || previousGoals.some((item) => item.sample);
+        if (hadSeededRecords) {
+          state.debts = previousDebts.filter((item) => !item.sample);
+          state.savingsGoals = previousGoals.filter((item) => !item.sample);
+          const remaining = state.debts.reduce((sum, item) => sum + Math.max(0, Number(item.balance) || 0), 0);
+          state.baselineDebt = remaining;
+          state.balanceHistory = state.debts.length ? [{ date: new Date().toISOString().slice(0, 10), total: remaining, source: "user-entered starting balance" }] : [];
+          state.lastPlan = null;
+          state.lastPlanComparison = null;
+          if (state.debts.length === 0) state.monthlyBudget = 0;
+        }
+        state.debts ||= [];
+        state.savingsGoals ||= [];
+        state.completedLessonIds ||= [];
+        state.quizHistory ||= [];
+        state.quizBestScore = Number(state.quizBestScore || 0);
+        if (hadSeededRecords) await saveState(key, state);
         return state;
       }
       const state = defaultState({ ...profile, email: key });
