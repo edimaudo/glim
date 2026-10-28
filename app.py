@@ -347,11 +347,12 @@ async def reward_payout_status(payout_batch_id: str, _profile: dict[str, str] = 
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-# Local development can serve assets through Starlette. On Vercel, files under
-# public/ are served by Vercel's CDN and are not guaranteed to exist in the
-# serverless function bundle. Do not mount a directory that may be absent.
+# Vercel serves files in the project-level public/ directory from its CDN.
+# Never mount public/ automatically: Vercel's function bundle may omit these
+# folders, which would make Starlette raise at import time. For local uvicorn
+# development, run.sh opts into these mounts explicitly with GLIM_LOCAL_STATIC=1.
 IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
-if not IS_VERCEL:
+if os.getenv("GLIM_LOCAL_STATIC") == "1" and not IS_VERCEL:
     css_dir = PUBLIC / "css"
     js_dir = PUBLIC / "js"
     if css_dir.is_dir():

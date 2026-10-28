@@ -46,7 +46,7 @@ These paths return JSON for browser JavaScript operations. They are not the site
 
 ## Static assets
 
-Local development mounts `/css` and `/js` through `StaticFiles` only if the corresponding directories exist. On Vercel, no mount is registered: files under `public/` are delivered by the Vercel CDN. This avoids importing the application with a mount pointed at `/var/task/public/css`, which may not exist in the serverless function bundle.
+On Vercel, no `StaticFiles` mount is registered. Files under the project-level `public/` directory are served by the Vercel CDN. For local Uvicorn development, `run.sh` explicitly sets `GLIM_LOCAL_STATIC=1`; only then does the app mount `/css` and `/js`, and only when each directory exists. The app does not rely on Vercel-specific environment variables to decide whether to mount, so a missing runtime marker cannot accidentally activate a mount in a serverless function.
 
 ## Deployment
 

@@ -110,7 +110,7 @@ For local demo sessions, a development signing-key fallback is used if `GLIM_SES
 - The root-level `app.py` exports the FastAPI instance named `app`.
 - The deployment URL opens `/`, which renders the landing page. No rewrite directs it to docs or a JSON schema.
 - Vercel detects the root `app.py` FastAPI app. The minimal `vercel.json` includes `templates/**` in the function bundle for Jinja rendering.
-- Vercel serves files under `public/` through its CDN. FastAPI does not mount those directories on Vercel because they may not be present in the function bundle. Local development mounts the directories only when they exist.
+- Vercel serves files under `public/` from its CDN. `app.py` does not mount `public/` by default, even if Vercel-specific environment variables are absent. Only `run.sh` sets `GLIM_LOCAL_STATIC=1`, and mounts are added only for local development when each directory exists. Do not set `GLIM_LOCAL_STATIC` in Vercel.
 - Set secrets in Vercel Project Settings → Environment Variables. Do not commit `.env` or put provider keys in JavaScript.
 
 ## External integrations

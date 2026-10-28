@@ -129,7 +129,7 @@ def test_qloo_recommendations_have_local_fallback_and_allowlist(monkeypatch):
         assert invalid.status_code == 422
 
 
-def test_vercel_entrypoint_does_not_require_public_asset_directories(tmp_path):
+def test_entrypoint_does_not_require_public_assets_or_vercel_env(tmp_path):
     """Vercel serves public/ through its CDN; the function bundle may omit it."""
     import os
     import shutil
@@ -143,10 +143,12 @@ def test_vercel_entrypoint_does_not_require_public_asset_directories(tmp_path):
     shutil.copytree(project_root / "templates", tmp_path / "templates")
     # Intentionally do not copy public/.
     env = os.environ.copy()
-    env["VERCEL"] = "1"
+    env.pop("VERCEL", None)
+    env.pop("VERCEL_ENV", None)
+    env.pop("GLIM_LOCAL_STATIC", None)
     env["PYTHONPATH"] = str(tmp_path)
     result = subprocess.run(
-        [sys.executable, "-c", "import app; assert app.app is not None"],
+        [sys.executable, "-c", "import app; assert app.app is not None; assert not any(getattr(r, 'name', '') in {'css', 'js'} for r in app.app.routes)"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
