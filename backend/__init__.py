@@ -1,1 +1,0 @@
-"""Glim FastAPI backend."""
