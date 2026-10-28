@@ -6,6 +6,7 @@ Financial profile data stays in browser IndexedDB.
 """
 from __future__ import annotations
 
+import logging
 import math
 import os
 from pathlib import Path
@@ -28,6 +29,8 @@ from services.paypal_rewards import (
 )
 from services.qloo_personalization import get_reward_ideas
 
+logger = logging.getLogger("glim")
+
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -49,6 +52,9 @@ if not _SESSION_SECRET:
     # Local-only convenience. Production deployments must set this environment variable.
     if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV") or os.getenv("ENVIRONMENT", "").lower() == "production"):
         _SESSION_SECRET = "glim-local-development-session-secret-change-before-deploying"
+    else:
+        # Keep deployment diagnostics in server logs, never in the customer-facing UI.
+        logger.error("Demo session signing is unavailable because GLIM_SESSION_SECRET is not configured.")
 
 SUPPORTED_REWARD_INTEREST_TAGS = {
     "urn:tag:genre:media:nonfiction",
@@ -61,7 +67,7 @@ SUPPORTED_STRATEGIES = {"avalanche", "snowball"}
 
 def _session_serializer() -> URLSafeTimedSerializer:
     if not _SESSION_SECRET:
-        raise HTTPException(status_code=503, detail="Demo sign-in is not configured on this deployment. The site owner must add GLIM_SESSION_SECRET in the Vercel project environment variables and redeploy.")
+        raise HTTPException(status_code=503, detail="We could not start your session. Please try again later.")
     return URLSafeTimedSerializer(_SESSION_SECRET, salt="glim-demo-session-v1")
 
 
@@ -180,16 +186,6 @@ async def app_page(request: Request):
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {"status": "ok", "service": "glim", "mode": "prototype"}
-
-
-@app.get("/session/status")
-async def demo_session_status() -> dict[str, Any]:
-    """Expose whether the demo session feature is configured, not the secret itself."""
-    return {
-        "available": bool(_SESSION_SECRET),
-        "session_type": "demo",
-        "requires_deployment_configuration": not bool(_SESSION_SECRET),
-    }
 
 
 @app.post("/session")

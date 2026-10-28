@@ -488,9 +488,11 @@
       window.setInterval(() => { if (!document.hidden && app.state) checkSmartFollowup(); }, 15 * 60 * 1000);
       document.addEventListener("visibilitychange", () => { if (!document.hidden && app.state) checkSmartFollowup(); });
     } catch (error) {
-      app.toast(`Could not load Glim data: ${error.message}`);
+      // Keep low-level browser database exceptions out of the rendered interface.
+      console.error("Glim could not initialize browser-local data", error);
+      app.toast("Glim couldn't open your saved information. Please refresh the page and try again.");
       const banner = document.querySelector(".prototype-banner");
-      if (banner) banner.textContent = `Glim could not open your browser-local data. Check browser storage permissions and reload. ${error.message}`;
+      if (banner) banner.textContent = "Glim couldn't open your saved information. Please refresh the page and try again.";
     }
   }
 

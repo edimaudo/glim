@@ -1,6 +1,6 @@
 # Glim
 
-Glim is a Canadian financial-coaching app for smarter debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
+Glim is a Canadian financial-coaching prototype for debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
 
 ## Project structure
 
@@ -50,7 +50,6 @@ JavaScript calls the following same-origin server action routes when a trusted b
 |---|---|
 | `/health` | Health check |
 | `/session` | Create, inspect, or clear the signed demo session |
-| `/session/status` | Check whether demo sessions are configured |
 | `/debt/plan` | Calculate debt repayment scenarios |
 | `/coach` | Gemini coach or labelled local fallback |
 | `/products/compare` | Compare user-entered financial-product terms |
@@ -77,6 +76,7 @@ The interface uses Inter throughout with a restrained neutral surface palette an
 
 - Debt entry, CSV import, manual balance updates, balance history, and avalanche/snowball repayment estimates.
 - Savings goals, contribution tracking, learning and quiz progress.
+- Browser IndexedDB schema recovery: older local databases are upgraded if the `profiles` object store is missing, and versioned asset URLs prevent stale cached sign-in scripts from sticking around. Browser storage failures are logged for debugging but displayed as a generic, user-friendly message.
 - One financial coach interface shared by Debt, Savings, and Financial Literacy.
 - Comparisons calculated from financial-product terms entered by the user. Glim does not fabricate live rates or offers.
 - Optional Qloo-based non-financial reward ideas.
@@ -105,7 +105,7 @@ python -m uvicorn app:app --reload
 
 Open `http://127.0.0.1:8000`. The landing page is `/`. There is no OpenAPI documentation route in this prototype.
 
-For local demo sessions, a development signing-key fallback is used if `GLIM_SESSION_SECRET` is absent. On Vercel, sessions deliberately fail closed if this secret is missing; the application will not silently use a predictable key. To configure it, generate a secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, add it as `GLIM_SESSION_SECRET` under Vercel Project Settings → Environment Variables for the Production environment (and Preview if needed), then redeploy. Do not commit the value or send it in source code. The sign-in page checks `/session/status` and displays a helpful configuration message instead of revealing a raw server error.
+For local demo sessions, a development signing-key fallback is used if `GLIM_SESSION_SECRET` is absent. On Vercel, sessions deliberately fail closed if this secret is missing; the application will not silently use a predictable key. To configure it, generate a secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, add it as `GLIM_SESSION_SECRET` under Vercel Project Settings → Environment Variables for the Production environment (and Preview if needed), then redeploy. Do not commit the value or send it in source code. Session configuration diagnostics remain in server logs. The sign-in page displays a generic, user-friendly message if a demo session cannot be created and never exposes environment-variable names or deployment instructions.
 
 ## Vercel deployment
 

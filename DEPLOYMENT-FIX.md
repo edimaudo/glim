@@ -16,7 +16,7 @@ Vercel's current FastAPI documentation says project-root `public/` files are ser
 
 ## Demo sign-in configuration
 
-A Vercel deployment must have `GLIM_SESSION_SECRET` set in Project Settings → Environment Variables. If it is missing, `/session/status` reports that sessions are unavailable, the sign-in button is disabled, and the page explains how the site owner can configure it. This is intentional: the application does not use a predictable signing key in production. Generate a new secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`; add that value directly to Vercel and redeploy. Keep the secret out of source control.
+A Vercel deployment must have `GLIM_SESSION_SECRET` set in Project Settings → Environment Variables. If it is missing, the failure is recorded in server logs. The sign-in form remains usable and shows a generic retry message if the session cannot be created; deployment configuration details are not exposed to users. This is intentional: the application does not use a predictable signing key in production. Generate a new secret locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`; add that value directly to Vercel and redeploy. Keep the secret out of source control.
 
 ## Branded 404 page
 

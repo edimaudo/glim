@@ -1,32 +1,125 @@
-/* Browser-local state storage. Financial details never need to be sent to a database server. */
+/* Browser-local financial state. This module repairs older IndexedDB schemas and
+   keeps low-level browser/database errors out of the visible interface. */
 (function () {
   const DB_NAME = "glim-finance";
-  const DB_VERSION = 1;
+  // Version 2 migrates databases created by older builds that may lack `profiles`.
+  const DB_VERSION = 2;
   const STORE = "profiles";
   let dbPromise;
+  let activeDb;
+
+  const SAFE_STORAGE_MESSAGE = "Glim couldn't access your saved information right now. Please refresh the page and try again.";
+
+  function customerSafeError(operation, error) {
+    // Preserve diagnostics for developers without exposing browser exceptions to users.
+    console.error(`[Glim storage] ${operation} failed`, error);
+    return new Error(SAFE_STORAGE_MESSAGE);
+  }
+
+  function ensureSchema(db) {
+    if (!db.objectStoreNames.contains(STORE)) {
+      db.createObjectStore(STORE, { keyPath: "key" });
+    }
+  }
+
+  function attachDatabaseHandlers(db) {
+    db.onversionchange = () => {
+      db.close();
+      if (activeDb === db) activeDb = null;
+      // Allow the next operation to reopen against the newest schema.
+      dbPromise = null;
+    };
+    activeDb = db;
+    return db;
+  }
+
+  function openAtVersion(version) {
+    return new Promise((resolve, reject) => {
+      let request;
+      let settled = false;
+      let blockedTimer = null;
+      const finishResolve = (db) => {
+        if (settled) {
+          db?.close?.();
+          return;
+        }
+        settled = true;
+        if (blockedTimer) window.clearTimeout(blockedTimer);
+        resolve(db);
+      };
+      const finishReject = (error) => {
+        if (settled) return;
+        settled = true;
+        if (blockedTimer) window.clearTimeout(blockedTimer);
+        reject(error);
+      };
+
+      try {
+        request = version == null ? indexedDB.open(DB_NAME) : indexedDB.open(DB_NAME, version);
+      } catch (error) {
+        finishReject(error);
+        return;
+      }
+
+      request.onupgradeneeded = () => {
+        // This runs for a new database, a version upgrade, or a repair upgrade.
+        ensureSchema(request.result);
+      };
+      request.onerror = () => finishReject(request.error || new Error("IndexedDB could not be opened."));
+      request.onblocked = () => {
+        // An older Glim tab can hold the old schema open. Do not leave the sign-in
+        // button spinning indefinitely; the caller will show a generic retry message.
+        if (!blockedTimer) {
+          blockedTimer = window.setTimeout(
+            () => finishReject(new Error("Browser storage upgrade is blocked by another tab.")),
+            8000
+          );
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        if (settled) {
+          db.close();
+          return;
+        }
+        if (!db.objectStoreNames.contains(STORE)) {
+          // Some older builds created the database without the expected object store.
+          // Upgrade again instead of calling transaction() against a missing store.
+          const repairVersion = db.version + 1;
+          db.close();
+          openAtVersion(repairVersion).then(finishResolve, finishReject);
+          return;
+        }
+        finishResolve(attachDatabaseHandlers(db));
+      };
+    });
+  }
+
+  function openDb() {
+    if (!("indexedDB" in window)) {
+      return Promise.reject(new Error("Glim needs browser storage enabled to save your progress. Please use a current browser and try again."));
+    }
+    if (!dbPromise) {
+      dbPromise = openAtVersion(DB_VERSION)
+        .catch((error) => {
+          // If an older/newer build has already set a higher version, inspect the current
+          // database without forcing a lower version, then repair it if the store is absent.
+          if (error && error.name === "VersionError") return openAtVersion(null);
+          throw error;
+        })
+        .catch((error) => {
+          dbPromise = null;
+          throw customerSafeError("opening browser storage", error);
+        });
+    }
+    return dbPromise;
+  }
 
   function requestToPromise(request) {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error("Browser storage request failed."));
     });
-  }
-
-  function openDb() {
-    if (!("indexedDB" in window)) return Promise.reject(new Error("This browser does not support IndexedDB. Please use a current browser to save Glim data."));
-    if (!dbPromise) {
-      dbPromise = new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onupgradeneeded = () => {
-          const db = request.result;
-          if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "key" });
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error || new Error("Could not open browser storage."));
-        request.onblocked = () => reject(new Error("Glim storage upgrade is blocked by another open Glim tab. Close other tabs and try again."));
-      });
-    }
-    return dbPromise;
   }
 
   function profileKey(email) {
@@ -79,42 +172,65 @@
   }
 
   async function getState(email, profile = {}) {
-    const key = profileKey(email);
-    const db = await openDb();
-    const tx = db.transaction(STORE, "readonly");
-    const record = await requestToPromise(tx.objectStore(STORE).get(key));
-    if (record?.state) {
-      const state = record.state;
-      state.profile = { ...(state.profile || {}), ...profile, email: key };
+    try {
+      const key = profileKey(email);
+      const db = await openDb();
+      // Defensive validation after a database version change in another tab.
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.close();
+        activeDb = null;
+        dbPromise = null;
+        return getState(email, profile);
+      }
+      const tx = db.transaction(STORE, "readonly");
+      const record = await requestToPromise(tx.objectStore(STORE).get(key));
+      if (record?.state) {
+        const state = record.state;
+        state.profile = { ...(state.profile || {}), ...profile, email: key };
+        return state;
+      }
+      const state = defaultState({ ...profile, email: key });
+      await saveState(key, state);
       return state;
+    } catch (error) {
+      throw customerSafeError("loading the profile", error);
     }
-    const state = defaultState({ ...profile, email: key });
-    await saveState(key, state);
-    return state;
   }
 
   async function saveState(email, state) {
-    const key = profileKey(email);
-    const db = await openDb();
-    const cleanState = typeof structuredClone === "function" ? structuredClone(state) : JSON.parse(JSON.stringify(state));
-    cleanState.profile = { ...(cleanState.profile || {}), email: key };
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put({ key, state: cleanState, updatedAt: new Date().toISOString() });
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error || new Error("Could not save Glim data in this browser."));
-      tx.onabort = () => reject(tx.error || new Error("Saving Glim data was cancelled."));
-    });
-    return true;
+    try {
+      const key = profileKey(email);
+      const db = await openDb();
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.close();
+        activeDb = null;
+        dbPromise = null;
+        return saveState(email, state);
+      }
+      const cleanState = typeof structuredClone === "function" ? structuredClone(state) : JSON.parse(JSON.stringify(state));
+      cleanState.profile = { ...(cleanState.profile || {}), email: key };
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put({ key, state: cleanState, updatedAt: new Date().toISOString() });
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error || new Error("Could not save browser data."));
+        tx.onabort = () => reject(tx.error || new Error("Browser data save was cancelled."));
+      });
+      return true;
+    } catch (error) {
+      throw customerSafeError("saving the profile", error);
+    }
   }
 
   async function resetState(email, profile = {}) {
-    const state = defaultState({ ...profile, email: profileKey(email) });
-    await saveState(email, state);
-    return state;
+    try {
+      const state = defaultState({ ...profile, email: profileKey(email) });
+      await saveState(email, state);
+      return state;
+    } catch (error) {
+      throw customerSafeError("resetting the profile", error);
+    }
   }
-
-
 
   window.GlimStorage = { getState, saveState, resetState, defaultState };
 })();

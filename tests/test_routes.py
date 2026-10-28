@@ -26,7 +26,7 @@ def test_pages_assets_and_no_openapi_routes():
         assert client.get("/js/client.js").status_code == 200
         assert client.get("/health").json()["status"] == "ok"
         # The application has no /api prefix and no public OpenAPI docs routes.
-        for path in ("/api/health", "/api/docs", "/api/openapi.json", "/docs", "/openapi.json"):
+        for path in ("/api/health", "/api/docs", "/api/openapi.json", "/docs", "/openapi.json", "/session/status"):
             assert client.get(path).status_code == 404
 
 
@@ -38,7 +38,6 @@ def test_no_server_side_financial_state_endpoint():
 
 def test_demo_session_is_signed_http_only_and_expires_by_max_age():
     with TestClient(app) as client:
-        assert client.get("/session/status").json()["available"] is True
         assert client.get("/session").status_code == 401
         created = client.post("/session", json={"name": "Alex Morgan", "email": "Alex@example.com"})
         assert created.status_code == 200
@@ -59,18 +58,18 @@ def test_session_input_is_validated_without_request_model_classes():
         assert client.post("/session", content="not json", headers={"content-type": "application/json"}).status_code == 400
 
 
-def test_missing_production_session_secret_has_clear_configuration_message(monkeypatch):
+def test_missing_production_session_secret_returns_generic_customer_safe_error(monkeypatch):
     import app as application
 
     monkeypatch.setattr(application, "_SESSION_SECRET", "")
     with TestClient(application.app) as client:
-        status = client.get("/session/status")
-        assert status.status_code == 200
-        assert status.json()["available"] is False
+        assert client.get("/session/status").status_code == 404
         response = client.post("/session", json={"name": "Alex", "email": "alex@example.com"})
         assert response.status_code == 503
-        assert "GLIM_SESSION_SECRET" in response.json()["detail"]
-        assert "Vercel project environment variables" in response.json()["detail"]
+        detail = response.json()["detail"]
+        assert detail == "We could not start your session. Please try again later."
+        assert "GLIM_SESSION_SECRET" not in detail
+        assert "Vercel" not in detail
 
 
 def test_coach_and_integration_routes_require_demo_session():
@@ -176,3 +175,30 @@ def test_entrypoint_does_not_require_public_assets_or_vercel_env(tmp_path):
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    storage = (root / "public/js/storage.js").read_text()
+    signin = (root / "public/js/signin.js").read_text()
+    main = (root / "public/js/main.js").read_text()
+    signin_template = (root / "templates/signin.html").read_text()
+    app_template = (root / "templates/app.html").read_text()
+
+    # Version 2 upgrades databases from the first build. If a database still exists
+    # without the expected store, the opener explicitly performs a repair upgrade.
+    assert "const DB_VERSION = 2;" in storage
+    assert "openAtVersion(repairVersion).then(finishResolve, finishReject)" in storage
+    assert 'db.createObjectStore(STORE, { keyPath: "key" })' in storage
+
+    # Sign-in and workspace errors must not render browser exception details.
+    assert "We couldn’t open Glim right now. Please try again in a moment." in signin
+    assert "message.textContent = error.message" not in signin
+    assert "Glim couldn't open your saved information. Please refresh the page and try again." in main
+    assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
+
+    # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
+    assert "/js/storage.js?v=20261028-idb-repair-2" in signin_template
+    assert "/js/storage.js?v=20261028-idb-repair-2" in app_template
