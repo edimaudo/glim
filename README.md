@@ -1,6 +1,6 @@
 # Glim
 
-Glim is a Canadian financial-coaching prototype for debt repayment, savings habits, and financial literacy. The frontend uses plain HTML, CSS, and vanilla JavaScript with Inter. FastAPI serves the page templates and handles the small set of server-side actions that need financial calculations or external provider credentials.
+Glim is a Canadian financial coach for debt repayment, savings habits, and financial literacy. 
 
 ## Project structure
 
@@ -31,19 +31,6 @@ glim/
 └── .env.example
 ```
 
-There is no `backend/` directory, no separate `api.py`, no ORM, no application-domain class hierarchy, and no request-model class hierarchy. `app.py` is the single backend entrypoint. The HTML pages are Jinja templates so they can share `base.html`; the browser-side interaction remains vanilla JavaScript.
-
-## Page URLs and server actions
-
-Page navigation returns HTML:
-
-| URL | Purpose |
-|---|---|
-| `/` | Landing page |
-| `/signin` | Demo sign-in |
-| `/app` | Main application |
-
-JavaScript calls the following same-origin server action routes when a trusted backend operation is required. These paths deliberately do **not** use an `/api` prefix:
 
 | URL | Purpose |
 |---|---|
@@ -59,20 +46,8 @@ JavaScript calls the following same-origin server action routes when a trusted b
 
 These action routes are needed because API secrets must stay on the server. The browser should not call Gemini or PayPal directly with private credentials. They return JSON but are not the application's page URLs. Public OpenAPI documentation is disabled, including `/docs`, `/redoc`, and `/openapi.json`.
 
-## Data and session boundaries
-
-- Financial records live in browser IndexedDB, scoped by demo email. Glim does not use SQLite or persist financial records on the server.
-- Demo sign-in creates a signed, HTTP-only, eight-hour cookie. It identifies a demo profile but is not production authentication or identity verification.
-- IndexedDB is not encrypted by Glim and does not sync between browsers/devices. Use test information only. Never enter passwords, full card numbers, PINs, bank credentials, or security answers.
-- Users can export a local JSON backup and reset the current browser profile.
-- The browser submits only the context needed for each calculation or coach response. The backend does not save the user's financial profile.
-
-## Design pass
-
-The interface uses Inter throughout with a restrained neutral surface palette and a consistent green accent. Redundant all-caps eyebrow labels and decorative number/icon treatments were removed, hero dashboard decoration was simplified, gradients and shadows were reduced, and secondary text was raised for readability. The mobile overview places two headline metrics side by side and the monthly budget on its own row to avoid cramped labels. Light remains the default; dark mode uses charcoal-neutral surfaces rather than a green-tinted page.
 
 ## Main features
-
 - Debt entry, CSV import, manual balance updates, balance history, and avalanche/snowball repayment estimates.
 - Savings goals, contribution tracking, learning and quiz progress.
 - One financial coach interface shared by Debt, Savings, and Financial Literacy.
