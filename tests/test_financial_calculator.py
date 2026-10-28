@@ -1,5 +1,5 @@
 import pytest
-from backend.financial_calculator import PlanValidationError, calculate_plan, compare_plans
+from services.financial_calculator import PlanValidationError, calculate_plan, compare_plans
 
 
 def sample_debts():

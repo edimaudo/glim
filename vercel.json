@@ -1,7 +1,7 @@
 {
   "functions": {
-    "backend/**/*.py": {
-      "includeFiles": "public/**"
+    "app.py": {
+      "includeFiles": "templates/**"
     }
   }
 }

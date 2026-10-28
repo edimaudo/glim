@@ -1,14 +1,25 @@
 from fastapi.testclient import TestClient
 
-from backend.main import app
+from app import app
 
 
 def test_main_pages_and_static_assets_serve():
     with TestClient(app) as client:
         assert client.get("/").status_code == 200
         assert "Glim" in client.get("/").text
-        assert client.get("/signin.html").status_code == 200
-        assert client.get("/app.html").status_code == 200
+        assert client.get("/signin").status_code == 200
+        signin = client.get("/signin")
+        assert signin.status_code == 200
+        assert signin.text.count("<html") == 1
+        assert "Sign in — Glim" in signin.text
+        app_page = client.get("/app")
+        assert app_page.status_code == 200
+        assert "Your plan — Glim" in app_page.text
+        assert "{% extends" not in app_page.text
+        assert client.get("/api/docs").status_code == 200
+        assert client.get("/api/openapi.json").status_code == 200
+        assert client.get("/docs").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
         assert client.get("/css/styles.css").status_code == 200
         assert client.get("/js/main.js").status_code == 200
         assert client.get("/api/health").json()["status"] == "ok"

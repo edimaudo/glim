@@ -1,6 +1,6 @@
 import math
 import pytest
-from backend.financial_products import compare_product_terms
+from services.financial_products import compare_product_terms
 
 
 def test_savings_comparison_ranks_highest_net_value_first():
