@@ -228,8 +228,8 @@ def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors(
     assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
 
     # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
-    assert "/js/storage.js?v=20261029-glim-paypal-guardrails-2" in signin_template
-    assert "/js/storage.js?v=20261029-glim-paypal-guardrails-2" in app_template
+    assert "/js/storage.js?v=20261029-glim-tabs-1" in signin_template
+    assert "/js/storage.js?v=20261029-glim-tabs-1" in app_template
 
 
 def test_signed_in_interface_removes_demo_banners_and_import_instructions():
@@ -455,3 +455,53 @@ def test_app_has_global_text_size_toggle_and_paypal_is_explicitly_visible():
     assert 'client.payoutStatus' in main_js or 'GlimClient.payoutStatus' in main_js
     assert "validate_reward_milestone" in (root / "app.py").read_text()
 
+
+
+def test_main_workspace_uses_accessible_tabbed_sections_without_duplicate_ids():
+    from collections import Counter
+    from html.parser import HTMLParser
+    from pathlib import Path
+
+    class WorkspaceParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.ids = []
+            self.tabs = []
+            self.panels = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if attrs.get("id"):
+                self.ids.append(attrs["id"])
+            if attrs.get("role") == "tab":
+                self.tabs.append(attrs)
+            if attrs.get("role") == "tabpanel":
+                self.panels.append(attrs)
+
+    with TestClient(app) as client:
+        response = client.get("/app")
+    assert response.status_code == 200
+
+    parser = WorkspaceParser()
+    parser.feed(response.text)
+    assert len(parser.tabs) == 18
+    assert len(parser.panels) == 18
+    assert not [key for key, count in Counter(parser.ids).items() if count > 1]
+    panel_ids = {panel.get("id") for panel in parser.panels}
+    tab_ids = {tab.get("id") for tab in parser.tabs}
+    for tab in parser.tabs:
+        assert tab.get("aria-controls") in panel_ids
+        assert tab.get("aria-selected") in {"true", "false"}
+    for panel in parser.panels:
+        assert panel.get("aria-labelledby") in tab_ids
+
+    root = Path(__file__).resolve().parents[1]
+    main_js = (root / "public/js/main.js").read_text()
+    css = (root / "public/css/styles.css").read_text()
+    assert "function initSectionTabs()" in main_js
+    assert 'event.key === "ArrowRight"' in main_js
+    assert 'event.key === "ArrowLeft"' in main_js
+    assert 'id="glossary-term-count" class="soft-tag"' in (root / "templates/app.html").read_text()
+    assert "data-focus-glossary" not in (root / "templates/app.html").read_text()
+    assert ".section-tab.is-active" in css
+    assert ".section-tab-panel[hidden] { display: none !important; }" in css

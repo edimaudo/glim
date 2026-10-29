@@ -70,7 +70,7 @@ These action routes are needed because API secrets must stay on the server. The 
 
 ## Design pass
 
-The interface uses Inter throughout with a restrained neutral surface palette and a consistent green accent. Redundant all-caps eyebrow labels and decorative number/icon treatments were removed, hero dashboard decoration was simplified, gradients and shadows were reduced, and secondary text was raised for readability. The mobile overview places two headline metrics side by side and the monthly budget on its own row to avoid cramped labels. Light remains the default; dark mode uses charcoal-neutral surfaces rather than a green-tinted page.
+The interface uses Inter throughout with a restrained neutral surface palette and a consistent green accent. Each workspace section uses compact, keyboard-accessible tabs to group related tasks: Overview (Summary, Glim coach, Rewards), Debt (Accounts, Plan & projection, Milestones & coach), Savings (Goals, Product comparison, PayPal milestones, Coach & learning), Financial Literacy (Assessment, Practice quiz, Glossary, Ask Glim), and Settings (Appearance, Coaching, Your data, About). Tabs reduce long page scrolls while preserving the existing section navigation. Redundant all-caps eyebrow labels and decorative number/icon treatments were removed, hero dashboard decoration was simplified, gradients and shadows were reduced, and secondary text was raised for readability. The mobile overview places two headline metrics side by side and the monthly budget on its own row to avoid cramped labels. Light remains the default; dark mode uses charcoal-neutral surfaces rather than a green-tinted page.
 
 ## Main features
 

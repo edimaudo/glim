@@ -191,6 +191,58 @@ html[data-theme="dark"] .highlight { color: #8dd1a9; }
 .banner-dismiss { flex: 0 0 auto; margin: -3px 0 0 auto; border: 0; background: transparent; color: var(--muted); font-size: 1.2rem; }
 .app-view { padding-top: 27px; }
 .app-view.is-visible { display: block; }
+
+/* Compact, accessible secondary tabs keep dense workflows in focused panels. */
+.section-tabs {
+  position: sticky;
+  top: 77px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 5px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-muted);
+}
+.section-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 39px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.section-tab:hover { color: var(--text-strong); background: var(--surface); }
+.section-tab.is-active {
+  background: var(--surface);
+  color: var(--text-strong);
+  border-color: var(--border);
+  box-shadow: 0 1px 2px rgb(20 35 27 / 5%);
+}
+.section-tab:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.section-tab-panels { min-width: 0; }
+.section-tab-panel { min-width: 0; }
+.section-tab-panel[hidden] { display: none !important; }
+.section-tab-panel.is-active { display: block; }
+.debt-plan-tab-layout { display: grid; grid-template-columns: minmax(280px, .76fr) minmax(0, 1.24fr); gap: 17px; align-items: start; }
+.debt-plan-tab-layout > .panel { min-width: 0; }
+.settings-tab-stack { display: grid; gap: 17px; }
 .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 25px; margin-bottom: 25px; }
 .page-heading h1 { margin: 0 0 7px; color: var(--text-strong); font-size: clamp(1.7rem, 2.7vw, 2.35rem); line-height: 1.18; letter-spacing: -.065em; font-weight: 600; }
 .page-heading p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.7; }
@@ -732,4 +784,15 @@ html[data-theme="dark"] .highlight { color: #8dd1a9; }
 }
 .paypal-reward-panel .rewards-copy p {
   max-width: 65ch;
+}
+
+@media (max-width: 860px) {
+  .debt-plan-tab-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .section-tabs { top: 67px; }
+}
+@media (max-width: 520px) {
+  .section-tabs { margin-bottom: 14px; }
+  .section-tab { min-height: 41px; padding: 8px 12px; font-size: .76rem; }
 }

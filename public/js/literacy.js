@@ -199,7 +199,6 @@
       document.querySelectorAll("[data-glossary-filter]").forEach((item) => { item.classList.toggle("is-active", item === button); item.setAttribute("aria-pressed", String(item === button)); });
       renderGlossary();
     }));
-    document.querySelectorAll("[data-focus-glossary]").forEach((button) => button.addEventListener("click", () => { $("glossary-search")?.focus(); $("glossary-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
     renderGlossary();
   }
 

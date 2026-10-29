@@ -454,6 +454,57 @@
     app.toast(snooze ? "Follow-up snoozed for three days." : "Follow-up dismissed. Glim will adjust the next reminder cadence.");
   }
 
+  function initSectionTabs() {
+    document.querySelectorAll("[data-tabset]").forEach((tabset) => {
+      const tabs = Array.from(tabset.querySelectorAll('[role="tab"][data-tab-target]'));
+      if (!tabs.length) return;
+
+      const activate = (selected, moveFocus = false) => {
+        tabs.forEach((tab) => {
+          const active = tab === selected;
+          tab.classList.toggle("is-active", active);
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+          const panel = document.getElementById(tab.dataset.tabTarget);
+          if (panel) {
+            panel.hidden = !active;
+            panel.classList.toggle("is-active", active);
+          }
+        });
+        if (moveFocus) selected.focus();
+        const panel = document.getElementById(selected.dataset.tabTarget);
+        // Redraw canvas charts after their tab becomes visible so the measured width is correct.
+        window.requestAnimationFrame(() => {
+          if (!app.state || !panel) return;
+          const schedule = app.state.lastPlan?.schedule;
+          if (panel.querySelector("#debt-chart") && schedule?.length) {
+            app.drawScheduleChart("debt-chart", schedule, "debt-chart-description");
+          }
+          if (panel.querySelector("#overview-debt-chart")) {
+            app.renderOverview(app.state.lastPlan || null);
+          }
+        });
+      };
+
+      tabs.forEach((tab) => tab.addEventListener("click", () => activate(tab)));
+      tabset.addEventListener("keydown", (event) => {
+        const index = tabs.indexOf(event.target);
+        if (index < 0) return;
+        let next = index;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = tabs.length - 1;
+        else return;
+        event.preventDefault();
+        activate(tabs[next], true);
+      });
+
+      const initiallySelected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0];
+      activate(initiallySelected);
+    });
+  }
+
   function initHandlers() {
     document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", async () => {
       const destination = button.dataset.view;
@@ -531,6 +582,7 @@
     const userName = $("user-name");
     if (userName) userName.textContent = profile.name || "Glim member";
     if ($("user-initials")) $("user-initials").textContent = String(profile.name || "G").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+    initSectionTabs();
     initHandlers();
     window.GlimSettings?.init();
     window.GlimDebt?.init();
