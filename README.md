@@ -54,7 +54,7 @@ JavaScript calls the following same-origin server action routes when a trusted b
 | `/coach` | Gemini coach or labelled local fallback |
 | `/products/compare` | Compare user-entered financial-product terms |
 | `/rewards/recommendations` | Qloo recommendations or labelled fallback |
-| `/rewards/claim` | Submit a CAD $1.00 PayPal Sandbox payout request |
+| `/rewards/claim` | Submit a guarded CAD $1.00 PayPal Sandbox payout request for an eligible debt or savings milestone |
 | `/rewards/status/{payout_batch_id}` | Refresh a Sandbox payout status |
 | `/integrations/status` | Report which provider credentials are configured |
 
@@ -78,9 +78,11 @@ The interface uses Inter throughout with a restrained neutral surface palette an
 - Savings goals and contribution tracking, a FinWise-aligned knowledge assessment, beginner/intermediate/advanced practice quizzes with answer explanations, and a searchable/filterable financial glossary.
 - Browser IndexedDB schema recovery: older local databases are upgraded if the `profiles` object store is missing, and versioned asset URLs prevent stale cached sign-in scripts from sticking around. Browser storage failures are logged for debugging but displayed as a generic, user-friendly message.
 - One contextual Glim coach available from Overview, Debt, Savings, Financial Literacy, and Settings.
+- Global Small, Medium, and Large text-size controls in the application top bar, mirrored in Settings and persisted per browser profile.
 - Comparisons calculated from financial-product terms entered by the user. Glim does not fabricate live rates or offers.
 - Optional Qloo-based non-financial reward ideas.
-- PayPal Sandbox payout request and status refresh. Reward evidence is entered in the browser and is not independently verified.
+- PayPal has distinct roles across the product: (1) Debt Management checks the recorded 10% debt-reduction milestone before allowing a reward-transfer request; (2) Savings checks completed goals before allowing a reward-transfer request; (3) a shared server-side guardrail fixes the reward amount at CAD $1.00 and validates the allowed milestone evidence; and (4) Overview reconciles the payout batch status returned by PayPal. The app never exposes PayPal credentials to the browser. In this prototype, milestone evidence is user-entered and not independently verified; a production rewards programme would require server-trusted financial data and durable duplicate-claim prevention. Sandbox does not transfer real money.
+- The debt planner is also a financial safety control: it rejects plans that do not cover the entered minimum payments and compares avalanche/snowball estimates before the user chooses a plan. PayPal is the transaction execution and status provider for the supported reward flow; it does not generate financial advice or independently assess affordability. PayPal's standard Orders API is merchant checkout, while Payouts sends funds to recipients. These APIs do not automatically pay arbitrary credit-card issuers or retrieve a user's external card balance, so Glim does not claim the debt planner has paid a creditor. Users confirm bill payments with their issuer unless that creditor offers its own supported PayPal checkout flow.
 - Adaptive in-app follow-ups, light/dark themes, and small/medium/large global text scaling.
 
 Repayment outputs are estimates based on submitted balances, APRs, minimum payments, and budget. They may differ from lender calculations. The app provides financial education, not regulated financial advice.
@@ -120,7 +122,7 @@ For local sign-in sessions, a development signing-key fallback is used if `GLIM_
 Configure only the providers that you intend to test:
 
 - `GEMINI_API_KEY` and optional `GEMINI_MODEL` for the coach.
-- `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `PAYPAL_ENV=sandbox` for Sandbox payout requests.
+- `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `PAYPAL_ENV=sandbox` for guarded Sandbox milestone transfers and status checks.
 - `QLOO_API_KEY` for optional reward personalization.
 
 No provider integration is considered live-tested until it has been called successfully with valid credentials. The PayPal module deliberately blocks live payouts.

@@ -27,6 +27,7 @@ from services.paypal_rewards import (
     create_sandbox_payout,
     get_sandbox_payout_status,
 )
+from services.paypal_guardrails import REWARD_AMOUNT_CAD, RewardGuardrailError, validate_reward_milestone
 from services.qloo_personalization import get_reward_ideas
 
 logger = logging.getLogger("glim")
@@ -126,14 +127,6 @@ def _number(payload: dict[str, Any], key: str, *, minimum: float = 0, maximum: f
     if value < minimum or value > maximum:
         raise HTTPException(status_code=422, detail=f"'{key}' must be between {minimum} and {maximum}.")
     return value
-
-
-def _safe_amount(value: Any) -> float:
-    try:
-        amount = float(value)
-        return amount if math.isfinite(amount) and 0 <= amount <= 10_000_000 else -1
-    except (TypeError, ValueError):
-        return -1
 
 
 def _check_product_options(products: Any) -> list[dict[str, Any]]:
@@ -311,25 +304,17 @@ async def claim_reward(request: Request, _profile: dict[str, str] = Depends(requ
     client_claim_id = _text(payload, "client_claim_id", minimum=8, maximum=120)
     evidence = payload.get("evidence", {})
     if not isinstance(evidence, dict):
-        raise HTTPException(status_code=422, detail="'evidence' must be an object.")
+        raise HTTPException(status_code=422, detail="Milestone evidence is missing or invalid.")
     if "@" not in recipient_email or " " in recipient_email:
         raise HTTPException(status_code=422, detail="Enter a valid Sandbox recipient email.")
 
-    if milestone_key == "savings_goal_reached":
-        target = _safe_amount(evidence.get("target"))
-        current = _safe_amount(evidence.get("current"))
-        if target <= 0 or current < target:
-            raise HTTPException(status_code=409, detail="The entered savings goal has not reached its target.")
-    elif milestone_key == "debt_reduction_10":
-        baseline = _safe_amount(evidence.get("baseline_balance"))
-        current = _safe_amount(evidence.get("current_balance"))
-        if baseline <= 0 or current > baseline * 0.9:
-            raise HTTPException(status_code=409, detail="The entered debt balance has not decreased by at least 10% from its starting value.")
-    else:
-        raise HTTPException(status_code=422, detail="Supported demo milestones are a completed savings goal or a 10% reduction in tracked debt.")
+    try:
+        guardrail = validate_reward_milestone(milestone_key, evidence)
+    except RewardGuardrailError as exc:
+        raise HTTPException(status_code=409 if milestone_key in {"savings_goal_reached", "debt_reduction_10"} else 422, detail=str(exc)) from exc
 
     try:
-        result = await create_sandbox_payout(recipient_email.strip(), "1.00", client_claim_id)
+        result = await create_sandbox_payout(recipient_email.strip(), REWARD_AMOUNT_CAD, client_claim_id)
     except PayPalConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
@@ -337,7 +322,8 @@ async def claim_reward(request: Request, _profile: dict[str, str] = Depends(requ
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     result["milestone_key"] = milestone_key
-    result["evidence_review"] = "Client-entered demo data; not independently verified"
+    result["guardrail"] = guardrail
+    result["evidence_review"] = "User-entered demo data; not independently verified"
     return result
 
 

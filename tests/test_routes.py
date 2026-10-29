@@ -124,6 +124,34 @@ def test_paypal_claim_reports_missing_sandbox_configuration(monkeypatch):
         assert "PayPal Sandbox is not configured" in response.json()["detail"]
 
 
+def test_paypal_reward_uses_fixed_amount_after_guardrail(monkeypatch):
+    import app as application
+
+    monkeypatch.setenv("PAYPAL_ENV", "sandbox")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "sandbox-client")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "sandbox-secret")
+    captured = {}
+
+    async def fake_payout(recipient_email, amount_cad, client_claim_id):
+        captured.update({"recipient_email": recipient_email, "amount_cad": amount_cad, "client_claim_id": client_claim_id})
+        return {"provider": "paypal-sandbox", "payout_batch_id": "batch-demo", "batch_status": "PENDING", "amount": {"value": amount_cad, "currency": "CAD"}, "notice": "Sandbox request submitted."}
+
+    monkeypatch.setattr(application, "create_sandbox_payout", fake_payout)
+    payload = {
+        "milestone_key": "debt_reduction_10",
+        "recipient_email": "sandbox@example.com",
+        "evidence": {"baseline_balance": 1000, "current_balance": 900},
+        "client_claim_id": "claim-guardrail-0001",
+    }
+    with TestClient(application.app) as client:
+        client.post("/session", json={"name": "Alex", "email": "alex@example.com"})
+        response = client.post("/rewards/claim", json=payload)
+    assert response.status_code == 200
+    assert captured["amount_cad"] == "1.00"  # client cannot set the payout amount
+    assert response.json()["guardrail"]["check"] == "passed"
+    assert response.json()["guardrail"]["currency"] == "CAD"
+
+
 def test_paypal_status_requires_session_and_reports_unconfigured_sandbox(monkeypatch):
     monkeypatch.delenv("PAYPAL_CLIENT_ID", raising=False)
     monkeypatch.delenv("PAYPAL_CLIENT_SECRET", raising=False)
@@ -200,8 +228,8 @@ def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors(
     assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
 
     # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
-    assert "/js/storage.js?v=20261028-glim-design-cleanup-7" in signin_template
-    assert "/js/storage.js?v=20261028-glim-design-cleanup-7" in app_template
+    assert "/js/storage.js?v=20261029-glim-paypal-guardrails-2" in signin_template
+    assert "/js/storage.js?v=20261029-glim-paypal-guardrails-2" in app_template
 
 
 def test_signed_in_interface_removes_demo_banners_and_import_instructions():
@@ -382,3 +410,48 @@ def test_contextual_glim_coach_exists_on_overview_and_each_section():
     main = (root / "public/js/main.js").read_text()
     assert 'active_section: app.activeView || "overview"' in main
     assert 'button.closest("[data-view-panel]")?.dataset.viewPanel' in main
+
+
+
+def test_landing_header_is_minimal_and_logo_has_no_separate_g_mark():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    landing = (root / "templates/index.html").read_text()
+    signin = (root / "templates/signin.html").read_text()
+    app_template = (root / "templates/app.html").read_text()
+
+    header = landing.split("<header", 1)[1].split("</header>", 1)[0]
+    assert "How it works" not in header
+    assert "Built for real life" not in header
+    assert "Ask your coach" not in header
+    assert 'class="brand-mark"' not in landing + signin + app_template + (root / "templates/404.html").read_text()
+    assert 'class="card-mark"' not in signin
+    assert "Clear steps, not judgment. You stay in control." not in landing
+
+
+def test_app_has_global_text_size_toggle_and_paypal_is_explicitly_visible():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates/app.html").read_text()
+    main_js = (root / "public/js/main.js").read_text()
+    css = (root / "public/css/styles.css").read_text()
+
+    for size in ("small", "medium", "large"):
+        assert f'data-font-size="{size}"' in app_template
+    assert 'aria-label="Text size"' in app_template
+    assert "font-size-control" in css
+    assert "PayPal money-movement safeguards" in app_template
+    assert "PayPal Sandbox" in app_template
+    assert 'data-reward-scope="debt"' in app_template
+    assert 'data-reward-scope="savings"' in app_template
+    assert 'data-reward-scope="any"' in app_template
+    assert 'id="paypal-debt-message"' in app_template
+    assert 'id="paypal-savings-message"' in app_template
+    assert 'id="claim-reward"' in app_template
+    assert 'id="reward-payout-history"' in app_template
+    assert 'client.claimReward' in main_js or 'GlimClient.claimReward' in main_js
+    assert 'client.payoutStatus' in main_js or 'GlimClient.payoutStatus' in main_js
+    assert "validate_reward_milestone" in (root / "app.py").read_text()
+

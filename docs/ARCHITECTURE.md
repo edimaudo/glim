@@ -55,3 +55,10 @@ On Vercel, no `StaticFiles` mount is registered. Files under the project-level `
 ## Limitations
 
 The prototype is not production authentication. Browser-local data is not encrypted by Glim and does not sync across devices. Production login, secure data synchronization, connected financial accounts, provider-verified offers, scheduled reminders, independently verified reward eligibility, and formal security/accessibility reviews remain future work.
+
+
+## PayPal's role across Glim
+
+PayPal is used in the Debt Management and Savings user journeys, with a shared guardrail before any Sandbox payout. The Debt section checks the recorded 10% debt-reduction milestone; Savings checks whether a tracked goal reached its target; Overview reconciles payout status from PayPal. The backend fixes the prototype payout amount to CAD $1.00. User-entered milestone data is not independently verified, so this is a hackathon demonstration rather than production fraud control.
+
+PayPal is not described as paying arbitrary credit-card bills or retrieving external card balances. Its standard Orders API is merchant checkout and its Payouts API sends funds to recipients. Glim's payment planner calculates a plan and users still confirm bill payments through their creditor's own payment channel unless the creditor provides a supported PayPal checkout.
