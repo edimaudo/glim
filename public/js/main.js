@@ -3,30 +3,36 @@
   const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(Number(value) || 0);
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 
-  function renderPayoutHistory() {
-    const output = $("reward-payout-history");
+  function formatRewardStatus(status) {
+    const labels = { SUCCESS: "Completed", PENDING: "Processing", PROCESSING: "Processing", DENIED: "Not completed", CANCELED: "Cancelled", RETURNED: "Returned", ONHOLD: "On hold" };
+    const key = String(status || "SUBMITTED").toUpperCase();
+    return labels[key] || "Submitted";
+  }
+
+  function renderRewardHistory() {
+    const output = $("reward-history");
     if (!output || !app.state) return;
     const entries = app.state.rewardPayouts || [];
     output.hidden = entries.length === 0;
     if (!entries.length) { output.innerHTML = ""; return; }
-    output.innerHTML = `<section class="panel payout-history-panel"><div class="panel-heading"><div><h2>PayPal payout activity</h2><p>Transaction status is refreshed from PayPal Sandbox. This history is stored in this browser.</p></div></div><div class="saved-product-list">${entries.slice().reverse().map((item) => `<div class="saved-product-item"><span><strong>${escapeHtml(item.milestone_label || "Glim milestone")}</strong><small>${escapeHtml(item.requested_at ? new Date(item.requested_at).toLocaleString() : "Request date unavailable")} · CAD $${Number(item.amount || 1).toFixed(2)} · ${escapeHtml(item.batch_status || "Submitted")}</small><small>Batch: ${escapeHtml(item.payout_batch_id || "not returned")}</small></span>${item.payout_batch_id ? `<button type="button" class="button button-secondary" data-refresh-payout="${escapeHtml(item.payout_batch_id)}">Refresh status</button>` : ""}</div>`).join("")}</div><p id="payout-refresh-message" class="small-help" role="status" aria-live="polite"></p></section>`;
+    output.innerHTML = `<section class="panel reward-history-panel"><div class="panel-heading"><div><h2>Reward activity</h2><p>Review the status of your reward requests.</p></div></div><div class="saved-product-list">${entries.slice().reverse().map((item) => `<div class="saved-product-item"><span><strong>${escapeHtml(item.milestone_label || "Glim milestone")}</strong><small>${escapeHtml(item.requested_at ? new Date(item.requested_at).toLocaleString() : "Request date unavailable")} · CAD $${Number(item.amount || 1).toFixed(2)} · ${escapeHtml(formatRewardStatus(item.batch_status))}</small></span>${item.payout_batch_id ? `<button type="button" class="button button-secondary" data-refresh-reward="${escapeHtml(item.payout_batch_id)}">Refresh status</button>` : ""}</div>`).join("")}</div><p id="reward-status-message" class="small-help" role="status" aria-live="polite"></p></section>`;
   }
 
-  async function refreshPayoutStatus(batchId, button) {
-    const message = $("payout-refresh-message");
+  async function refreshRewardStatus(batchId, button) {
+    const message = $("reward-status-message");
     if (button) { button.disabled = true; button.textContent = "Refreshing…"; }
-    if (message) message.textContent = "Checking PayPal Sandbox…";
+    if (message) message.textContent = "Updating reward status…";
     try {
       const result = await window.GlimClient.payoutStatus(batchId);
       const state = app.state;
       const index = (state.rewardPayouts || []).findIndex((item) => item.payout_batch_id === batchId);
       if (index >= 0) state.rewardPayouts[index] = { ...state.rewardPayouts[index], batch_status: result.batch_status, item_status_counts: result.item_status_counts, refreshed_at: new Date().toISOString(), notice: result.notice };
       await app.saveState();
-      renderPayoutHistory();
-      const refreshedMessage = $("payout-refresh-message");
-      if (refreshedMessage) refreshedMessage.textContent = `${result.notice} Latest batch status: ${result.batch_status}.`;
+      renderRewardHistory();
+      const refreshedMessage = $("reward-status-message");
+      if (refreshedMessage) refreshedMessage.textContent = `Reward status updated: ${formatRewardStatus(result.batch_status)}.`;
     } catch (error) {
-      console.error("Glim could not refresh payout status", error);
+      console.error("Glim could not refresh reward status", error);
       if (message) { message.textContent = "We couldn’t refresh the reward status right now. Please try again later."; message.className = "form-message is-error"; }
       if (button) { button.disabled = false; button.textContent = "Retry status"; }
     }
@@ -119,7 +125,7 @@
       if (window.GlimDebt) window.GlimDebt.render();
       if (window.GlimSavings) window.GlimSavings.render();
       this.renderOverview(this.state.lastPlan || null);
-      renderPayoutHistory();
+      renderRewardHistory();
     },
     drawScheduleChart(canvasId, schedule, descriptionId) {
       const canvas = $(canvasId);
@@ -264,7 +270,6 @@
       const status = await window.GlimClient.integrationStatus();
       if ($("coach-status")) $("coach-status").textContent = "Ready to help";
       if ($("settings-gemini-status")) $("settings-gemini-status").textContent = status.gemini ? "AI coaching available" : "Built-in guidance available";
-      if ($("settings-paypal-status")) $("settings-paypal-status").textContent = status.paypal_sandbox ? "PayPal Sandbox money movement available" : "PayPal money movement unavailable";
       if ($("settings-qloo-status")) $("settings-qloo-status").textContent = status.qloo ? "Personalized ideas available" : "General suggestions available";
     } catch (_) { /* A status display should not block the workspace. */ }
   }
@@ -299,7 +304,7 @@
       apiKey: "savings_goal_reached",
       label: `Savings goal reached: ${completedGoal.name}`,
       scope: "savings",
-      sourceMessageId: "paypal-savings-message",
+      sourceMessageId: "savings-milestone-message",
       evidence: { goal_id: completedGoal.id, target: Number(completedGoal.target), current: Number(completedGoal.current) }
     } : null;
 
@@ -310,7 +315,7 @@
       apiKey: "debt_reduction_10",
       label: "Tracked debt reduced by at least 10%",
       scope: "debt",
-      sourceMessageId: "paypal-debt-message",
+      sourceMessageId: "debt-milestone-message",
       evidence: { baseline_balance: baseline, current_balance: current }
     } : null;
 
@@ -322,7 +327,7 @@
   function openRewardDialog(event) {
     const scope = event?.currentTarget?.dataset?.rewardScope || "any";
     const eligible = getEligibleReward(scope);
-    const messageIds = { any: "paypal-reward-message", debt: "paypal-debt-message", savings: "paypal-savings-message" };
+    const messageIds = { any: "milestone-reward-message", debt: "debt-milestone-message", savings: "savings-milestone-message" };
     const notice = $(messageIds[scope] || messageIds.any);
     if (!eligible) {
       const messages = {
@@ -336,7 +341,7 @@
     if (notice) { notice.textContent = ""; notice.className = "form-message"; }
     app.pendingReward = eligible;
     if ($("reward-dialog-title")) $("reward-dialog-title").textContent = eligible.label;
-    if ($("reward-dialog-description")) $("reward-dialog-description").textContent = `Glim has checked the milestone against the figures you entered. If you continue, it will request a fixed CAD $1.00 PayPal Sandbox payout. PayPal will return the transaction status; this does not pay a creditor or move money into a savings account.`;
+    if ($("reward-dialog-description")) $("reward-dialog-description").textContent = `Your milestone is eligible for a CAD $1.00 reward. Enter the recipient email and continue to submit the request. This reward is separate from your debt payments and savings contributions.`;
     if ($("reward-email") && app.state.profile?.email) $("reward-email").value = app.state.profile.email;
     if ($("reward-dialog-message")) { $("reward-dialog-message").textContent = ""; $("reward-dialog-message").className = "form-message"; }
     const dialog = $("reward-dialog");
@@ -352,7 +357,7 @@
     const milestone = app.pendingReward || getEligibleReward("any");
     if (!milestone) { if (message) { message.textContent = "This milestone is no longer eligible. Refresh the page and try again."; message.className = "form-message is-error"; } return; }
     if (formButton) { formButton.disabled = true; formButton.textContent = "Submitting…"; }
-    if (message) { message.textContent = "Contacting PayPal Sandbox…"; message.className = "form-message"; }
+    if (message) { message.textContent = "Submitting your reward request…"; message.className = "form-message"; }
     try {
       const claimId = app.state.rewardClaimRequests?.[milestone.key] || (window.crypto?.randomUUID ? window.crypto.randomUUID() : `claim-${Date.now()}-${Math.random().toString(16).slice(2)}`);
       app.state.rewardClaimRequests = { ...(app.state.rewardClaimRequests || {}), [milestone.key]: claimId };
@@ -364,13 +369,13 @@
         sender_batch_id: result.sender_batch_id || null, batch_status: result.batch_status || "submitted",
         amount: Number(result.amount?.value || 1), currency: result.amount?.currency || "CAD", requested_at: new Date().toISOString(), notice: result.notice
       }].slice(-20);
-      if (message) { message.textContent = "Reward request submitted. PayPal returned a transaction status."; message.className = "form-message is-success"; }
-      const sourceNotice = $(milestone.sourceMessageId || "paypal-reward-message");
-      if (sourceNotice) { sourceNotice.textContent = `PayPal Sandbox request status: ${result.batch_status || "submitted"}.`; sourceNotice.className = "form-message is-success"; }
-      const overviewNotice = $("paypal-reward-message");
-      if (overviewNotice) { overviewNotice.textContent = `Latest payout request: ${result.batch_status || "submitted"}.`; overviewNotice.className = "form-message is-success"; }
-      renderPayoutHistory();
-      app.toast("PayPal Sandbox accepted the payout request.");
+      if (message) { message.textContent = "Your reward request has been submitted."; message.className = "form-message is-success"; }
+      const sourceNotice = $(milestone.sourceMessageId || "milestone-reward-message");
+      if (sourceNotice) { sourceNotice.textContent = `Reward status: ${formatRewardStatus(result.batch_status)}.`; sourceNotice.className = "form-message is-success"; }
+      const overviewNotice = $("milestone-reward-message");
+      if (overviewNotice) { overviewNotice.textContent = `Latest reward request: ${result.batch_status || "submitted"}.`; overviewNotice.className = "form-message is-success"; }
+      renderRewardHistory();
+      app.toast("Your reward request has been submitted.");
       await app.saveState();
     } catch (error) {
       console.error("Glim could not submit reward request", error);
@@ -556,9 +561,9 @@
       if (status) status.textContent = permission === "granted" ? "Browser notifications are enabled when Glim is open." : "Notifications were not enabled. In-app reminders remain available.";
       await checkSmartFollowup();
     });
-    $("reward-payout-history")?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-refresh-payout]");
-      if (button) refreshPayoutStatus(button.dataset.refreshPayout, button);
+    $("reward-history")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-refresh-reward]");
+      if (button) refreshRewardStatus(button.dataset.refreshReward, button);
     });
     document.querySelectorAll("[data-reward-scope]").forEach((button) => button.addEventListener("click", openRewardDialog));
     $("reward-dialog-form")?.addEventListener("submit", claimReward);

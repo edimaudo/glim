@@ -228,8 +228,8 @@ def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors(
     assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
 
     # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
-    assert "/js/storage.js?v=20261029-glim-tabs-1" in signin_template
-    assert "/js/storage.js?v=20261029-glim-tabs-1" in app_template
+    assert "/js/storage.js?v=20261029-glim-button-unified-3" in signin_template
+    assert "/js/storage.js?v=20261029-glim-button-unified-3" in app_template
 
 
 def test_signed_in_interface_removes_demo_banners_and_import_instructions():
@@ -430,30 +430,60 @@ def test_landing_header_is_minimal_and_logo_has_no_separate_g_mark():
     assert "Clear steps, not judgment. You stay in control." not in landing
 
 
-def test_app_has_global_text_size_toggle_and_paypal_is_explicitly_visible():
+def test_app_keeps_payment_provider_backend_only_and_uses_generic_milestones():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     app_template = (root / "templates/app.html").read_text()
     main_js = (root / "public/js/main.js").read_text()
     css = (root / "public/css/styles.css").read_text()
+    all_ui = "\n".join(path.read_text() for folder in (root / "templates", root / "public/js") for path in folder.rglob("*.*"))
+
+    # Provider choice and test-environment details are implementation concerns, not UI copy.
+    assert "PayPal" not in all_ui
+    assert "Sandbox" not in all_ui
+    assert "sandbox" not in all_ui.lower()
+    assert "Payment integration" not in app_template
+    assert "PayPal" not in css and "sandbox-label" not in css
 
     for size in ("small", "medium", "large"):
         assert f'data-font-size="{size}"' in app_template
     assert 'aria-label="Text size"' in app_template
     assert "font-size-control" in css
-    assert "PayPal money-movement safeguards" in app_template
-    assert "PayPal Sandbox" in app_template
+    assert 'id="savings-tab-milestones"' in app_template
+    assert '>Milestones</button>' in app_template
     assert 'data-reward-scope="debt"' in app_template
     assert 'data-reward-scope="savings"' in app_template
     assert 'data-reward-scope="any"' in app_template
-    assert 'id="paypal-debt-message"' in app_template
-    assert 'id="paypal-savings-message"' in app_template
+    assert 'id="debt-milestone-message"' in app_template
+    assert 'id="savings-milestone-message"' in app_template
     assert 'id="claim-reward"' in app_template
-    assert 'id="reward-payout-history"' in app_template
-    assert 'client.claimReward' in main_js or 'GlimClient.claimReward' in main_js
-    assert 'client.payoutStatus' in main_js or 'GlimClient.payoutStatus' in main_js
-    assert "validate_reward_milestone" in (root / "app.py").read_text()
+    assert 'id="reward-history"' in app_template
+    assert 'GlimClient.claimReward' in main_js
+    assert 'GlimClient.payoutStatus' in main_js
+    assert 'data-refresh-reward' in main_js
+    assert 'button.dataset.refreshReward' in main_js
+    assert 'button.dataset.refreshPayout' not in main_js
+    assert 'validate_reward_milestone' in (root / "app.py").read_text()
+
+
+def test_app_primary_buttons_share_one_consistent_design_system():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    css = (root / "public/css/styles.css").read_text()
+    app_template = (root / "templates/app.html").read_text()
+
+    assert ".app-page .button {" in css
+    assert "min-height: 42px" in css
+    assert "border-radius: 9px" in css
+    assert ".app-page .button-primary,\n.app-page .button-dark" in css
+    assert ".app-page .button-secondary" in css
+    assert ".app-page .button-ghost" in css
+    assert ".app-page .plain-icon-button,\n.app-page .icon-button" in css
+    # Primary actions use the shared button class; tabs/chips remain separate controls.
+    assert app_template.count('class="button button-primary') >= 8
+    assert app_template.count('class="button button-secondary') >= 8
 
 
 
