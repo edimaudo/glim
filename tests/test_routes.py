@@ -228,8 +228,8 @@ def test_indexeddb_schema_repairs_old_profiles_store_and_hides_low_level_errors(
     assert "${error.message}" not in main[main.index("Glim could not initialize browser-local data"):]
 
     # Versioned asset URLs prevent a cached old script from continuing to show raw errors.
-    assert "/js/storage.js?v=20261029-glim-button-unified-3" in signin_template
-    assert "/js/storage.js?v=20261029-glim-button-unified-3" in app_template
+    assert "/js/storage.js?v=20261030-starter-profile-1" in signin_template
+    assert "/js/storage.js?v=20261030-starter-profile-1" in app_template
 
 
 def test_signed_in_interface_removes_demo_banners_and_import_instructions():
@@ -535,3 +535,62 @@ def test_main_workspace_uses_accessible_tabbed_sections_without_duplicate_ids():
     assert "data-focus-glossary" not in (root / "templates/app.html").read_text()
     assert ".section-tab.is-active" in css
     assert ".section-tab-panel[hidden] { display: none !important; }" in css
+
+
+def test_debt_plan_rejects_unconfirmed_starter_terms():
+    with TestClient(app) as client:
+        client.post("/session", json={"name": "Alex", "email": "alex@example.com"})
+        response = client.post("/debt/plan", json={
+            "debts": [{"id": "starter", "name": "Credit card debt", "balance": 10000, "apr": None, "minimum_payment": None}],
+            "monthly_budget": 500,
+            "selected_strategy": "avalanche",
+        })
+        assert response.status_code == 422
+        assert "interest rate and monthly minimum payment" in response.json()["detail"]
+
+
+def test_starter_profile_defaults_and_existing_data_preservation():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if not shutil.which("node"):
+        import pytest
+        pytest.skip("Node.js is unavailable for the browser-storage unit test")
+    storage_path = Path(__file__).resolve().parents[1] / "public" / "js" / "storage.js"
+    script = r'''
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const context = { window: {}, console, Promise, Date, Math, setTimeout, clearTimeout, structuredClone };
+vm.runInNewContext(source, context);
+const storage = context.window.GlimStorage;
+const fresh = storage.applyStarterPortfolio(storage.defaultState({name:"Alex", email:"alex@example.com"}));
+if (fresh.debts.length !== 1 || fresh.debts[0].balance !== 10000) throw new Error("Starter debt is incorrect");
+if (fresh.debts[0].apr !== null || fresh.debts[0].minimum_payment !== null) throw new Error("Debt terms must remain unconfirmed");
+if (fresh.savingsGoals.length !== 1 || fresh.savingsGoals[0].current !== 1300 || fresh.savingsGoals[0].target !== 10000) throw new Error("Starter savings goal is incorrect");
+if (fresh.baselineDebt !== 10000 || fresh.starterPortfolioVersion !== 1) throw new Error("Starter tracking baseline is incorrect");
+const existing = storage.defaultState({name:"Sam", email:"sam@example.com"});
+existing.debts = [{id:"existing", name:"Existing loan", balance:4200, apr:12.5, minimum_payment:110}];
+existing.baselineDebt = 4200;
+storage.applyStarterPortfolio(existing);
+if (existing.debts.length !== 1 || existing.debts[0].id !== "existing" || existing.baselineDebt !== 4200) throw new Error("Existing user debt was overwritten");
+if (existing.savingsGoals.length !== 1 || existing.savingsGoals[0].current !== 1300) throw new Error("Missing savings category was not initialized");
+'''
+    subprocess.run(["node", "-e", script, str(storage_path)], check=True, capture_output=True, text=True)
+
+
+def test_app_includes_starter_profile_migration_script_and_cache_buster():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    app_template = (root / "templates" / "app.html").read_text()
+    sign_in_template = (root / "templates" / "signin.html").read_text()
+    storage = (root / "public" / "js" / "storage.js").read_text()
+    assert "storage.js?v=20261030-starter-profile-1" in app_template
+    assert "storage.js?v=20261030-starter-profile-1" in sign_in_template
+    assert "applyStarterPortfolio(defaultState" in storage
+    assert 'balance: 10000' in storage
+    assert 'target: 10000' in storage and 'current: 1300' in storage
+    assert 'apr: null' in storage and 'minimum_payment: null' in storage
+    assert "starterPortfolioVersion" in storage

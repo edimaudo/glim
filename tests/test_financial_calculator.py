@@ -47,3 +47,9 @@ def test_zero_balance_returns_zero_month_plan():
     assert result["starting_debt"] == 0
     assert result["payoff_months"] == 0
     assert result["schedule"][-1]["balance"] == 0
+
+
+def test_plan_requires_interest_rate_and_minimum_payment_instead_of_assuming_zero():
+    debt = [{"id": "starter", "name": "Credit card debt", "balance": 10000, "apr": None, "minimum_payment": None}]
+    with pytest.raises(PlanValidationError, match="Enter the interest rate and monthly minimum payment"):
+        calculate_plan(debt, 500, "avalanche")

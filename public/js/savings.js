@@ -69,6 +69,7 @@
     const goal = (window.GlimApp.state.savingsGoals || []).find((item) => item.id === goalId);
     if (!goal) return;
     goal.current = value;
+    goal.starter = false;
     try { await window.GlimApp.saveState(); render(); window.GlimApp.renderOverview(); window.GlimApp.toast("Savings progress updated."); }
     catch (error) { window.GlimApp.toast(`Could not save progress: ${error.message}`); }
   }

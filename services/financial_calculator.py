@@ -17,6 +17,8 @@ def _validate_debts(debts: list[dict[str, Any]]) -> None:
     if not debts:
         raise PlanValidationError("Add at least one debt before calculating a plan.")
     for debt in debts:
+        if debt.get("apr") in (None, "") or debt.get("minimum_payment", debt.get("min_payment")) in (None, ""):
+            raise PlanValidationError("Enter the interest rate and monthly minimum payment for each debt before calculating a repayment plan.")
         try:
             balance = float(debt.get("balance", 0))
             apr = float(debt.get("apr", 0))

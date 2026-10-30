@@ -103,6 +103,9 @@
         if (!debts.length) {
           nextTitle.textContent = "Add a debt or obligation";
           nextCopy.textContent = "Enter the current balance and payment details to make your first estimate.";
+        } else if (debts.some((debt) => debt.apr === null || debt.apr === undefined || debt.apr === "" || debt.minimum_payment === null || debt.minimum_payment === undefined || debt.minimum_payment === "")) {
+          nextTitle.textContent = "Complete your debt details";
+          nextCopy.textContent = "Your starting balance is ready. Add the interest rate and monthly minimum payment to compare repayment plans.";
         } else if (!this.state.lastPlan) {
           nextTitle.textContent = "Calculate your repayment plan";
           nextCopy.textContent = "Compare a realistic monthly budget against your current balances and minimum payments.";

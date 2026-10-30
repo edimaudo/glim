@@ -4,6 +4,7 @@
   const preciseMoney = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const id = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `debt-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  let editingDebtId = null;
 
   function totalBalance(debts) { return (debts || []).reduce((sum, debt) => sum + Math.max(0, Number(debt.balance) || 0), 0); }
   function totalMinimums(debts) { return (debts || []).reduce((sum, debt) => sum + Math.max(0, Number(debt.minimum_payment ?? debt.min_payment) || 0), 0); }
@@ -37,17 +38,20 @@
         detail.className = "debt-item-main";
         const title = document.createElement("strong"); title.textContent = debt.name;
         const meta = document.createElement("p");
-        const apr = `${Number(debt.apr || 0).toFixed(2)}% APR`;
-        const minimum = `${money(debt.minimum_payment ?? debt.min_payment)} / mo minimum`;
+        const hasApr = debt.apr !== null && debt.apr !== undefined && debt.apr !== "" && Number.isFinite(Number(debt.apr));
+        const hasMinimum = debt.minimum_payment !== null && debt.minimum_payment !== undefined && debt.minimum_payment !== "" && Number.isFinite(Number(debt.minimum_payment));
         const due = debt.due_date ? ` · Due ${new Date(`${debt.due_date}T12:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}` : "";
-        meta.textContent = `${debt.type || "Debt"} · ${apr} · ${minimum}${due}`;
+        meta.textContent = hasApr && hasMinimum
+          ? `${debt.type || "Debt"} · ${Number(debt.apr).toFixed(2)}% APR · ${money(debt.minimum_payment)} / mo minimum${due}`
+          : `${debt.type || "Debt"} · Add interest rate and monthly minimum${due}`;
         detail.append(title, meta);
         const amount = document.createElement("div"); amount.className = "debt-item-amount";
         const value = document.createElement("strong"); value.textContent = money(debt.balance);
         const actions = document.createElement("div"); actions.className = "debt-item-actions";
-        const update = document.createElement("button"); update.type = "button"; update.textContent = "Update balance"; update.setAttribute("aria-label", `Update balance for ${debt.name}`); update.dataset.editBalance = debt.id;
-        const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove"; remove.setAttribute("aria-label", `Remove ${debt.name}`); remove.dataset.removeDebt = debt.id;
-        actions.append(update, remove); amount.append(value, actions);
+        const editDetails = document.createElement("button"); editDetails.type = "button"; editDetails.className = "button button-secondary button-small"; editDetails.textContent = hasApr && hasMinimum ? "Edit details" : "Add details"; editDetails.setAttribute("aria-label", `${hasApr && hasMinimum ? "Edit" : "Add"} interest rate and minimum payment for ${debt.name}`); editDetails.dataset.editDebt = debt.id;
+        const update = document.createElement("button"); update.type = "button"; update.className = "button button-secondary button-small"; update.textContent = "Update balance"; update.setAttribute("aria-label", `Update balance for ${debt.name}`); update.dataset.editBalance = debt.id;
+        const remove = document.createElement("button"); remove.type = "button"; remove.className = "button button-ghost button-small"; remove.textContent = "Remove"; remove.setAttribute("aria-label", `Remove ${debt.name}`); remove.dataset.removeDebt = debt.id;
+        actions.append(editDetails, update, remove); amount.append(value, actions);
         const balanceForm = document.createElement("form");
         balanceForm.className = "debt-balance-update"; balanceForm.hidden = true; balanceForm.dataset.balanceForm = debt.id;
         balanceForm.innerHTML = `<label for="updated-balance-${escapeHtml(debt.id)}">New balance (CAD)</label><input id="updated-balance-${escapeHtml(debt.id)}" name="balance" type="number" min="0" max="10000000" step="0.01" value="${Number(debt.balance) || 0}" required><button type="submit" class="button button-secondary">Save balance</button><button type="button" class="panel-link" data-cancel-balance="${escapeHtml(debt.id)}">Cancel</button>`;
@@ -61,7 +65,15 @@
       if ($("debt-chart-description")) $("debt-chart-description").textContent = debts.length ? "Calculate a repayment plan to see how your projected balance changes month by month." : "Add a debt and calculate a plan to see your projected payoff path.";
     }
     if ($("debt-total")) $("debt-total").textContent = money(total);
-    if ($("debt-minimums")) $("debt-minimums").textContent = money(minimums);
+    const missingTerms = debts.filter((debt) => debt.apr === null || debt.apr === undefined || debt.apr === "" || debt.minimum_payment === null || debt.minimum_payment === undefined || debt.minimum_payment === "");
+    if ($("debt-minimums")) $("debt-minimums").textContent = missingTerms.length ? "Incomplete" : money(minimums);
+    if ($("plan-message") && missingTerms.length && !state.lastPlan) {
+      $("plan-message").textContent = "Add the interest rate and monthly minimum payment for each debt before calculating a repayment plan.";
+      $("plan-message").className = "form-message";
+    } else if ($("plan-message") && !missingTerms && $("plan-message").textContent.startsWith("Add the interest rate")) {
+      $("plan-message").textContent = "";
+      $("plan-message").className = "form-message";
+    }
     if ($("debt-budget-summary")) $("debt-budget-summary").textContent = money(state.monthlyBudget || 0);
     if ($("debt-budget-note")) $("debt-budget-note").textContent = (state.monthlyBudget || 0) >= minimums ? "Available for debt payments" : "Below entered minimums — review this budget";
     if ($("debt-count-tag")) $("debt-count-tag").textContent = `${debts.length} ${debts.length === 1 ? "account" : "accounts"}`;
@@ -93,6 +105,12 @@
     const message = $("plan-message");
     const monthlyBudget = Number($("monthly-budget").value);
     const strategy = document.querySelector('input[name="strategy"]:checked')?.value || "avalanche";
+    const debts = window.GlimApp.state.debts || [];
+    const missingTerms = debts.some((debt) => debt.apr === null || debt.apr === undefined || debt.apr === "" || debt.minimum_payment === null || debt.minimum_payment === undefined || debt.minimum_payment === "");
+    if (missingTerms) {
+      if (message) { message.textContent = "Add the interest rate and monthly minimum payment for each debt before calculating a repayment plan."; message.className = "form-message is-error"; }
+      return;
+    }
     if (button) { button.disabled = true; button.textContent = "Calculating…"; }
     if (message) { message.textContent = "Checking the numbers…"; message.className = "form-message"; }
     try {
@@ -117,9 +135,23 @@
     }
   }
 
-  function openForm() {
+  function openForm(debtToEdit = null) {
     const form = $("debt-form");
     if (!form) return;
+    editingDebtId = debtToEdit?.id || null;
+    form.reset();
+    if (debtToEdit) {
+      $("debt-name").value = debtToEdit.name || "";
+      $("debt-type").value = debtToEdit.type || "Credit card";
+      $("debt-balance").value = Number(debtToEdit.balance) || 0;
+      $("debt-apr").value = debtToEdit.apr ?? "";
+      $("debt-minimum").value = debtToEdit.minimum_payment ?? "";
+      $("debt-due-date").value = debtToEdit.due_date || "";
+    }
+    const heading = form.querySelector(".form-section-heading h3");
+    if (heading) heading.textContent = debtToEdit ? "Edit debt details" : "Add an obligation";
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.textContent = debtToEdit ? "Save changes" : "Save debt";
     form.hidden = false;
     $("add-debt-toggle")?.setAttribute("aria-expanded", "true");
     $("debt-name")?.focus();
@@ -127,33 +159,48 @@
   function closeForm() {
     const form = $("debt-form");
     if (form) { form.reset(); form.hidden = true; }
+    editingDebtId = null;
+    const heading = form?.querySelector(".form-section-heading h3");
+    if (heading) heading.textContent = "Add an obligation";
+    const submit = form?.querySelector('button[type="submit"]');
+    if (submit) submit.textContent = "Save debt";
     $("add-debt-toggle")?.setAttribute("aria-expanded", "false");
   }
 
   async function addDebt(event) {
     event.preventDefault();
+    const wasEditing = Boolean(editingDebtId);
     const debt = {
-      id: id(), name: $("debt-name").value.trim(), type: $("debt-type").value,
+      name: $("debt-name").value.trim(), type: $("debt-type").value,
       balance: Number($("debt-balance").value), apr: Number($("debt-apr").value),
-      minimum_payment: Number($("debt-minimum").value), due_date: $("debt-due-date").value || null, sample: false,
+      minimum_payment: Number($("debt-minimum").value), due_date: $("debt-due-date").value || null,
+      sample: false, starter: false, details_confirmed: true,
     };
-    if (!debt.name || !(debt.balance > 0) || debt.apr < 0 || debt.minimum_payment < 0) {
+    if (!debt.name || !(debt.balance > 0) || !Number.isFinite(debt.apr) || debt.apr < 0 || debt.apr > 100 || !Number.isFinite(debt.minimum_payment) || debt.minimum_payment < 0) {
       window.GlimApp.toast("Check the debt details and try again."); return;
     }
-    window.GlimApp.state.debts.push(debt);
-    // A newly tracked account changes the starting portfolio against which progress is measured.
-    window.GlimApp.state.baselineDebt = totalBalance(window.GlimApp.state.debts);
-    recordDebtSnapshot("debt added by user; starting portfolio reset");
-    window.GlimApp.state.lastPlan = null;
-    window.GlimApp.state.lastPlanComparison = null;
+    const state = window.GlimApp.state;
+    if (editingDebtId) {
+      const existing = (state.debts || []).find((item) => item.id === editingDebtId);
+      if (!existing) { closeForm(); window.GlimApp.toast("That debt account could not be found. Please try again."); return; }
+      Object.assign(existing, debt, { id: editingDebtId, balance_checked_at: new Date().toISOString() });
+      recordDebtSnapshot("debt details confirmed by user");
+    } else {
+      state.debts.push({ ...debt, id: id() });
+      // A newly tracked account changes the starting portfolio against which progress is measured.
+      state.baselineDebt = totalBalance(state.debts);
+      recordDebtSnapshot("debt added by user; starting portfolio reset");
+    }
+    state.lastPlan = null;
+    state.lastPlanComparison = null;
     try {
       await window.GlimApp.saveState();
       closeForm();
       renderDebts();
       window.GlimApp.renderOverview(null);
       $("plan-results").hidden = true;
-      window.GlimApp.toast("Debt added. Calculate a new plan to update your estimate.");
-    } catch (error) { window.GlimApp.toast(`Could not save debt: ${error.message}`); }
+      window.GlimApp.toast(wasEditing ? "Debt details updated." : "Debt added. Calculate a new plan to update your estimate.");
+    } catch (error) { window.GlimApp.toast("Could not save debt details. Please try again."); console.error("Glim debt save failed", error); }
   }
 
   async function removeDebt(debtId) {
@@ -189,9 +236,12 @@
     window.GlimApp.drawScheduleChart("debt-chart", [], "debt-chart-description");
     window.GlimApp.renderDebtCheckpoints(null);
     const desc = $("debt-chart-description");
-    if (desc) desc.textContent = state.debts?.length
-      ? "Calculate a repayment plan to see how your projected balance changes month by month."
-      : "Add a debt and calculate a plan to see your projected payoff path.";
+    const needsTerms = (state.debts || []).some((debt) => debt.apr === null || debt.apr === undefined || debt.apr === "" || debt.minimum_payment === null || debt.minimum_payment === undefined || debt.minimum_payment === "");
+    if (desc) desc.textContent = needsTerms
+      ? "Add the interest rate and monthly minimum payment for each debt before calculating a payoff projection."
+      : state.debts?.length
+        ? "Calculate a repayment plan to see how your projected balance changes month by month."
+        : "Add a debt and calculate a plan to see your projected payoff path.";
   }
 
   function recordDebtSnapshot(source = "user-confirmed balance update") {
@@ -216,6 +266,7 @@
     }
     debt.balance = Math.round(balance * 100) / 100;
     debt.sample = false;
+    debt.starter = false;
     debt.balance_checked_at = new Date().toISOString();
     if (!Number.isFinite(Number(state.baselineDebt)) || Number(state.baselineDebt) <= 0) state.baselineDebt = totalBalance(state.debts);
     state.lastPlan = null; state.lastPlanComparison = null;
@@ -281,11 +332,10 @@
       if (!imported.length) throw new Error("No valid debt rows were found. Check the required columns and numeric values.");
       const state = window.GlimApp.state;
       const existing = state.debts || [];
-      const sampleDebts = existing.filter((item) => item.sample);
-      const userDebts = existing.filter((item) => !item.sample);
+      const previousExampleDebts = existing.filter((item) => item.sample || item.starter);
+      const userDebts = existing.filter((item) => !item.sample && !item.starter);
       if (userDebts.length + imported.length > 100) throw new Error("Glim supports up to 100 tracked debts. Remove an entry before importing more.");
-      // Seed records are examples, not real user accounts. Remove them on the first import,
-      // including when the user has already added a real account alongside the examples.
+      // Imported account rows replace only the editable starter record, not user-entered debts.
       state.debts = [...userDebts, ...imported];
       if (previousExampleDebts.length || existing.length === 0) state.balanceHistory = [];
       state.baselineDebt = totalBalance(state.debts);
@@ -307,8 +357,13 @@
     $("debts-list")?.addEventListener("click", (event) => {
       const remove = event.target.closest("[data-remove-debt]");
       const edit = event.target.closest("[data-edit-balance]");
+      const editDetails = event.target.closest("[data-edit-debt]");
       const cancel = event.target.closest("[data-cancel-balance]");
       if (remove) removeDebt(remove.dataset.removeDebt);
+      if (editDetails) {
+        const debt = (window.GlimApp.state.debts || []).find((item) => item.id === editDetails.dataset.editDebt);
+        if (debt) openForm(debt);
+      }
       if (edit) {
         const form = document.querySelector(`[data-balance-form="${CSS.escape(edit.dataset.editBalance)}"]`);
         if (form) { form.hidden = !form.hidden; if (!form.hidden) form.querySelector("input")?.focus(); }

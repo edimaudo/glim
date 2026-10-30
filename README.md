@@ -155,3 +155,13 @@ The test suite covers repayment calculations, product-comparison math, page/temp
 - [PayPal REST authentication](https://developer.paypal.com/api/rest/authentication/)
 - [PayPal Payouts](https://developer.paypal.com/payouts/overview/)
 - [Qloo API documentation](https://github.com/qloo/docs-public)
+
+## Starter financial profile
+
+New browser profiles, and existing demo profiles whose debt or savings category is still empty, are pre-populated once with an editable starting scenario:
+
+- Credit card debt balance: CAD $10,000.
+- Savings balance: CAD $1,300.
+- Savings target: CAD $10,000.
+
+The starter credit-card record deliberately leaves APR and monthly minimum payment blank. Glim requires the user to confirm those figures from their statement before it will calculate a repayment projection; it never assumes a zero interest rate or a zero minimum payment. Use **Add details** on the debt record to complete them. Existing non-empty user-entered records are preserved. CSV debt imports replace the unconfirmed starter debt rather than adding a duplicate. Resetting the profile leaves the profile empty and does not re-seed it automatically.

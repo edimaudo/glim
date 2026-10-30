@@ -133,6 +133,7 @@
       profile: { name: profile.name || "Glim member", email: profile.email || "" },
       debts: [],
       savingsGoals: [],
+      starterPortfolioVersion: 0,
       monthlyBudget: 0,
       strategy: "avalanche",
       lastPlan: null,
@@ -164,6 +165,48 @@
       literacyAssessmentAt: null,
       assessmentTopics: []
     };
+  }
+
+  function applyStarterPortfolio(state) {
+    const today = new Date().toISOString().slice(0, 10);
+    let addedDebt = false;
+
+    // Fill only empty categories. Existing user-entered records are never overwritten.
+    if (!Array.isArray(state.debts) || state.debts.length === 0) {
+      state.debts = [{
+        id: "glim-starter-credit-card",
+        name: "Credit card debt",
+        type: "Credit card",
+        balance: 10000,
+        // APR and minimum payment are deliberately blank until confirmed by the user.
+        apr: null,
+        minimum_payment: null,
+        due_date: null,
+        starter: true,
+        details_confirmed: false,
+        source: "starter-profile"
+      }];
+      state.baselineDebt = 10000;
+      addedDebt = true;
+    }
+
+    if (!Array.isArray(state.savingsGoals) || state.savingsGoals.length === 0) {
+      state.savingsGoals = [{
+        id: "glim-starter-savings-goal",
+        name: "Savings",
+        target: 10000,
+        current: 1300,
+        monthly_contribution: 0,
+        starter: true,
+        source: "starter-profile"
+      }];
+    }
+
+    if (addedDebt && (!Array.isArray(state.balanceHistory) || state.balanceHistory.length === 0)) {
+      state.balanceHistory = [{ date: today, total: 10000, source: "starting balance" }];
+    }
+    state.starterPortfolioVersion = 1;
+    return state;
   }
 
   async function getState(email, profile = {}) {
@@ -199,13 +242,19 @@
         }
         state.debts ||= [];
         state.savingsGoals ||= [];
+        // One-time starter-profile migration for existing empty demo profiles.
+        // It fills only empty categories and preserves all existing user-entered data.
+        if (Number(state.starterPortfolioVersion || 0) < 1) {
+          applyStarterPortfolio(state);
+          await saveState(key, state);
+        }
         state.completedLessonIds ||= [];
         state.quizHistory ||= [];
         state.quizBestScore = Number(state.quizBestScore || 0);
         if (hadSeededRecords) await saveState(key, state);
         return state;
       }
-      const state = defaultState({ ...profile, email: key });
+      const state = applyStarterPortfolio(defaultState({ ...profile, email: key }));
       await saveState(key, state);
       return state;
     } catch (error) {
@@ -241,6 +290,7 @@
   async function resetState(email, profile = {}) {
     try {
       const state = defaultState({ ...profile, email: profileKey(email) });
+      state.starterPortfolioVersion = 1;
       await saveState(email, state);
       return state;
     } catch (error) {
@@ -248,5 +298,5 @@
     }
   }
 
-  window.GlimStorage = { getState, saveState, resetState, defaultState };
+  window.GlimStorage = { getState, saveState, resetState, defaultState, applyStarterPortfolio };
 })();
